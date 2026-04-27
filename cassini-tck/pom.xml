@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Projet Maven STANDALONE en Model Version 4.0.0, volontairement EN DEHORS
+    du reactor Vidocq (cf. vidocq-core-extensions/pom.xml).
+
+    Pourquoi : ShrinkWrap Maven Resolver 3.3 (dép. transitive du TCK Jakarta)
+    utilise maven-resolver 1.9 / maven-model 3.9 qui ne savent pas parser
+    les POMs Model 4.1.0 du reactor Vidocq. Son ClasspathWorkspaceReader
+    crash avec "Bad artifact coordinates ... jar:".
+
+    Dépendances internes (vidocq-rest-cassini-extension, chappe-core, etc.)
+    sont gelées sur la version 0.1.0-SNAPSHOT installée dans le repo M2 local.
+
+    Le lancement passe par le script :
+        ./run-official-tck-restful-4.0.sh                       (smoke test)
+        ./run-official-tck-restful-4.0.sh all                   (suite complète)
+        ./run-official-tck-restful-4.0.sh -Dtest=SomeTests      (classe ciblée)
+
+    Détails dans README.md de ce module.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>io.vidocq.mpserver</groupId>
+    <artifactId>vidocq-mps-rest-cassini-tck-runner</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>Vidocq :: Core Extensions :: REST Cassini TCK Runner</name>
+    <description>Harness de conformance Jakarta RESTful Web Services 4.0 — point d'entrée pour le TCK officiel</description>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>25</maven.compiler.release>
+        <vidocq.version>0.1.0-SNAPSHOT</vidocq.version>
+        <chappe.version>0.1.0-SNAPSHOT</chappe.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.vidocq.mpserver</groupId>
+            <artifactId>vidocq-mps-rest-cassini-extension</artifactId>
+            <version>${vidocq.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>fr.vidocq.chappe</groupId>
+            <artifactId>chappe-api</artifactId>
+            <version>${chappe.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>fr.vidocq.chappe</groupId>
+            <artifactId>chappe-core</artifactId>
+            <version>${chappe.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.ws.rs</groupId>
+            <artifactId>jakarta.ws.rs-api</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.arquillian.container</groupId>
+            <artifactId>arquillian-container-spi</artifactId>
+            <version>1.8.0.Final</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>4.0.0-beta-4</version>
+                    <configuration>
+                        <release>25</release>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.5.5</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>3.3.1</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>tck-official</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>copy-tck-workdir-pom</id>
+                                <phase>process-test-resources</phase>
+                                <goals><goal>copy-resources</goal></goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.directory}/tck-workdir</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}/src/test/tck-resources</directory>
+                                            <includes><include>pom.xml</include></includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <useModulePath>false</useModulePath>
+                            <dependenciesToScan>
+                                <dependency>jakarta.ws.rs:jakarta-restful-ws-tck</dependency>
+                            </dependenciesToScan>
+                            <includes>
+                                <include>**/*IT.class</include>
+                                <include>**/*Test.class</include>
+                                <include>**/*Tests.class</include>
+                            </includes>
+                            <workingDirectory>${project.build.directory}/tck-workdir</workingDirectory>
+                            <trimStackTrace>false</trimStackTrace>
+                            <redirectTestOutputToFile>false</redirectTestOutputToFile>
+                            <useFile>false</useFile>
+                            <systemPropertyVariables>
+                                <webServerHost>127.0.0.1</webServerHost>
+                                <webServerPort>8080</webServerPort>
+                                <ts_home>${project.build.directory}/test-classes</ts_home>
+                                <!-- §11.2 Basic Auth : credentials TCK pour les tests
+                                     securitycontext.basic. user/password = identité
+                                     valide ; authuser/authpassword = autre user pour
+                                     les tests d'isolation. -->
+                                <user>j2ee</user>
+                                <password>j2ee</password>
+                                <authuser>javajoe</authuser>
+                                <authpassword>javajoe</authpassword>
+                                <!-- Force l'usage du CassiniRuntimeDelegate côté TCK : Jersey
+                                     est aussi sur le classpath (client), et sans cette
+                                     property l'ordre ServiceLoader peut sélectionner le
+                                     mauvais fournisseur. -->
+                                <jakarta.ws.rs.ext.RuntimeDelegate>io.vidocq.cassini.internal.runtime.CassiniRuntimeDelegate</jakarta.ws.rs.ext.RuntimeDelegate>
+                            </systemPropertyVariables>
+                            <argLine>-Djdk.httpclient.allowRestrictedHeaders=host,connection,content-length,expect,upgrade,origin,date,via,cookie</argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>jakarta.ws.rs</groupId>
+                    <artifactId>jakarta-restful-ws-tck</artifactId>
+                    <version>4.0.1</version>
+                    <scope>test</scope>
+                </dependency>
+                <!--
+                    Jersey client en test-scope : le TCK est côté-serveur,
+                    il utilise un jakarta.ws.rs.client.Client pour piloter
+                    le serveur sous test. Cassini n'a pas de Client (hors
+                    scope du sprint initial) — on délègue à Jersey Client
+                    qui s'installe en ClientBuilder via ServiceLoader.
+                -->
+                <dependency>
+                    <groupId>org.glassfish.jersey.core</groupId>
+                    <artifactId>jersey-client</artifactId>
+                    <version>4.0.2</version>
+                    <scope>test</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.glassfish.jersey.inject</groupId>
+                    <artifactId>jersey-hk2</artifactId>
+                    <version>4.0.2</version>
+                    <scope>test</scope>
+                </dependency>
+                <!--
+                    JAXB media module pour Jersey client : les TCK qui
+                    postent un JAXBElement<String> en text/xml ont besoin
+                    d'un MBW JAXB côté CLIENT. Ajout purement test-scope,
+                    Cassini server reste indépendant.
+                -->
+                <dependency>
+                    <groupId>org.glassfish.jersey.media</groupId>
+                    <artifactId>jersey-media-jaxb</artifactId>
+                    <version>4.0.2</version>
+                    <scope>test</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.glassfish.jaxb</groupId>
+                    <artifactId>jaxb-runtime</artifactId>
+                    <version>4.0.5</version>
+                    <scope>test</scope>
+                </dependency>
+                <!--
+                    SSE client provider : les tests TCK SSE utilisent
+                    SseEventSource.target() qui charge SseEventSource.Builder
+                    via ServiceLoader. Sans ce module, ClassNotFoundException
+                    côté CLIENT. Le serveur Cassini ne dépend pas de Jersey.
+                -->
+                <dependency>
+                    <groupId>org.glassfish.jersey.media</groupId>
+                    <artifactId>jersey-media-sse</artifactId>
+                    <version>4.0.2</version>
+                    <scope>test</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.jboss.shrinkwrap</groupId>
+                    <artifactId>shrinkwrap-api</artifactId>
+                    <version>1.2.6</version>
+                    <scope>test</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.jboss.shrinkwrap</groupId>
+                    <artifactId>shrinkwrap-impl-base</artifactId>
+                    <version>1.2.6</version>
+                    <scope>test</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-api</artifactId>
+                    <version>2.0.16</version>
+                    <scope>test</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-simple</artifactId>
+                    <version>2.0.16</version>
+                    <scope>test</scope>
+                </dependency>
+                <dependency>
+                    <groupId>junit</groupId>
+                    <artifactId>junit</artifactId>
+                    <version>4.13.2</version>
+                    <scope>test</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+</project>

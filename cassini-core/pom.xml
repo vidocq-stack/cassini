@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.1.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.1.0 http://maven.apache.org/xsd/maven-4.1.0.xsd">
+    <modelVersion>4.1.0</modelVersion>
+
+    <parent>
+        <groupId>io.vidocq.mpserver</groupId>
+        <artifactId>vidocq-mps-core-extensions</artifactId>
+    </parent>
+
+    <artifactId>vidocq-mps-rest-cassini-extension</artifactId>
+    <name>Vidocq :: Core Extensions :: REST (Cassini)</name>
+    <description>Implémentation Jakarta RESTful Web Services 4.0 sur le moteur HTTP Chappe</description>
+
+    <properties>
+        <jakarta.ws.rs.version>4.0.0</jakarta.ws.rs.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.vidocq.mpserver</groupId>
+            <artifactId>vidocq-mps-spi</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.mpserver</groupId>
+            <artifactId>vidocq-mps-chappe-extension</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.vauban</groupId>
+            <artifactId>vauban-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>fr.vidocq.chappe</groupId>
+            <artifactId>chappe-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>jakarta.ws.rs</groupId>
+            <artifactId>jakarta.ws.rs-api</artifactId>
+            <version>${jakarta.ws.rs.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.enterprise</groupId>
+            <artifactId>jakarta.enterprise.cdi-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+        </dependency>
+        <!-- MBR/MBW standards §4.2.3 : JAXB + Jakarta Activation.
+             Non-optionnels pour que le scan BCE du vidocq-maven-plugin
+             puisse résoudre les références statiques aux Jaxb*/DataSource*. -->
+        <dependency>
+            <groupId>jakarta.xml.bind</groupId>
+            <artifactId>jakarta.xml.bind-api</artifactId>
+            <version>4.0.2</version>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.activation</groupId>
+            <artifactId>jakarta.activation-api</artifactId>
+            <version>2.1.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>fr.vidocq.chappe</groupId>
+            <artifactId>chappe-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
