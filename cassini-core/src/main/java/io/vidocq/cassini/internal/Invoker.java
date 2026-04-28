@@ -244,7 +244,7 @@ public final class Invoker {
                             route, MediaType.WILDCARD_TYPE, null);
                 }
             }
-            FieldInjector.inject(intermediate, match, request);
+            FieldInjector.inject(intermediate, match, request, false);
             matched.add(0, intermediate);
         }
         // 2. Calculer le remaining path à partir du capture {__rest:.*}
@@ -343,7 +343,7 @@ public final class Invoker {
                             route, MediaType.WILDCARD_TYPE, null);
                 }
             }
-            FieldInjector.inject(intermediate, match, request);
+            FieldInjector.inject(intermediate, match, request, false);
             matchedSoFar.add(0, intermediate);
         }
         String rest = "";
@@ -395,7 +395,8 @@ public final class Invoker {
             return renderWebAppException(wae, route, chosen, null);
         }
 
-        FieldInjector.inject(instance, match, request);
+        // §3.4.1 : sub-resource via dynamic locator → pas d'injection @*Param
+        FieldInjector.inject(instance, match, request, false);
         Object result;
         try {
             route.javaMethod().setAccessible(true);
@@ -678,7 +679,7 @@ public final class Invoker {
                                     route, chosen, rctx);
                         }
                     }
-                    FieldInjector.inject(intermediate, match, request);
+                    FieldInjector.inject(intermediate, match, request, false);
                     matched.add(0, intermediate);
                 }
                 target = intermediate;

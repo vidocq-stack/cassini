@@ -46,12 +46,22 @@ public final class FieldInjector {
     private FieldInjector() {}
 
     public static void inject(Object target, MatchResult match, Request request) {
+        inject(target, match, request, true);
+    }
+
+    /** §3.4.1 / JAXRS:SPEC:4 : "Objects returned by sub-resource locators are
+     *  expected to be initialized by their creator and field and bean
+     *  properties are not modified by the implementation runtime." Pour les
+     *  sub-resources retournées par locator, on n'injecte que les @Context
+     *  fields (injectParams=false) — les @*Param sont préservés à leur
+     *  valeur initiale (typiquement null). */
+    public static void inject(Object target, MatchResult match, Request request, boolean injectParams) {
         if (target == null) return;
         Class<?> cls = target.getClass();
         while (cls != null && cls != Object.class) {
             for (Field f : cls.getDeclaredFields()) {
                 if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
-                Object value = resolveFieldValue(f, match, request);
+                Object value = resolveFieldValue(f, match, request, injectParams);
                 if (value != null) setField(target, f, value);
             }
             cls = cls.getSuperclass();
@@ -59,8 +69,13 @@ public final class FieldInjector {
     }
 
     private static Object resolveFieldValue(Field f, MatchResult match, Request request) {
+        return resolveFieldValue(f, match, request, true);
+    }
+
+    private static Object resolveFieldValue(Field f, MatchResult match, Request request, boolean injectParams) {
         Context ctx = f.getAnnotation(Context.class);
         if (ctx != null) return resolveContext(f.getType(), match, request);
+        if (!injectParams) return null;
 
         BeanParam bp = f.getAnnotation(BeanParam.class);
         if (bp != null) {
