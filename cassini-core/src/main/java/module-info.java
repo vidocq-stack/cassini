@@ -16,6 +16,8 @@ module io.vidocq.cassini {
     requires java.xml;
     requires static jakarta.xml.bind;
     requires static jakarta.activation;
+    requires static jakarta.json;
+    requires static jakarta.json.bind;
 
     exports io.vidocq.cassini;
     exports io.vidocq.cassini.internal

@@ -238,6 +238,19 @@
                     <version>4.0.2</version>
                     <scope>test</scope>
                 </dependency>
+                <!--
+                    JSON-B media module pour Jersey CLIENT : le test
+                    spec.contextprovider.JsonbContextProviderIT poste un POJO
+                    en application/json côté client. Sans MBW JSON, le client
+                    Jersey lance MessageBodyProviderNotFound. Cassini SERVEUR
+                    a son propre MBR/MBW JSON via Yasson.
+                -->
+                <dependency>
+                    <groupId>org.glassfish.jersey.media</groupId>
+                    <artifactId>jersey-media-json-binding</artifactId>
+                    <version>4.0.2</version>
+                    <scope>test</scope>
+                </dependency>
                 <!-- Sun TDK Signature Test : §A.1 conformance API.
                      Sans cette lib, signatureTest échoue en ClassNotFoundException
                      sur com.sun.tdk.signaturetest.SignatureTest. -->

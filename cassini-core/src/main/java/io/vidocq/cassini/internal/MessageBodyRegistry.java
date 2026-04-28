@@ -178,6 +178,7 @@ public final class MessageBodyRegistry {
         writers.add(new SourceWriter());
         if (activationAvailable()) writers.add(new DataSourceWriter());
         if (jaxbAvailable()) writers.add(new JaxbWriter());
+        if (jsonbAvailable()) writers.add(new io.vidocq.cassini.internal.json.CassiniJsonbReaderWriter());
         writers.add(new FormUrlEncodedWriter());
         writers.add(new PrimitiveWriter());
         writers.add(new FallbackToStringWriter());
@@ -190,8 +191,14 @@ public final class MessageBodyRegistry {
         readers.add(new SourceReader());
         if (activationAvailable()) readers.add(new DataSourceReader());
         if (jaxbAvailable()) readers.add(new JaxbReader());
+        if (jsonbAvailable()) readers.add(new io.vidocq.cassini.internal.json.CassiniJsonbReaderWriter());
         readers.add(new FormUrlEncodedReader());
         readers.add(new PrimitiveReader());
+    }
+
+    /** JSON-B (Yasson) optionnel : non-enregistré si jakarta.json.bind absent. */
+    private static boolean jsonbAvailable() {
+        return classPresent("jakarta.json.bind.Jsonb");
     }
 
     /** JAXB est optionnel : si {@code jakarta.xml.bind} n'est pas sur le
