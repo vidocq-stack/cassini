@@ -2,6 +2,8 @@ module io.vidocq.cassini.core {
     requires transitive io.vidocq.cassini.api;
     requires transitive jakarta.ws.rs;
     requires static jakarta.annotation;
+    requires static jakarta.cdi;
+    requires static jakarta.inject;
 
     requires static jakarta.xml.bind;
     requires static jakarta.activation;
@@ -30,6 +32,10 @@ module io.vidocq.cassini.core {
     exports io.vidocq.cassini.internal.multipart
             to io.vidocq.cassini.tck;
     exports io.vidocq.cassini.internal.runtime
+            to io.vidocq.cassini.tck,
+               io.vidocq.cassini.chappe,
+               io.vidocq.cassini.jdkhttp;
+    exports io.vidocq.cassini.internal.transport
             to io.vidocq.cassini.tck,
                io.vidocq.cassini.chappe,
                io.vidocq.cassini.jdkhttp;

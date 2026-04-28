@@ -422,6 +422,28 @@ Sous-étape D : tests
 
 **Total révisé** : 4-6 jours (vs estimation initiale 2-3 j) pour cassini-core découplé + TCK 2535/2535.
 
+### État précis post-Phase 3c (checkpoint scaffolding)
+
+**Décision pragmatique** : `cassini-core` accepte CDI en `<scope>provided</scope>` + `requires static jakarta.cdi`. Mode A "pur" (sans CDI) sera factoré ultérieurement via un SPI `BeanRegistry`. Cette décision permet de compiler vite et passer le TCK plus rapidement.
+
+**Scaffolding créé** :
+- `cassini-core/internal/transport/CassiniHttpResponse.java` — record neutre (status, headers, body bytes) + `writeTo(CassiniHttpExchange)`. Sert d'IR (intermediate representation) de la réponse, indépendante du transport.
+- module-info exporte `internal.transport` aux modules transport (chappe, jdk-http) et tck.
+
+**Refactors mécaniques restants pour Invoker.java (1292 lignes)** :
+1. Imports : retirer `fr.vidocq.chappe.api.{Body, Request, Response, StatusCode}`, ajouter `CassiniHttpExchange` + `CassiniHttpResponse`
+2. Signatures : `Request request → CassiniHttpExchange exchange` (~10 méthodes : `invoke`, `invokeDynamicLocator`, `dispatchOnInstance`, `invokeDynamicLocatorWithInstance`, `invokeFinalOnInstance`, `runPreMatching`, `invokeInternal`, `injectProviderContexts`, `hasRequestBody`, `readEntity`, `pickBestMatch`, `renderThrowable`)
+3. Retours : `Response → CassiniHttpResponse` (~50 occurrences). `Response.builder().status(StatusCode.X).header(...).body(Body.of(...)).build()` → `CassiniHttpResponse.builder().status(X).header(...).body(bytes).build()`
+4. Lectures : `request.headers().firstOrNull(X)` → `exchange.firstHeader(X)` ; `request.body().asInputStream()` → `exchange.requestBody()` ; etc.
+
+**ParamExtractor.java (543 lignes)** : mêmes patterns mécaniques que FieldInjector.
+
+**CassiniRequestContext.java filter (243 lignes)** : wrap `CassiniHttpExchange` au lieu de Chappe Request.
+
+**CassiniRestBridge.java (158 lignes)** : intégralement déplacé vers `cassini-chappe/ChappeHttpAdapter.java`. Adapte `Request/Response` Chappe ↔ `CassiniHttpExchange` + `CassiniHttpResponse`. Le code de routing/filters/error-handling reste dans Invoker (déplacé là-bas).
+
+**Estimation reste** : ~1 j (refactor mécanique Invoker + ParamExtractor + CassiniRequestContext) + ~0,5 j (write cassini-chappe ChappeHttpAdapter) + ~0,5 j (adapter cassini-jdk-http) + ~0,5 j (refactor TCK runner) + ~0,5 j (validation 2535/2535).
+
 ---
 
 ## 7. Notes & risques

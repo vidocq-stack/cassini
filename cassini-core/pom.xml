@@ -26,6 +26,14 @@
             <groupId>jakarta.annotation</groupId>
             <artifactId>jakarta.annotation-api</artifactId>
         </dependency>
+        <!-- CDI en provided : cassini-core délègue à BeanManager pour résoudre
+             ressources/providers en Mode B. Mode A "pur" (sans CDI) demandera
+             un refactor du registry vers un SPI BeanRegistry — voir M2-pur. -->
+        <dependency>
+            <groupId>jakarta.enterprise</groupId>
+            <artifactId>jakarta.enterprise.cdi-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>jakarta.json</groupId>
             <artifactId>jakarta.json-api</artifactId>
