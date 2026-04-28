@@ -1,10 +1,10 @@
 package io.vidocq.cassini.chappe;
 
-import fr.vidocq.chappe.api.Body;
-import fr.vidocq.chappe.api.Handler;
-import fr.vidocq.chappe.api.Request;
-import fr.vidocq.chappe.api.Response;
-import fr.vidocq.chappe.api.StatusCode;
+import io.vidocq.chappe.api.Body;
+import io.vidocq.chappe.api.Handler;
+import io.vidocq.chappe.api.Request;
+import io.vidocq.chappe.api.Response;
+import io.vidocq.chappe.api.StatusCode;
 import io.vidocq.cassini.internal.Invoker;
 import io.vidocq.cassini.internal.MatchResult;
 import io.vidocq.cassini.internal.UriRouter;
@@ -82,7 +82,7 @@ public final class ChappeHttpAdapter implements Handler {
             } catch (Exception ignored) {}
             if (holderPre[0] instanceof Exception ex) throw ex;
             if (holderPre[0] instanceof Invoker.PreMatchResult pmr) {
-                if (pmr.response() != null) return pmr.response();
+                if (pmr.response() != null) return toChappe(pmr.response());
                 // §6.6.1 : si un pre-matching filter a appelé setMethod /
                 // setRequestUri, on relance le routing sur les valeurs mutées.
                 if (pmr.ctx() != null) {

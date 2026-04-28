@@ -1,7 +1,7 @@
 package io.vidocq.cassini.chappe;
 
-import fr.vidocq.chappe.api.Request;
-import fr.vidocq.chappe.api.Response;
+import io.vidocq.chappe.api.Request;
+import io.vidocq.chappe.api.Response;
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 
 import java.io.ByteArrayOutputStream;
