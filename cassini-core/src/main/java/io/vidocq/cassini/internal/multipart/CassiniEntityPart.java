@@ -1,0 +1,73 @@
+package io.vidocq.cassini.internal.multipart;
+
+import jakarta.ws.rs.core.EntityPart;
+import jakarta.ws.rs.core.GenericType;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.MultivaluedHashMap;
+import jakarta.ws.rs.core.MultivaluedMap;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Optional;
+
+/** §3.5.4 EntityPart : représentation d'une partie multipart/form-data. */
+public final class CassiniEntityPart implements EntityPart {
+
+    private final String name;
+    private final String fileName;
+    private final MediaType mediaType;
+    private final MultivaluedMap<String, String> headers;
+    private final byte[] content;
+    private boolean consumed;
+
+    CassiniEntityPart(String name, String fileName, MediaType mediaType,
+                      MultivaluedMap<String, String> headers, byte[] content) {
+        this.name = name;
+        this.fileName = fileName;
+        this.mediaType = mediaType == null ? MediaType.TEXT_PLAIN_TYPE : mediaType;
+        this.headers = headers == null ? new MultivaluedHashMap<>() : headers;
+        this.content = content == null ? new byte[0] : content;
+    }
+
+    @Override public String getName() { return name; }
+    @Override public Optional<String> getFileName() { return Optional.ofNullable(fileName); }
+    @Override public MediaType getMediaType() { return mediaType; }
+    @Override public MultivaluedMap<String, String> getHeaders() { return headers; }
+
+    public byte[] rawContent() { return content; }
+
+    @Override
+    public synchronized InputStream getContent() {
+        if (consumed) throw new IllegalStateException("EntityPart content already consumed");
+        consumed = true;
+        return new ByteArrayInputStream(content);
+    }
+
+    @Override
+    public synchronized <T> T getContent(Class<T> type) throws IOException {
+        if (consumed) throw new IllegalStateException("EntityPart content already consumed");
+        consumed = true;
+        return convert(type, content);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public synchronized <T> T getContent(GenericType<T> type) throws IOException {
+        if (consumed) throw new IllegalStateException("EntityPart content already consumed");
+        consumed = true;
+        Class<?> raw = type.getRawType();
+        return (T) convert(raw, content);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T convert(Class<T> type, byte[] bytes) {
+        if (type == byte[].class) return (T) bytes;
+        if (type == String.class) return (T) new String(bytes, StandardCharsets.UTF_8);
+        if (type == InputStream.class) return (T) new ByteArrayInputStream(bytes);
+        // Best-effort fallback : si le type a un constructor (String) ou est CharSequence
+        if (CharSequence.class.isAssignableFrom(type)) return (T) new String(bytes, StandardCharsets.UTF_8);
+        throw new IllegalArgumentException("Unsupported EntityPart content type: " + type.getName());
+    }
+}

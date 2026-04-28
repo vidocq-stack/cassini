@@ -26,6 +26,8 @@ module io.vidocq.cassini {
             to io.vidocq.cassini.tck;
     exports io.vidocq.cassini.internal.context
             to io.vidocq.cassini.tck;
+    exports io.vidocq.cassini.internal.multipart
+            to io.vidocq.cassini.tck;
 
     opens io.vidocq.cassini to io.vidocq.vauban.core;
 

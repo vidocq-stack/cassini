@@ -179,6 +179,7 @@ public final class MessageBodyRegistry {
         if (activationAvailable()) writers.add(new DataSourceWriter());
         if (jaxbAvailable()) writers.add(new JaxbWriter());
         if (jsonbAvailable()) writers.add(new io.vidocq.cassini.internal.json.CassiniJsonbReaderWriter());
+        writers.add(new io.vidocq.cassini.internal.multipart.MultipartFormDataProvider());
         writers.add(new FormUrlEncodedWriter());
         writers.add(new PrimitiveWriter());
         writers.add(new FallbackToStringWriter());
@@ -192,6 +193,7 @@ public final class MessageBodyRegistry {
         if (activationAvailable()) readers.add(new DataSourceReader());
         if (jaxbAvailable()) readers.add(new JaxbReader());
         if (jsonbAvailable()) readers.add(new io.vidocq.cassini.internal.json.CassiniJsonbReaderWriter());
+        readers.add(new io.vidocq.cassini.internal.multipart.MultipartFormDataProvider());
         readers.add(new FormUrlEncodedReader());
         readers.add(new PrimitiveReader());
     }

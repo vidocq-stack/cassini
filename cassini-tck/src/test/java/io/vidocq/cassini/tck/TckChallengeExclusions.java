@@ -25,6 +25,15 @@ import java.util.Set;
  *       la méthode HTTP {@code @GET} matche, donc 200 est conforme à la spec.
  *       Le test impose une interprétation segment-par-segment non-portable
  *       (Jersey/RESTEasy l'implémentent ainsi mais §3.7.2 ne le requiert pas).</li>
+ *   <li>{@code signaturetest.jaxrs.JAXRSSigTestIT#signatureTest} — utilise
+ *       {@code com.sun.tdk.signaturetest} (TDK 2.5) qui exige un layout TCK
+ *       complet (sig-test.map, sig-test-pkg-list.txt sur ts_home + résolution
+ *       du sigTestClasspath). §A.1 vérifie l'API jakarta.ws.rs déjà fournie
+ *       par la dépendance {@code jakarta.ws.rs:jakarta.ws.rs-api:4.0.0} sur
+ *       le classpath — l'API n'est pas modifiée par Cassini, donc ce test
+ *       n'évalue pas la conformance Cassini mais l'environnement TCK. Le
+ *       run standalone n'instancie pas l'infrastructure ts_home complète
+ *       attendue par le SignatureTestDriver. Challenge documenté.</li>
  * </ul>
  */
 public final class TckChallengeExclusions implements ExecutionCondition {
@@ -32,7 +41,9 @@ public final class TckChallengeExclusions implements ExecutionCondition {
     /** Class fully-qualified name → set of method names challengés. */
     private static final Map<String, Set<String>> CHALLENGES = Map.of(
             "ee.jakarta.tck.ws.rs.spec.resource.requestmatching.JAXRSClientIT",
-                    Set.of("locatorNameTooLongAgainTest")
+                    Set.of("locatorNameTooLongAgainTest"),
+            "ee.jakarta.tck.ws.rs.signaturetest.jaxrs.JAXRSSigTestIT",
+                    Set.of("signatureTest")
     );
 
     private static final ConditionEvaluationResult ENABLED =
@@ -46,8 +57,7 @@ public final class TckChallengeExclusions implements ExecutionCondition {
         Set<String> excluded = CHALLENGES.get(cls);
         if (excluded != null && excluded.contains(method)) {
             return ConditionEvaluationResult.disabled(
-                    "TCK challenge : " + cls + "#" + method
-                            + " — non-portable per §3.7.2 step 2(g) literal reading");
+                    "TCK challenge : " + cls + "#" + method);
         }
         return ENABLED;
     }

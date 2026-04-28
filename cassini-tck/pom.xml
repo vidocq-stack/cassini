@@ -171,6 +171,12 @@
                                 <password>j2ee</password>
                                 <authuser>javajoe</authuser>
                                 <authpassword>javajoe</authpassword>
+                                <!-- §A.1 Signature Test : SigTestEE invoque
+                                     'jimage extract dir=jimage.dir' pour
+                                     décompresser les modules JDK et les ajouter
+                                     au classpath du sig-test. -->
+                                <jimage.dir>${project.build.directory}/jimage</jimage.dir>
+                                <sigTestClasspath>${user.home}/.m2/repository/jakarta/ws/rs/jakarta.ws.rs-api/4.0.0/jakarta.ws.rs-api-4.0.0.jar${path.separator}${project.build.directory}/jimage/java.base${path.separator}${project.build.directory}/jimage/java.xml</sigTestClasspath>
                                 <!-- Force l'usage du CassiniRuntimeDelegate côté TCK : Jersey
                                      est aussi sur le classpath (client), et sans cette
                                      property l'ordre ServiceLoader peut sélectionner le
@@ -251,6 +257,12 @@
                     <version>4.0.2</version>
                     <scope>test</scope>
                 </dependency>
+                <!--
+                    Multipart : Cassini fournit son propre MBR/MBW
+                    (MultipartFormDataProvider) compatible avec EntityPart
+                    standard JAX-RS 4.0 §3.5.4. Côté CLIENT, on enregistre
+                    via Feature auto-discoverable (META-INF/services).
+                -->
                 <!-- Sun TDK Signature Test : §A.1 conformance API.
                      Sans cette lib, signatureTest échoue en ClassNotFoundException
                      sur com.sun.tdk.signaturetest.SignatureTest. -->

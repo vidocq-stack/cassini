@@ -58,7 +58,7 @@ public final class CassiniRuntimeDelegate extends RuntimeDelegate {
     }
 
     @Override public EntityPart.Builder createEntityPartBuilder(String name) {
-        throw new UnsupportedOperationException("EntityPart.Builder not implemented yet");
+        return new io.vidocq.cassini.internal.multipart.CassiniEntityPartBuilder(name);
     }
 
     @Override public SeBootstrap.Configuration.Builder createConfigurationBuilder() {
