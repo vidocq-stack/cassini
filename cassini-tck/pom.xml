@@ -141,6 +141,15 @@
                             <dependenciesToScan>
                                 <dependency>jakarta.ws.rs:jakarta-restful-ws-tck</dependency>
                             </dependenciesToScan>
+                            <!-- Profil Jakarta EE Core Profile / SE-Bootstrap : on cible une
+                                 certif standalone Jakarta RESTful Web Services 4.0 sans
+                                 Servlet container ni JAXB. Le TCK 4.0 expose des @Tag JUnit5
+                                 (servlet, xml_binding, security, se_bootstrap) — le user-guide
+                                 §5.2.3 documente l'usage de excludedGroups pour désactiver
+                                 les tests hors-périmètre.
+                                 - servlet     : exige HttpServletRequest, hors scope SE.
+                                 - xml_binding : exige JAXB-runtime, hors Core Profile. -->
+                            <excludedGroups>servlet,xml_binding</excludedGroups>
                             <includes>
                                 <include>**/*IT.class</include>
                                 <include>**/*Test.class</include>

@@ -773,9 +773,15 @@ public final class Invoker {
         CassiniResponseContext rctx2 = new CassiniResponseContext(status, entity,
                 entity == null ? null : entity.getClass(), headers);
         for (var fe : filters.responseFilters()) {
-            // route null = pré-matching abort : on applique les filtres globaux,
-            // pas le filtrage par méthode.
-            if (route != null && !fe.appliesTo(route.javaMethod(), route.beanClass())) continue;
+            // route null = pré-matching abort/exception §6.5.2 : seuls les
+            // filtres globalement liés (sans @NameBinding) s'appliquent.
+            // appliesTo(null,null) retourne true pour les globaux et false
+            // pour les NameBound — on s'appuie dessus pour filtrer.
+            if (route == null) {
+                if (!fe.appliesTo(null, null)) continue;
+            } else {
+                if (!fe.appliesTo(route.javaMethod(), route.beanClass())) continue;
+            }
             Throwable[] err = new Throwable[1];
             rctx.runDuringResponsePhase(() -> {
                 try { fe.instance().filter(rctx, rctx2); }
@@ -930,7 +936,7 @@ public final class Invoker {
             FieldInjector.BODY_CACHE.set(all);
             src = new java.io.ByteArrayInputStream(all);
         }
-        var rInterceptors = route == null ? filters.readerInterceptors()
+        var rInterceptors = route == null ? filters.readerInterceptorsFor(null, null)
                 : filters.readerInterceptorsFor(route.javaMethod(), route.beanClass());
         try (InputStream in = src) {
             if (rInterceptors.isEmpty()) {
@@ -987,7 +993,9 @@ public final class Invoker {
         // peuvent encore muter ; on relit ensuite pour build.
         for (var e : extraHeaders.entrySet())
             for (String v : e.getValue()) outHeaders.add(e.getKey(), v);
-        var wInterceptors = route == null ? filters.writerInterceptors()
+        // §6.5.2 : si route==null (pré-matching abort/exception), seuls les
+        // writer interceptors globalement liés s'appliquent.
+        var wInterceptors = route == null ? filters.writerInterceptorsFor(null, null)
                 : filters.writerInterceptorsFor(route.javaMethod(), route.beanClass());
         if (wInterceptors.isEmpty()) {
             MessageBodyRegistry.writeTo(writer, entity, type, genericType, anns, finalMt, outHeaders, bos);
