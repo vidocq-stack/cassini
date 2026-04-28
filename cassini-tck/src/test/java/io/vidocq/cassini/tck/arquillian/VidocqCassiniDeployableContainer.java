@@ -253,7 +253,16 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         // en compte tous les contextes connus.
         CassiniTestHarness.Builder.BuiltHandler bh = builder.buildHandler();
         String actualPrefix = bh.prefix();
-        contextHandlers.put(actualPrefix, bh.bridgeHandler());
+        // §6.1 BASIC : si web.xml déclare une security-constraint avec
+        // <auth-method>BASIC</auth-method>, on wrappe le bridge avec un
+        // handler qui valide Authorization Basic et pose un AuthInfo.
+        fr.vidocq.chappe.api.Handler bridgeOrAuth = bh.bridgeHandler();
+        String authPattern = parseBasicAuthPattern(war, actualPrefix);
+        if (authPattern != null) {
+            System.err.println("[VidocqCassiniTCK] BASIC auth wrap pattern=" + authPattern);
+            bridgeOrAuth = new BasicAuthHandler(bridgeOrAuth, authPattern);
+        }
+        contextHandlers.put(actualPrefix, bridgeOrAuth);
         archivePrefixes.put(archive.getName(), actualPrefix);
 
         String baseUrl = "http://" + config.getHost() + ":" + port + actualPrefix;
@@ -338,6 +347,44 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         } catch (ReflectiveOperationException e) {
             return null;
         }
+    }
+
+    /**
+     * Parse WEB-INF/web.xml du WAR : si une security-constraint avec
+     * url-pattern et auth-method=BASIC est trouvée, retourne un regex
+     * matchant les paths protégés (le contextPath du WAR ayant déjà été
+     * strippé par le dispatcher partagé en amont — donc on ne préfixe
+     * PAS la regex), sinon null.
+     */
+    private static String parseBasicAuthPattern(WebArchive war, String prefix) {
+        Node webXml = war.get("/WEB-INF/web.xml");
+        if (webXml == null || webXml.getAsset() == null) {
+            webXml = war.get("WEB-INF/web.xml");
+        }
+        if (webXml == null || webXml.getAsset() == null) return null;
+        String content;
+        try (var in = webXml.getAsset().openStream()) {
+            content = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) { return null; }
+        if (!content.contains("<auth-method>BASIC</auth-method>")) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "<security-constraint>[\\s\\S]*?</security-constraint>").matcher(content);
+        java.util.List<String> patterns = new java.util.ArrayList<>();
+        while (m.find()) {
+            java.util.regex.Matcher up = java.util.regex.Pattern.compile(
+                    "<url-pattern>([^<]+)</url-pattern>").matcher(m.group());
+            while (up.find()) patterns.add(up.group(1).trim());
+        }
+        if (patterns.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder("^(");
+        for (int i = 0; i < patterns.size(); i++) {
+            if (i > 0) sb.append("|");
+            String p = patterns.get(i);
+            String rx = p.replace(".", "\\.").replace("*", ".*");
+            sb.append(rx);
+        }
+        sb.append(")");
+        return sb.toString();
     }
 
     private static boolean isResolvableContext(Class<?> type) {
