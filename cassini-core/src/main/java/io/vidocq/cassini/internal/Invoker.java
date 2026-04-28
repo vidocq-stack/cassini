@@ -391,6 +391,26 @@ public final class Invoker {
             throw new RuntimeException(cause);
         }
 
+        // §9.2 : si la méthode retourne CompletionStage<T>, on attend
+        // le résultat de manière bloquante (M2h Async sera plus complet).
+        if (result instanceof java.util.concurrent.CompletionStage<?> cs) {
+            try {
+                result = cs.toCompletableFuture().get();
+            } catch (java.util.concurrent.ExecutionException ee) {
+                Throwable cause = ee.getCause();
+                if (cause instanceof WebApplicationException wae) {
+                    return renderWebAppException(wae, route, chosen, rctx);
+                }
+                var mapped = exceptionMappers.map(cause);
+                if (mapped.isPresent()) return runResponseFiltersAndWrite(rctx, mapped.get(), route, chosen);
+                if (cause instanceof Exception ex) throw ex;
+                throw new RuntimeException(cause);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted while awaiting CompletionStage", ie);
+            }
+        }
+
         // §11.1 : méthode SSE → on retourne le contenu bufferisé du sink
         // comme corps text/event-stream (la méthode a typiquement un
         // return type void et c'est le sink qui contient les events).
