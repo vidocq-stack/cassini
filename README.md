@@ -19,7 +19,7 @@ Cassini est conçu pour être consommé dans trois modes de certification indép
 [INFO] BUILD SUCCESS
 ```
 
-Détails dans [`TCK.md`](TCK.md).
+Détails dans [`TCK.md`](TCK.md), reproduction via `./run-official-tck-restful-4.0.sh all`.
 
 ## Modules
 
