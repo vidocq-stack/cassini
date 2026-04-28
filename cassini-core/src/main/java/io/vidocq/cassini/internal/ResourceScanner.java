@@ -242,7 +242,17 @@ public final class ResourceScanner {
                                         Class<?> rootBeanClass, java.util.List<Method> locatorChain,
                                         int rootClassLiterals,
                                         java.util.Set<Class<?>> visited, List<ResourceMethod> out) {
-        if (cls == null || cls == Object.class) return;
+        if (cls == null) return;
+        // §3.4.1 : un sub-resource locator peut retourner Object — son type
+        // effectif n'est connu qu'au runtime. On émet une paire de routes
+        // catch-all qui déclenchent le dispatch dynamique côté Invoker :
+        //   - basePath           → match exact (sous-ressource sans sous-segments)
+        //   - basePath/{__rest:.*} → match avec sous-segments propagés
+        if (cls == Object.class) {
+            emitDynamicLocatorRoute(basePath, inheritedProduces, inheritedConsumes,
+                    rootBeanClass, locatorChain, rootClassLiterals, out);
+            return;
+        }
         if (!visited.add(cls)) {
             // §3.4.1 : un locator récursif (cls retourne la même classe) doit
             // pouvoir matcher une URI imbriquée. On autorise jusqu'à
@@ -297,6 +307,30 @@ public final class ResourceScanner {
             out.add(new ResourceMethod(cls, m, verb, UriTemplate.compile(full), effP, effC,
                     rootBeanClass, java.util.List.copyOf(locatorChain), rootClassLiterals));
         }
+    }
+
+    /** §3.4.1 : émet 2 routes catch-all (path exact + sous-path) avec
+     *  {@code dynamicLocator=true} pour signaler à l'{@link Invoker} qu'il
+     *  doit invoquer la chaîne de locators puis scanner la classe effective
+     *  de l'instance retournée. La méthode finale est résolue au runtime. */
+    private static void emitDynamicLocatorRoute(String basePath,
+                                                Set<String> inheritedProduces, Set<String> inheritedConsumes,
+                                                Class<?> rootBeanClass, java.util.List<Method> locatorChain,
+                                                int rootClassLiterals, List<ResourceMethod> out) {
+        if (locatorChain == null || locatorChain.isEmpty() || rootBeanClass == null) return;
+        Method last = locatorChain.get(locatorChain.size() - 1);
+        java.util.List<Method> chain = java.util.List.copyOf(locatorChain);
+        // Variante 1 : path exact (ex : GET /resource/l2locator → MainResourceLocator.get())
+        out.add(new ResourceMethod(Object.class, last, "*",
+                UriTemplate.compile(basePath),
+                inheritedProduces, inheritedConsumes,
+                rootBeanClass, chain, rootClassLiterals, true));
+        // Variante 2 : path + sous-segments (ex : DELETE /resource/l2locator/l2locator)
+        String wildcardPath = combine(basePath, "/{__rest:.*}");
+        out.add(new ResourceMethod(Object.class, last, "*",
+                UriTemplate.compile(wildcardPath),
+                inheritedProduces, inheritedConsumes,
+                rootBeanClass, chain, rootClassLiterals, true));
     }
 
     private static Set<String> produces(Produces ann) {
