@@ -71,6 +71,13 @@
             <artifactId>jakarta.ws.rs-api</artifactId>
             <version>4.0.0</version>
         </dependency>
+        <!-- CDI API : cassini-core déclare Invoker.forBeanManager(BeanManager).
+             Le harness TCK appelle cette méthode → besoin du JAR à la compilation. -->
+        <dependency>
+            <groupId>jakarta.enterprise</groupId>
+            <artifactId>jakarta.enterprise.cdi-api</artifactId>
+            <version>4.1.0</version>
+        </dependency>
         <!-- Servlet API : certaines ressources TCK déclarent @Context HttpServletRequest.
              Cassini ne supporte pas l'injection servlet, mais sans l'API au classpath
              le scan reflexif (Class.getDeclaredMethods) crash en NoClassDefFoundError. -->
@@ -91,6 +98,16 @@
             <groupId>org.jboss.arquillian.container</groupId>
             <artifactId>arquillian-container-spi</artifactId>
             <version>1.8.0.Final</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Jersey CLIENT en test-scope (hors profil tck-official) :
+             les classes test/AutoDiscover et MultipartBoundaryFilter dépendent
+             de l'API jersey-common (AutoDiscoverable). À l'exécution TCK, le
+             profil tck-official ré-installe les versions complètes. -->
+        <dependency>
+            <groupId>org.glassfish.jersey.core</groupId>
+            <artifactId>jersey-common</artifactId>
+            <version>4.0.2</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

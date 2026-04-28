@@ -5,9 +5,12 @@
  * compatibilité ShrinkWrap (dép. transitive du TCK Jakarta).</p>
  */
 module io.vidocq.cassini.tck {
-    requires io.vidocq.cassini;
-    requires fr.vidocq.chappe.api;
+    requires io.vidocq.cassini.api;
+    requires io.vidocq.cassini.core;
+    requires io.vidocq.cassini.chappe;
+    requires io.vidocq.chappe.api;
     requires jakarta.ws.rs;
+    requires jakarta.cdi;
 
     requires static java.net.http;
 

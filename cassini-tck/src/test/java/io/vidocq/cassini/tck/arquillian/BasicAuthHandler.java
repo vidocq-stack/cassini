@@ -1,10 +1,10 @@
 package io.vidocq.cassini.tck.arquillian;
 
-import fr.vidocq.chappe.api.Body;
-import fr.vidocq.chappe.api.Handler;
-import fr.vidocq.chappe.api.Request;
-import fr.vidocq.chappe.api.Response;
-import fr.vidocq.chappe.api.StatusCode;
+import io.vidocq.chappe.api.Body;
+import io.vidocq.chappe.api.Handler;
+import io.vidocq.chappe.api.Request;
+import io.vidocq.chappe.api.Response;
+import io.vidocq.chappe.api.StatusCode;
 import io.vidocq.cassini.internal.context.CassiniSecurityContext;
 
 import java.nio.charset.StandardCharsets;

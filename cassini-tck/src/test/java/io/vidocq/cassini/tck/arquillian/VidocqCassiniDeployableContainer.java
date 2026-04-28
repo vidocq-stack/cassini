@@ -1,11 +1,11 @@
 package io.vidocq.cassini.tck.arquillian;
 
-import fr.vidocq.chappe.api.Handler;
-import fr.vidocq.chappe.api.Request;
-import fr.vidocq.chappe.api.Response;
-import fr.vidocq.chappe.api.Server;
-import fr.vidocq.chappe.api.StatusCode;
-import fr.vidocq.chappe.api.Body;
+import io.vidocq.chappe.api.Handler;
+import io.vidocq.chappe.api.Request;
+import io.vidocq.chappe.api.Response;
+import io.vidocq.chappe.api.Server;
+import io.vidocq.chappe.api.StatusCode;
+import io.vidocq.chappe.api.Body;
 import io.vidocq.cassini.tck.CassiniTestHarness;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.Application;
@@ -104,13 +104,13 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
             final String newPath = stripped.isEmpty() ? "/" : stripped;
             final String finalPrefix = bestPrefix;
             Request remapped = new Request() {
-                @Override public fr.vidocq.chappe.api.HttpMethod method() { return request.method(); }
+                @Override public io.vidocq.chappe.api.HttpMethod method() { return request.method(); }
                 @Override public java.net.URI uri() { return request.uri(); }
                 @Override public String path() { return newPath; }
                 @Override public String query() { return request.query(); }
-                @Override public fr.vidocq.chappe.api.HttpVersion version() { return request.version(); }
-                @Override public fr.vidocq.chappe.api.Headers headers() { return request.headers(); }
-                @Override public fr.vidocq.chappe.api.Body body() { return request.body(); }
+                @Override public io.vidocq.chappe.api.HttpVersion version() { return request.version(); }
+                @Override public io.vidocq.chappe.api.Headers headers() { return request.headers(); }
+                @Override public io.vidocq.chappe.api.Body body() { return request.body(); }
                 @Override public java.util.Map<String, String> pathParams() { return request.pathParams(); }
                 @Override public java.util.Map<String, String> queryParams() { return request.queryParams(); }
                 @Override public String contextPath() { return finalPrefix; }
@@ -256,7 +256,7 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         // §6.1 BASIC : si web.xml déclare une security-constraint avec
         // <auth-method>BASIC</auth-method>, on wrappe le bridge avec un
         // handler qui valide Authorization Basic et pose un AuthInfo.
-        fr.vidocq.chappe.api.Handler bridgeOrAuth = bh.bridgeHandler();
+        io.vidocq.chappe.api.Handler bridgeOrAuth = bh.bridgeHandler();
         String authPattern = parseBasicAuthPattern(war, actualPrefix);
         if (authPattern != null) {
             System.err.println("[VidocqCassiniTCK] BASIC auth wrap pattern=" + authPattern);

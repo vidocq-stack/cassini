@@ -1,10 +1,10 @@
 package io.vidocq.cassini.tck;
 
-import fr.vidocq.chappe.api.Handler;
-import fr.vidocq.chappe.api.Request;
-import fr.vidocq.chappe.api.Response;
-import fr.vidocq.chappe.api.Server;
-import io.vidocq.cassini.internal.CassiniRestBridge;
+import io.vidocq.chappe.api.Handler;
+import io.vidocq.chappe.api.Request;
+import io.vidocq.chappe.api.Response;
+import io.vidocq.chappe.api.Server;
+import io.vidocq.cassini.chappe.ChappeHttpAdapter;
 import io.vidocq.cassini.internal.ExceptionMapperRegistry;
 import io.vidocq.cassini.internal.Invoker;
 import io.vidocq.cassini.internal.MessageBodyRegistry;
@@ -32,7 +32,7 @@ import java.util.Map;
  *   <li>un {@link UriRouter} à partir des classes {@code @Path} fournies ;</li>
  *   <li>un {@link Invoker} avec resolver basé sur instanciation par
  *     constructeur sans argument (le TCK déploie des ressources simples) ;</li>
- *   <li>un {@link CassiniRestBridge} et le monte sur un {@link Server}
+ *   <li>un {@link ChappeHttpAdapter} et le monte sur un {@link Server}
  *     Chappe local.</li>
  * </ul>
  */
@@ -188,7 +188,7 @@ public final class CassiniTestHarness implements AutoCloseable {
             };
             Invoker invoker = new Invoker(resolver, bodies, exceptionMappers);
             invoker.setFilters(filters);
-            CassiniRestBridge bridge = new CassiniRestBridge(router, invoker);
+            ChappeHttpAdapter bridge = new ChappeHttpAdapter(router, invoker);
             final String prefix = "/".equals(contextPath) ? "" : contextPath;
             final jakarta.ws.rs.core.Application appInstance = this.application;
             Handler wrappedBridge = appInstance == null ? bridge : (Handler) request -> {
@@ -254,21 +254,21 @@ public final class CassiniTestHarness implements AutoCloseable {
                 // Hors du contexte déployé — 404 direct pour éviter de matcher
                 // l'arbre Cassini sur des chemins sans rapport.
                 return Response.builder()
-                        .status(fr.vidocq.chappe.api.StatusCode.NOT_FOUND)
-                        .body(fr.vidocq.chappe.api.Body.empty())
+                        .status(io.vidocq.chappe.api.StatusCode.NOT_FOUND)
+                        .body(io.vidocq.chappe.api.Body.empty())
                         .build();
             }
             String stripped = path.substring(prefix.length());
             if (stripped.isEmpty()) stripped = "/";
             final String newPath = stripped;
             Request remapped = new Request() {
-                @Override public fr.vidocq.chappe.api.HttpMethod method() { return request.method(); }
+                @Override public io.vidocq.chappe.api.HttpMethod method() { return request.method(); }
                 @Override public java.net.URI uri() { return request.uri(); }
                 @Override public String path() { return newPath; }
                 @Override public String query() { return request.query(); }
-                @Override public fr.vidocq.chappe.api.HttpVersion version() { return request.version(); }
-                @Override public fr.vidocq.chappe.api.Headers headers() { return request.headers(); }
-                @Override public fr.vidocq.chappe.api.Body body() { return request.body(); }
+                @Override public io.vidocq.chappe.api.HttpVersion version() { return request.version(); }
+                @Override public io.vidocq.chappe.api.Headers headers() { return request.headers(); }
+                @Override public io.vidocq.chappe.api.Body body() { return request.body(); }
                 @Override public java.util.Map<String, String> pathParams() { return request.pathParams(); }
                 @Override public java.util.Map<String, String> queryParams() { return request.queryParams(); }
                 @Override public String contextPath() { return prefix; }
