@@ -19,7 +19,8 @@ public record FilterEntry<T>(
         Class<?> implClass,
         int priority,
         boolean preMatching,
-        Set<Class<? extends Annotation>> nameBindings) {
+        Set<Class<? extends Annotation>> nameBindings,
+        java.lang.reflect.Method dynamicTarget) {
 
     public static final int DEFAULT_PRIORITY = 5000;
 
@@ -30,11 +31,24 @@ public record FilterEntry<T>(
         if (p != null) prio = p.value();
         boolean pre = cls.getAnnotation(jakarta.ws.rs.container.PreMatching.class) != null;
         Set<Class<? extends Annotation>> bindings = collectNameBindings(cls);
-        return new FilterEntry<>(instance, cls, prio, pre, bindings);
+        return new FilterEntry<>(instance, cls, prio, pre, bindings, null);
     }
 
-    /** Vrai si le filtre s'applique à la méthode cible (name-bindings). */
+    /** §6.5.5 : crée une entrée bornée à une méthode cible (DynamicFeature). */
+    public static <T> FilterEntry<T> dynamicFor(T instance, java.lang.reflect.Method target) {
+        Class<?> cls = instance.getClass();
+        int prio = DEFAULT_PRIORITY;
+        Priority p = cls.getAnnotation(Priority.class);
+        if (p != null) prio = p.value();
+        return new FilterEntry<>(instance, cls, prio, false, Set.of(), target);
+    }
+
+    /** Vrai si le filtre s'applique à la méthode cible (name-bindings + dynamic target). */
     public boolean appliesTo(AnnotatedElement method, AnnotatedElement declaringClass) {
+        // §6.5.5 : binding dynamique — applique strictement à la méthode cible.
+        if (dynamicTarget != null) {
+            return method instanceof java.lang.reflect.Method m && m.equals(dynamicTarget);
+        }
         if (nameBindings.isEmpty()) return true; // pas de binding → global
         Set<Class<? extends Annotation>> owned = new HashSet<>();
         collectAnnotationsOfType(declaringClass, owned);

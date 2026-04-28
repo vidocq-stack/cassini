@@ -166,6 +166,9 @@ public final class CassiniTestHarness implements AutoCloseable {
             java.util.Set<Class<?>> allClasses = new java.util.LinkedHashSet<>(beans.keySet());
             allClasses.addAll(perRequestClasses);
             List<ResourceMethod> routes = ResourceScanner.discover(allClasses.toArray(Class<?>[]::new));
+            // §6.5.5 : DynamicFeatures s'exécutent une fois par resource method,
+            // après le scan, pour binder filtres/intercepteurs spécifiques.
+            filters.applyDynamicFeatures(routes);
             UriRouter router = new UriRouter(routes);
             java.util.function.Function<Class<?>, Object> resolver = cls -> {
                 Object fixed = beans.get(cls);

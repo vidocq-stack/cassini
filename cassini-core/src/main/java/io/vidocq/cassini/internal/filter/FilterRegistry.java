@@ -35,6 +35,31 @@ public final class FilterRegistry {
     private final List<FilterEntry<WriterInterceptor>> writerInterceptors = new ArrayList<>();
     private final List<ContextResolver<?>> contextResolvers = new ArrayList<>();
     private final List<ParamConverterProvider> paramConverterProviders = new ArrayList<>();
+    private final List<jakarta.ws.rs.container.DynamicFeature> dynamicFeatures = new ArrayList<>();
+
+    public void addDynamicFeature(jakarta.ws.rs.container.DynamicFeature df) { dynamicFeatures.add(df); }
+    public List<jakarta.ws.rs.container.DynamicFeature> dynamicFeatures() { return dynamicFeatures; }
+
+    /** §6.5.5 : enregistre une instance comme filter/interceptor lié à
+     *  une méthode resource précise (binding dynamique). */
+    public void registerDynamic(Object instance, java.lang.reflect.Method target) {
+        if (instance instanceof ContainerRequestFilter r) {
+            requestFilters.add(FilterEntry.dynamicFor(r, target));
+            requestFilters.sort(Comparator.comparingInt(FilterEntry::priority));
+        }
+        if (instance instanceof ContainerResponseFilter r) {
+            responseFilters.add(FilterEntry.dynamicFor(r, target));
+            responseFilters.sort(Comparator.comparingInt(FilterEntry<ContainerResponseFilter>::priority).reversed());
+        }
+        if (instance instanceof ReaderInterceptor r) {
+            readerInterceptors.add(FilterEntry.dynamicFor(r, target));
+            readerInterceptors.sort(Comparator.comparingInt(FilterEntry::priority));
+        }
+        if (instance instanceof WriterInterceptor r) {
+            writerInterceptors.add(FilterEntry.dynamicFor(r, target));
+            writerInterceptors.sort(Comparator.comparingInt(FilterEntry::priority));
+        }
+    }
 
     public void addRequest(ContainerRequestFilter filter) {
         requestFilters.add(FilterEntry.of(filter));
@@ -55,6 +80,26 @@ public final class FilterRegistry {
         if (instance instanceof WriterInterceptor r) addWriterInterceptor(r);
         if (instance instanceof ContextResolver<?> r) addContextResolver(r);
         if (instance instanceof ParamConverterProvider p) addParamConverterProvider(p);
+        if (instance instanceof jakarta.ws.rs.container.DynamicFeature df) addDynamicFeature(df);
+    }
+
+    /** §6.5.5 : exécute toutes les DynamicFeatures pour chaque resource method
+     *  donnée. Les filtres/interceptors enregistrés via featureContext.register
+     *  seront liés à cette méthode (binding dynamique). */
+    public void applyDynamicFeatures(java.util.Collection<io.vidocq.cassini.internal.ResourceMethod> routes) {
+        if (dynamicFeatures.isEmpty() || routes.isEmpty()) return;
+        for (var route : routes) {
+            java.lang.reflect.Method m = route.javaMethod();
+            Class<?> c = route.beanClass();
+            jakarta.ws.rs.container.ResourceInfo ri = new jakarta.ws.rs.container.ResourceInfo() {
+                @Override public java.lang.reflect.Method getResourceMethod() { return m; }
+                @Override public Class<?> getResourceClass() { return c; }
+            };
+            for (var df : dynamicFeatures) {
+                try { df.configure(ri, new CassiniDynamicFeatureContext(this, m)); }
+                catch (RuntimeException ignored) {}
+            }
+        }
     }
 
     public void addContextResolver(ContextResolver<?> r) { contextResolvers.add(r); }
