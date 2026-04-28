@@ -1,6 +1,6 @@
 package io.vidocq.cassini.internal.context;
 
-import fr.vidocq.chappe.api.Request;
+import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import jakarta.ws.rs.core.SecurityContext;
 
 import java.security.Principal;
@@ -20,10 +20,10 @@ public final class CassiniSecurityContext implements SecurityContext {
 
     public static final ThreadLocal<AuthInfo> CURRENT_AUTH = new ThreadLocal<>();
 
-    private final Request request;
+    private final CassiniHttpExchange exchange;
 
-    public CassiniSecurityContext(Request request) {
-        this.request = request;
+    public CassiniSecurityContext(CassiniHttpExchange exchange) {
+        this.exchange = exchange;
     }
 
     @Override public Principal getUserPrincipal() {
@@ -37,7 +37,7 @@ public final class CassiniSecurityContext implements SecurityContext {
         return a != null && a.roles() != null && a.roles().contains(role);
     }
 
-    @Override public boolean isSecure() { return request != null && request.isSecure(); }
+    @Override public boolean isSecure() { return exchange != null && exchange.isSecure(); }
 
     @Override public String getAuthenticationScheme() {
         AuthInfo a = CURRENT_AUTH.get();

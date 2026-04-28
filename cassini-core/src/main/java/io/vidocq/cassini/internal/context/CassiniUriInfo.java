@@ -1,6 +1,6 @@
 package io.vidocq.cassini.internal.context;
 
-import fr.vidocq.chappe.api.Request;
+import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.PathSegment;
@@ -15,37 +15,42 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Implémentation {@link UriInfo} adossée à une {@link Request} Chappe + aux
+ * Implémentation {@link UriInfo} adossée à un {@link CassiniHttpExchange} + aux
  * path parameters capturés par le routeur.
- *
- * <p>M2d : méthodes simples (getPath, getBase/RequestUri, get{Query,Path}Parameters)
- * fonctionnelles. Les méthodes {@code getAbsolutePathBuilder()} / {@code
- * get*Builder()} lèvent {@link UnsupportedOperationException} tant que la
- * {@code RuntimeDelegate} Cassini (M2e) n'est pas en place.</p>
  */
 public final class CassiniUriInfo implements UriInfo {
 
-    private final Request request;
+    private final CassiniHttpExchange exchange;
     private final String contextPath;
     private final Map<String, List<String>> pathParams;
 
-    public CassiniUriInfo(Request request, String contextPath, Map<String, List<String>> pathParams) {
-        this(request, contextPath, pathParams, null);
+    public CassiniUriInfo(CassiniHttpExchange exchange, String contextPath, Map<String, List<String>> pathParams) {
+        this(exchange, contextPath, pathParams, null);
     }
 
     private final String matchedTemplate;
-    public CassiniUriInfo(Request request, String contextPath, Map<String, List<String>> pathParams,
+    public CassiniUriInfo(CassiniHttpExchange exchange, String contextPath, Map<String, List<String>> pathParams,
                           String matchedTemplate) {
-        this.request = request;
+        this.exchange = exchange;
         this.contextPath = contextPath == null ? "" : contextPath;
         this.pathParams = pathParams == null ? Map.of() : pathParams;
         this.matchedTemplate = matchedTemplate;
     }
 
+    /** Path après contextPath (équivalent du {@code pathInfo} servlet). */
+    private String pathInfo() {
+        String p = exchange.requestUri().getRawPath();
+        if (p == null) return "";
+        if (!contextPath.isEmpty() && !"/".equals(contextPath) && p.startsWith(contextPath)) {
+            p = p.substring(contextPath.length());
+        }
+        return p;
+    }
+
     @Override public String getPath() { return getPath(true); }
 
     @Override public String getPath(boolean decode) {
-        String p = request.pathInfo();
+        String p = pathInfo();
         if (p == null || p.isEmpty()) return "";
         String out = p.startsWith("/") ? p.substring(1) : p;
         if (decode) {
@@ -67,20 +72,20 @@ public final class CassiniUriInfo implements UriInfo {
     }
 
     @Override public URI getRequestUri() {
-        URI u = request.uri();
+        URI u = exchange.requestUri();
         if (u != null && u.isAbsolute()) return u;
-        return resolveAbsolute(u == null ? request.path() : u.toString());
+        return resolveAbsolute(u == null ? null : u.toString());
     }
 
     private URI resolveAbsolute(String pathAndQuery) {
         try {
-            String scheme = request.isSecure() ? "https" : "http";
-            String host = request.headers().firstOrNull("Host");
+            String scheme = exchange.isSecure() ? "https" : "http";
+            String host = exchange.firstHeader("Host");
             if (host == null || host.isEmpty()) host = "127.0.0.1";
             String pq = pathAndQuery == null ? "/" : pathAndQuery;
             if (!pq.startsWith("/")) pq = "/" + pq;
             return new URI(scheme + "://" + host + pq);
-        } catch (Exception e) { return request.uri(); }
+        } catch (Exception e) { return exchange.requestUri(); }
     }
 
     @Override public UriBuilder getRequestUriBuilder() {
@@ -132,15 +137,11 @@ public final class CassiniUriInfo implements UriInfo {
 
     @Override public MultivaluedMap<String, String> getQueryParameters(boolean decode) {
         MultivaluedMap<String, String> m = new MultivaluedHashMap<>();
-        // Chappe.queryParams() est déjà décodée. En mode decode=false, on
-        // relit depuis uri().getRawQuery().
-        String rawQuery = null;
+        // En mode decode=false, on relit depuis getRawQuery() ; sinon on utilise
+        // le helper du SPI qui décode.
         if (!decode) {
-            java.net.URI u = request.uri();
-            rawQuery = u == null ? null : u.getRawQuery();
-            if (rawQuery == null) rawQuery = request.query();
-        }
-        if (!decode && rawQuery != null) {
+            String rawQuery = exchange.requestUri().getRawQuery();
+            if (rawQuery == null || rawQuery.isEmpty()) return m;
             for (String pair : rawQuery.split("&")) {
                 if (pair.isEmpty()) continue;
                 int eq = pair.indexOf('=');
@@ -149,7 +150,7 @@ public final class CassiniUriInfo implements UriInfo {
                 m.add(k, v);
             }
         } else {
-            request.queryParams().forEach(m::add);
+            exchange.queryParams().forEach((k, vs) -> { for (String v : vs) m.add(k, v); });
         }
         return m;
     }

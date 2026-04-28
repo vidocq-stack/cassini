@@ -391,12 +391,36 @@ Sous-étape D : tests
 
 ### Stratégie de découplage (ordre proposé)
 
-1. **Phase 3a** — Move `CassiniExtension` hors de Cassini (vers vidocq-mps). Disparait CDI + Vauban + Vidocq SPI dépendances de `CassiniExtension.java` côté Cassini.
-2. **Phase 3b** — Refactor `CassiniRequest` & co (les 4 contexts) pour wrapper `CassiniHttpExchange` au lieu de Chappe Request.
-3. **Phase 3c** — Refactor `Invoker` + `ParamExtractor` + `FieldInjector` + `CassiniRequestContext` pour utiliser `CassiniHttpExchange`.
-4. **Phase 3d** — Move `CassiniRestBridge` → `cassini-chappe/ChappeHttpAdapter.java` (impl `CassiniHttpAdapter` côté Chappe).
-5. **Phase 3e** — Refactor TCK runner (3 fichiers Arquillian) pour piloter Cassini via `cassini-chappe`.
-6. **Phase 3f** — Validation : `mvn install` du reactor + `./run-official-tck-restful-4.0.sh all` doit donner 2535/2535.
+1. **Phase 3a** — ✅ Move `CassiniExtension` hors de Cassini (vers vidocq-mps). `CassiniScopeBCE` → `cassini-cdi/CassiniScopeExtension`.
+2. **Phase 3b** — ✅ Refactor `CassiniRequest`, `CassiniHttpHeaders`, `CassiniUriInfo`, `CassiniSecurityContext` pour wrapper `CassiniHttpExchange`. `FieldInjector` (90 % migré).
+3. **Phase 3c** — 🚧 Refactor `Invoker` + `ParamExtractor` + `CassiniRequestContext` pour utiliser `CassiniHttpExchange`.
+4. **Phase 3c-bis** — 🚧 **DÉCOUVERTE POST-IMPORT** : 4 fichiers dépendent du CDI `BeanManager` (pas seulement Chappe) :
+   - `Invoker.java` — résout ressources + providers via `BeanManager`
+   - `ResourceScanner.java` — découverte `@Path` beans via `BeanManager`
+   - `ExceptionMapperRegistry.java` — résolution providers via `BeanManager`
+   - `FilterRegistry.java` — filtres CDI
+
+   **Implication** : `cassini-core` ne peut pas être livré sans CDI sauf à élargir le SPI `ResourceFactory` en un `BeanRegistry` plus complet :
+   ```java
+   public interface BeanRegistry {
+       <T> T resolve(Class<T> type);
+       <T> List<T> resolveAll(Class<T> type);    // pour providers/filters
+       <T> List<Class<? extends T>> discover(Class<? extends Annotation> ann);  // pour @Path
+   }
+   ```
+   `cassini-core` utilise `BeanRegistry` (SPI dans `cassini-api`). `cassini-cdi` fournit `CdiBeanRegistry` qui délègue à `BeanManager`. Mode A fournit `ServiceLoaderBeanRegistry` ou registry manuel via builder.
+
+5. **Phase 3d** — Move `CassiniRestBridge` → `cassini-chappe/ChappeHttpAdapter.java` (impl `CassiniHttpAdapter` côté Chappe). Devient le seul endroit où Chappe est touché côté Cassini.
+6. **Phase 3e** — Refactor TCK runner (3 fichiers Arquillian) pour piloter Cassini via `cassini-chappe` + `cassini-cdi` (Mode B).
+7. **Phase 3f** — Validation : `mvn install` du reactor + `./run-official-tck-restful-4.0.sh all` = 2535/2535.
+
+### Estimation révisée
+- Phase 3a-3b : ✅ fait (~2-3 h)
+- Phase 3c + 3c-bis : ~2-3 j (refactor BeanManager → BeanRegistry sur 4 fichiers, dont Invoker ~800 lignes)
+- Phase 3d : ~1 j (move CassiniRestBridge → cassini-chappe + adapter `CassiniHttpExchange`)
+- Phase 3e-3f : ~1-2 j
+
+**Total révisé** : 4-6 jours (vs estimation initiale 2-3 j) pour cassini-core découplé + TCK 2535/2535.
 
 ---
 

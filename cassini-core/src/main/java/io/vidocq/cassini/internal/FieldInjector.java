@@ -1,6 +1,6 @@
 package io.vidocq.cassini.internal;
 
-import fr.vidocq.chappe.api.Request;
+import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import io.vidocq.cassini.internal.context.CassiniHttpHeaders;
 import io.vidocq.cassini.internal.context.CassiniRequest;
 import io.vidocq.cassini.internal.context.CassiniSecurityContext;
@@ -45,7 +45,7 @@ public final class FieldInjector {
 
     private FieldInjector() {}
 
-    public static void inject(Object target, MatchResult match, Request request) {
+    public static void inject(Object target, MatchResult match, CassiniHttpExchange request) {
         inject(target, match, request, true);
     }
 
@@ -55,7 +55,7 @@ public final class FieldInjector {
      *  sub-resources retournées par locator, on n'injecte que les @Context
      *  fields (injectParams=false) — les @*Param sont préservés à leur
      *  valeur initiale (typiquement null). */
-    public static void inject(Object target, MatchResult match, Request request, boolean injectParams) {
+    public static void inject(Object target, MatchResult match, CassiniHttpExchange request, boolean injectParams) {
         if (target == null) return;
         Class<?> cls = target.getClass();
         while (cls != null && cls != Object.class) {
@@ -68,11 +68,11 @@ public final class FieldInjector {
         }
     }
 
-    private static Object resolveFieldValue(Field f, MatchResult match, Request request) {
+    private static Object resolveFieldValue(Field f, MatchResult match, CassiniHttpExchange request) {
         return resolveFieldValue(f, match, request, true);
     }
 
-    private static Object resolveFieldValue(Field f, MatchResult match, Request request, boolean injectParams) {
+    private static Object resolveFieldValue(Field f, MatchResult match, CassiniHttpExchange request, boolean injectParams) {
         Context ctx = f.getAnnotation(Context.class);
         if (ctx != null) return resolveContext(f.getType(), match, request);
         if (!injectParams) return null;
@@ -106,7 +106,7 @@ public final class FieldInjector {
         }
         HeaderParam hp = f.getAnnotation(HeaderParam.class);
         if (hp != null) {
-            List<String> raws = request.headers().all(hp.value());
+            List<String> raws = request.headers(hp.value());
             return coerce(f, raws.isEmpty() ? emptyOrDef(def) : raws);
         }
         CookieParam cp = f.getAnnotation(CookieParam.class);
@@ -128,7 +128,7 @@ public final class FieldInjector {
         return null;
     }
 
-    private static Object resolveContext(Class<?> type, MatchResult match, Request request) {
+    private static Object resolveContext(Class<?> type, MatchResult match, CassiniHttpExchange request) {
         if (type == UriInfo.class) return new CassiniUriInfo(request, request.contextPath(),
                 match.pathParams(), match.method() == null ? null : match.method().path());
         if (type == HttpHeaders.class) return new CassiniHttpHeaders(request);
@@ -243,23 +243,14 @@ public final class FieldInjector {
         return FormDecoder.parse(raw, !encoded);
     }
 
-    /** Résout la query depuis request.query() ou, si null, depuis request.uri().
-     *  Chappe retourne parfois null pour query() quand le path a été rewrité
-     *  par un handler intermédiaire (ContextStrippingHandler côté TCK harness). */
-    private static Map<String, List<String>> parsedQueryParams(Request request, boolean encoded) {
-        String q = request.query();
-        if (q == null || q.isEmpty()) {
-            java.net.URI u = request.uri();
-            if (u != null) {
-                String raw = u.getRawQuery();
-                if (raw != null && !raw.isEmpty()) q = raw;
-            }
-        }
-        return parseQuery(q, encoded);
+    private static Map<String, List<String>> parsedQueryParams(CassiniHttpExchange request, boolean encoded) {
+        String raw = request.requestUri() == null ? null : request.requestUri().getRawQuery();
+        return parseQuery(raw, encoded);
     }
 
-    private static String cookie(Request request, String name) {
-        for (String header : request.headers().all("Cookie")) {
+    private static String cookie(CassiniHttpExchange request, String name) {
+        for (String header : request.headers("Cookie")) {
+            if (header == null) continue;
             for (String pair : header.split(";")) {
                 int eq = pair.indexOf('=');
                 if (eq < 0) continue;
@@ -276,9 +267,9 @@ public final class FieldInjector {
         return null;
     }
 
-    private static List<String> matrix(Request request, String name, boolean encoded) {
+    private static List<String> matrix(CassiniHttpExchange request, String name, boolean encoded) {
         List<String> out = new ArrayList<>();
-        String path = request.pathInfo();
+        String path = request.requestUri() == null ? null : request.requestUri().getRawPath();
         if (path == null) return out;
         for (String seg : path.split("/")) {
             int semi = seg.indexOf(';');
@@ -304,7 +295,7 @@ public final class FieldInjector {
      *  MBR invoqués après (@FormParam + body String injectés ensemble). */
     public static final ThreadLocal<byte[]> BODY_CACHE = new ThreadLocal<>();
 
-    private static Map<String, List<String>> readForm(Request request, boolean encoded) {
+    private static Map<String, List<String>> readForm(CassiniHttpExchange request, boolean encoded) {
         if (encoded) {
             Map<String, List<String>> enc = FORM_CACHE_ENCODED.get();
             if (enc != null) return enc;
@@ -315,9 +306,8 @@ public final class FieldInjector {
         try {
             byte[] bytes = BODY_CACHE.get();
             if (bytes == null) {
-                var body = request.body();
-                bytes = (body == null || body.contentLength() == 0)
-                        ? new byte[0] : body.asInputStream().readAllBytes();
+                var body = request.requestBody();
+                bytes = body == null ? new byte[0] : body.readAllBytes();
                 BODY_CACHE.set(bytes);
             }
             if (encoded) {

@@ -31,7 +31,57 @@ public interface CassiniHttpExchange {
 
     Map<String, List<String>> requestHeaders();
 
+    /** Lookup case-insensitive d'un header — retourne {@code null} si absent. */
+    default String firstHeader(String name) {
+        for (var e : requestHeaders().entrySet()) {
+            if (e.getKey().equalsIgnoreCase(name)) {
+                List<String> v = e.getValue();
+                return v == null || v.isEmpty() ? null : v.get(0);
+            }
+        }
+        return null;
+    }
+
+    /** Lookup case-insensitive — retourne une liste vide si absent. */
+    default List<String> headers(String name) {
+        for (var e : requestHeaders().entrySet()) {
+            if (e.getKey().equalsIgnoreCase(name)) {
+                return e.getValue() == null ? List.of() : e.getValue();
+            }
+        }
+        return List.of();
+    }
+
+    /** Query string décodée — Map clé → liste de valeurs. Map vide si pas de query. */
+    default Map<String, List<String>> queryParams() {
+        String raw = requestUri().getRawQuery();
+        if (raw == null || raw.isEmpty()) return Map.of();
+        java.util.Map<String, java.util.List<String>> out = new java.util.LinkedHashMap<>();
+        for (String pair : raw.split("&")) {
+            if (pair.isEmpty()) continue;
+            int eq = pair.indexOf('=');
+            String k = eq < 0 ? pair : pair.substring(0, eq);
+            String v = eq < 0 ? "" : pair.substring(eq + 1);
+            try {
+                k = java.net.URLDecoder.decode(k, java.nio.charset.StandardCharsets.UTF_8);
+                v = java.net.URLDecoder.decode(v, java.nio.charset.StandardCharsets.UTF_8);
+            } catch (Exception ignored) {}
+            out.computeIfAbsent(k, _ -> new java.util.ArrayList<>()).add(v);
+        }
+        return out;
+    }
+
     InputStream requestBody();
+
+    /** Content-Length de la requête, ou {@code -1} si inconnu/non-fourni. */
+    default long contentLength() {
+        String raw = firstHeader("Content-Length");
+        if (raw == null || raw.isEmpty()) return -1L;
+        try { return Long.parseLong(raw.trim()); } catch (NumberFormatException e) { return -1L; }
+    }
+
+    /** Préfixe d'application (ex. {@code "/api"}). Vide ou {@code "/"} si pas de contexte. */
+    default String contextPath() { return ""; }
 
     void setStatus(int code);
 

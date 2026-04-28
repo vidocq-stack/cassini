@@ -1,6 +1,6 @@
 package io.vidocq.cassini.internal.context;
 
-import fr.vidocq.chappe.api.Request;
+import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import io.vidocq.cassini.internal.MediaTypes;
 import jakarta.ws.rs.core.EntityTag;
 import jakarta.ws.rs.core.MediaType;
@@ -26,15 +26,15 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
             ThreadLocal.withInitial(java.util.LinkedHashSet::new);
 
     private final String method;
-    private final Request delegate;
+    private final CassiniHttpExchange delegate;
 
     public CassiniRequest(String method) {
         this.method = method;
         this.delegate = null;
     }
 
-    public CassiniRequest(Request delegate) {
-        this.method = delegate.method().name();
+    public CassiniRequest(CassiniHttpExchange delegate) {
+        this.method = delegate.method();
         this.delegate = delegate;
     }
 
@@ -43,11 +43,11 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
     @Override public Variant selectVariant(List<Variant> variants) {
         if (variants == null || variants.isEmpty()) throw new IllegalArgumentException("variants");
         if (delegate == null) return null;
-        List<MediaType> accepts = MediaTypes.parseList(delegate.headers().firstOrNull("Accept"));
-        String acceptLang = delegate.headers().firstOrNull("Accept-Language");
+        List<MediaType> accepts = MediaTypes.parseList(delegate.firstHeader("Accept"));
+        String acceptLang = delegate.firstHeader("Accept-Language");
         boolean langWildcard = acceptLang != null && containsWildcard(acceptLang);
         List<Locale> langs = acceptLang == null ? List.of() : parseLocales(acceptLang);
-        String acceptEnc = delegate.headers().firstOrNull("Accept-Encoding");
+        String acceptEnc = delegate.firstHeader("Accept-Encoding");
         boolean encWildcard = acceptEnc != null && containsWildcard(acceptEnc);
 
         // §5.1 : dimensions de négociation = toutes celles présentes sur
@@ -108,8 +108,8 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
     @Override public Response.ResponseBuilder evaluatePreconditions(EntityTag eTag) {
         if (eTag == null) throw new IllegalArgumentException("eTag");
         if (delegate == null) return null;
-        String ifMatch = delegate.headers().firstOrNull("If-Match");
-        String ifNoneMatch = delegate.headers().firstOrNull("If-None-Match");
+        String ifMatch = delegate.firstHeader("If-Match");
+        String ifNoneMatch = delegate.firstHeader("If-None-Match");
         if (ifMatch != null && !matchesEtag(ifMatch, eTag)) {
             return Response.status(Response.Status.PRECONDITION_FAILED).tag(eTag);
         }
@@ -124,8 +124,8 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
     @Override public Response.ResponseBuilder evaluatePreconditions(Date lastModified) {
         if (lastModified == null) throw new IllegalArgumentException("lastModified");
         if (delegate == null) return null;
-        Date ifModSince = parseHttpDate(delegate.headers().firstOrNull("If-Modified-Since"));
-        Date ifUnmodSince = parseHttpDate(delegate.headers().firstOrNull("If-Unmodified-Since"));
+        Date ifModSince = parseHttpDate(delegate.firstHeader("If-Modified-Since"));
+        Date ifUnmodSince = parseHttpDate(delegate.firstHeader("If-Unmodified-Since"));
         if (ifUnmodSince != null && lastModified.after(ifUnmodSince)) {
             return Response.status(Response.Status.PRECONDITION_FAILED);
         }
@@ -144,7 +144,7 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
 
     @Override public Response.ResponseBuilder evaluatePreconditions() {
         if (delegate == null) return null;
-        String ifMatch = delegate.headers().firstOrNull("If-Match");
+        String ifMatch = delegate.firstHeader("If-Match");
         if (ifMatch != null) {
             return Response.status(Response.Status.PRECONDITION_FAILED);
         }

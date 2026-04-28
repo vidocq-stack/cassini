@@ -1,4 +1,4 @@
-package io.vidocq.cassini;
+package io.vidocq.cassini.cdi;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.Dependent;
@@ -12,11 +12,11 @@ import jakarta.ws.rs.Path;
 
 /**
  * Ajoute {@code @RequestScoped} par défaut aux classes {@code @Path}
- * dépourvues de scope CDI explicite.
+ * dépourvues de scope CDI explicite (Mode B uniquement).
  */
-public class CassiniScopeBCE implements BuildCompatibleExtension {
+public class CassiniScopeExtension implements BuildCompatibleExtension {
 
-    private static final System.Logger LOG = System.getLogger(CassiniScopeBCE.class.getName());
+    private static final System.Logger LOG = System.getLogger(CassiniScopeExtension.class.getName());
 
     @SuppressWarnings("unused")
     @Enhancement(types = Object.class, withAnnotations = Path.class)
