@@ -312,15 +312,16 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         try {
             return cls.getDeclaredConstructor().newInstance();
         } catch (ReflectiveOperationException ignored) {}
-        // Pas de constructeur no-arg : choisir le ctor public avec le plus
-        // d'arguments dont chacun est @Context (ou type connu). On passe null
-        // — les fields @Context seront injectés à l'invocation.
+        // Pas de constructeur no-arg : §4.5 sélectionne le ctor public avec
+        // le plus d'arguments dont chacun a un type @Context résolvable. Les
+        // valeurs sont des proxies dynamiques qui délèguent à la requête
+        // courante (ThreadLocal Invoker.CURRENT_REQUEST + CURRENT_MATCH).
         java.lang.reflect.Constructor<?> best = null;
         int bestParams = -1;
         for (var c : cls.getConstructors()) {
             boolean ok = true;
             for (var pp : c.getParameters()) {
-                if (pp.getAnnotation(jakarta.ws.rs.core.Context.class) == null) { ok = false; break; }
+                if (!isResolvableContext(pp.getType())) { ok = false; break; }
             }
             if (ok && c.getParameterCount() > bestParams) {
                 best = c;
@@ -330,10 +331,25 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         if (best == null) return null;
         try {
             Object[] args = new Object[best.getParameterCount()];
+            for (int i = 0; i < args.length; i++) {
+                args[i] = ContextProxies.proxy(best.getParameterTypes()[i]);
+            }
             return best.newInstance(args);
         } catch (ReflectiveOperationException e) {
             return null;
         }
+    }
+
+    private static boolean isResolvableContext(Class<?> type) {
+        return type == jakarta.ws.rs.core.HttpHeaders.class
+                || type == jakarta.ws.rs.core.UriInfo.class
+                || type == jakarta.ws.rs.core.Application.class
+                || type == jakarta.ws.rs.core.Request.class
+                || type == jakarta.ws.rs.core.SecurityContext.class
+                || type == jakarta.ws.rs.ext.Providers.class
+                || type == jakarta.ws.rs.container.ResourceInfo.class
+                || type == jakarta.ws.rs.container.ResourceContext.class
+                || type == jakarta.ws.rs.core.Configuration.class;
     }
 
     private static boolean isProviderClass(Class<?> cls) {
