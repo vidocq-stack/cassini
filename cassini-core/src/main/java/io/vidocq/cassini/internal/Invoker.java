@@ -159,7 +159,11 @@ public final class Invoker {
             if (route.dynamicLocator()) {
                 return invokeDynamicLocator(match, request);
             }
-            return invokeInternal(match, request, route);
+            Response resp = invokeInternal(match, request, route);
+            // §5.1 : si Request.selectVariant a été appelé pendant l'invocation,
+            // ses dimensions de négociation sont stockées dans le ThreadLocal
+            // PENDING_VARY → on les ajoute au header Vary de la réponse.
+            return applyPendingVary(resp);
         } finally {
             ParamExtractor.clearProviders();
             ParamExtractor.clearParamConverterProviders();
@@ -168,7 +172,25 @@ public final class Invoker {
             CURRENT_REQUEST.remove();
             CURRENT_MATCHED_RESOURCES.remove();
             io.vidocq.cassini.internal.runtime.CassiniResponseBuilder.clearBaseUri();
+            io.vidocq.cassini.internal.context.CassiniRequest.PENDING_VARY.remove();
         }
+    }
+
+    /** §5.1 : injecte le header Vary collecté pendant Request.selectVariant. */
+    private static Response applyPendingVary(Response resp) {
+        var dims = io.vidocq.cassini.internal.context.CassiniRequest.PENDING_VARY.get();
+        if (dims == null || dims.isEmpty()) return resp;
+        // On reconstruit la Response avec le header Vary supplémentaire.
+        var b = Response.builder().status(resp.status()).body(resp.body());
+        boolean hasVary = false;
+        for (var e : resp.headers()) {
+            b.header(e.name(), e.value());
+            if ("Vary".equalsIgnoreCase(e.name())) hasVary = true;
+        }
+        if (!hasVary) {
+            b.header("Vary", String.join(", ", dims));
+        }
+        return b.build();
     }
 
     /** §3.4.1 : exécute la chaîne d'un dynamic-locator (return Object), scanne
@@ -918,12 +940,19 @@ public final class Invoker {
         MultivaluedMap<String, String> headers = MessageBodyRegistry.adaptHeaders(request.headers());
 
         @SuppressWarnings({"rawtypes", "unchecked"})
-        MessageBodyReader reader = registry.findReader(type, genericType, anns, ct)
-                .orElseThrow(() -> new WebApplicationException(
-                        "No MessageBodyReader for " + type.getName() + " / " + MediaTypes.format(ct), 415));
+        MessageBodyReader reader = registry.findReader(type, genericType, anns, ct).orElse(null);
+        // §7.2 : si aucun MBR ne matche initialement mais des ReaderInterceptors
+        // sont enregistrés, on diffère la sélection — un interceptor peut ré-écrire
+        // type/mediaType (setType, setMediaType) pour matcher un MBR différent.
+        var rInterceptorsForChoice = route == null ? filters.readerInterceptorsFor(null, null)
+                : filters.readerInterceptorsFor(route.javaMethod(), route.beanClass());
+        if (reader == null && rInterceptorsForChoice.isEmpty()) {
+            throw new WebApplicationException(
+                    "No MessageBodyReader for " + type.getName() + " / " + MediaTypes.format(ct), 415);
+        }
         // §9.2 : @Context fields des providers user-level (singletons) sont
         // re-injectés à chaque appel pour exposer le contexte courant.
-        injectProviderContexts(reader, request);
+        if (reader != null) injectProviderContexts(reader, request);
         // Si @FormParam a déjà consommé le body, replay depuis le cache.
         // Sinon, on bufferise pour que les FieldInjector @BeanParam ultérieurs
         // (sur la ressource elle-même) puissent re-lire le body côté @FormParam.
@@ -936,8 +965,7 @@ public final class Invoker {
             FieldInjector.BODY_CACHE.set(all);
             src = new java.io.ByteArrayInputStream(all);
         }
-        var rInterceptors = route == null ? filters.readerInterceptorsFor(null, null)
-                : filters.readerInterceptorsFor(route.javaMethod(), route.beanClass());
+        var rInterceptors = rInterceptorsForChoice;
         try (InputStream in = src) {
             if (rInterceptors.isEmpty()) {
                 return reader.readFrom(type, genericType, anns, ct, headers, in);
@@ -1105,14 +1133,15 @@ public final class Invoker {
             if (!prod.isEmpty()) {
                 var pick = MediaTypes.pickProduced(accepts, prod);
                 if (pick.isEmpty()) continue;
-                // §3.7.2 : qs (source quality) prime sur la spécificité @Produces
-                // (text/* qs=1.0 > text/xml qs=0.7) ; spec et acceptQ servent de
-                // tiebreaker pour égalités qs.
-                double spec = producesAnnotationSpecificity(accepts, prod);
-                double qs = sourceQuality(prod);
-                // q-value de l'Accept matché : textb;q=0.5 > texta;q=0.4.
+                // §3.7.2 / JAXRS:SPEC:25.11 + 26.8 : ordre
+                //   primary   = q-value de l'Accept LE PLUS SPÉCIFIQUE qui matche
+                //               (cf. bestAcceptQuality)
+                //   secondary = qs-value (source quality, server-side)
+                //   tertiary  = @Produces specificity (tie-break)
                 double acceptQ = bestAcceptQuality(accepts, prod);
-                prodScore = qs * 10 + spec + acceptQ;
+                double qs = sourceQuality(prod);
+                double spec = producesAnnotationSpecificity(accepts, prod);
+                prodScore = acceptQ * 1_000_000 + qs * 1_000 + spec;
             }
             // §3.7.2 : spécificité du URI template domine d'abord (literalChars
             // desc, totalCaptures desc, defaultCaptures asc), puis @Consumes,
@@ -1147,17 +1176,28 @@ public final class Invoker {
         return best;
     }
 
-    /** q-value du meilleur Accept qui matche un @Produces. */
+    /** q-value de l'Accept LE PLUS SPÉCIFIQUE qui matche un @Produces.
+     *  §3.7.2 / §3.8 : pour résoudre {@code clientImagePreferenceTest}
+     *  (Accept "image/something;q=0.1, image/*;q=0.9" + @Produces "image/*"),
+     *  on doit retenir l'Accept le plus précis qui matche : pour @Produces
+     *  image/*, c'est image/something (concret > wildcard) → q=0.1, et non
+     *  q=0.9 du wildcard. Cela permet à @Produces image/png (qui ne matche
+     *  que image/* avec q=0.9) de gagner. */
     private static double bestAcceptQuality(List<MediaType> accepts, List<MediaType> produces) {
-        double best = 0;
+        double bestQ = 0;
+        int bestSpec = -1;
         for (MediaType a : accepts) {
             for (MediaType p : produces) {
                 if (!MediaTypes.matches(a, p)) continue;
+                int aSpec = (!a.isWildcardType() ? 2 : 0) + (!a.isWildcardSubtype() ? 1 : 0);
                 double q = MediaTypes.quality(a);
-                if (q > best) best = q;
+                if (aSpec > bestSpec || (aSpec == bestSpec && q > bestQ)) {
+                    bestSpec = aSpec;
+                    bestQ = q;
+                }
             }
         }
-        return best;
+        return bestQ;
     }
 
     /** Retourne la spécificité du @Consumes le plus précis qui matche ct. */

@@ -66,6 +66,10 @@ public final class MessageBodyRegistry {
             // §4.2.1 : pré-filtrer par le type générique T du MBR.
             Class<?> rType = resolveProviderType(r.getClass(), MessageBodyReader.class);
             if (rType != null && rType != Object.class && !rType.isAssignableFrom(boxed)) continue;
+            // §4.2.4 step 1 : pré-filtrer par compatibilité @Consumes ↔ media
+            // type demandé. Sans @Consumes, le provider est considéré comme
+            // @Consumes("*&#47;*") et matche tout.
+            if (!consumesCompatible(r.getClass().getAnnotation(Consumes.class), mt)) continue;
             if (r.isReadable(type, genericType, anns, mt)) candidates.add(r);
         }
         if (candidates.isEmpty()) return Optional.empty();
@@ -86,6 +90,8 @@ public final class MessageBodyRegistry {
         for (MessageBodyWriter<?> w : writers) {
             Class<?> wType = resolveProviderType(w.getClass(), MessageBodyWriter.class);
             if (wType != null && wType != Object.class && !wType.isAssignableFrom(boxed)) continue;
+            // §4.2.4 step 1 (writer) : pré-filtrer par compatibilité @Produces ↔ mt.
+            if (!producesCompatible(w.getClass().getAnnotation(Produces.class), mt)) continue;
             if (w.isWriteable(type, genericType, anns, mt)) candidates.add(w);
         }
         if (candidates.isEmpty()) return Optional.empty();
@@ -93,6 +99,45 @@ public final class MessageBodyRegistry {
                 (MessageBodyWriter<?> w) -> producesSpecificity(w.getClass().getAnnotation(Produces.class), mt)
         ).reversed());
         return Optional.of((MessageBodyWriter<T>) candidates.get(0));
+    }
+
+    /** §4.2.4 step 1 : @Consumes absent → wildcard implicite ; sinon une des
+     *  valeurs de l'annotation doit être compatible avec le media type demandé. */
+    private static boolean consumesCompatible(Consumes consumes, MediaType requested) {
+        if (consumes == null || consumes.value().length == 0) return true;
+        if (requested == null) return true;
+        for (String s : consumes.value()) {
+            try {
+                if (mediaTypeCompatible(MediaType.valueOf(s), requested)) return true;
+            } catch (RuntimeException ignored) {}
+        }
+        return false;
+    }
+
+    private static boolean producesCompatible(Produces produces, MediaType requested) {
+        if (produces == null || produces.value().length == 0) return true;
+        if (requested == null) return true;
+        for (String s : produces.value()) {
+            try {
+                if (mediaTypeCompatible(MediaType.valueOf(s), requested)) return true;
+            } catch (RuntimeException ignored) {}
+        }
+        return false;
+    }
+
+    /** RFC 6839 + §3.5 : étend {@link MediaType#isCompatible} pour traiter
+     *  les suffixes structurés (ex : {@code application/*+xml} matche
+     *  {@code application/atom+xml}). */
+    private static boolean mediaTypeCompatible(MediaType declared, MediaType requested) {
+        if (declared.isCompatible(requested)) return true;
+        boolean typeOk = declared.getType().equalsIgnoreCase(requested.getType())
+                || declared.isWildcardType() || requested.isWildcardType();
+        if (!typeOk) return false;
+        String dSub = declared.getSubtype();
+        String rSub = requested.getSubtype();
+        if (dSub.startsWith("*+") && rSub.toLowerCase().endsWith(dSub.substring(1).toLowerCase())) return true;
+        if (rSub.startsWith("*+") && dSub.toLowerCase().endsWith(rSub.substring(1).toLowerCase())) return true;
+        return false;
     }
 
     // §4.2.4 step 1 : spécificité du match entre @Consumes déclaré et le media type demandé.

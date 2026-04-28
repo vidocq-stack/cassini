@@ -67,10 +67,23 @@ public final class CassiniReaderInterceptorContext implements ReaderInterceptorC
             return i.aroundReadFrom(this);
         }
         // §7.2 : setType peut avoir changé le type cible ; re-sélectionner
-        // un MBR compatible si le terminal initial ne convient plus.
+        // un MBR compatible avec les paramètres courants. Le terminal initial
+        // peut être null si aucun MBR n'a été trouvé au scan initial — auquel
+        // cas on s'appuie entièrement sur le registry (les interceptors ont
+        // potentiellement réécrit type/mediaType pour matcher un MBR différent).
         MessageBodyReader r = terminal;
-        if (registry != null && !r.isReadable(type, genericType, annotations, mediaType)) {
-            r = registry.findReader(type, genericType, annotations, mediaType).orElse(terminal);
+        if (r == null || (registry != null && !r.isReadable(type, genericType, annotations, mediaType))) {
+            if (registry == null) {
+                if (r == null) throw new jakarta.ws.rs.WebApplicationException(
+                        "No MessageBodyReader and no registry available", 415);
+                // Pas de registry pour fallback ; on tente le terminal initial quand même.
+            } else {
+                r = registry.findReader(type, genericType, annotations, mediaType)
+                        .orElse(terminal);
+                if (r == null) throw new jakarta.ws.rs.WebApplicationException(
+                        "No MessageBodyReader for " + type.getName()
+                                + " / " + (mediaType == null ? "*/*" : mediaType.toString()), 415);
+            }
         }
         return r.readFrom(type, genericType, annotations, mediaType, headers, stream);
     }

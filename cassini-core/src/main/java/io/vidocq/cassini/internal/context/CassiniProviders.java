@@ -55,25 +55,40 @@ public final class CassiniProviders implements Providers {
     @Override
     @SuppressWarnings({"rawtypes", "unchecked"})
     public <T> ContextResolver<T> getContextResolver(Class<T> contextType, MediaType mediaType) {
+        // §4.3 : sélectionner le ContextResolver dont @Produces matche le
+        // media type demandé. Si plusieurs matchent, choisir le plus spécifique
+        // (concret > wildcard subtype > wildcard type). Un CR sans @Produces
+        // équivaut à @Produces("*&#47;*").
+        ContextResolver<?> best = null;
+        int bestScore = -1;
         for (ContextResolver<?> cr : contextResolvers) {
             Class<?> param = resolveContextType(cr.getClass());
             if (param == null) continue;
             if (!contextType.isAssignableFrom(param)) continue;
-            // Vérifie mediaType compat via @Produces sur cr
             jakarta.ws.rs.Produces prod = cr.getClass().getAnnotation(jakarta.ws.rs.Produces.class);
-            if (prod != null && mediaType != null) {
-                boolean ok = false;
+            int score = -1;
+            if (prod == null || prod.value().length == 0) {
+                // Pas de @Produces → wildcard implicite, score 0
+                score = 0;
+            } else {
                 for (String mt : prod.value()) {
                     MediaType declared = io.vidocq.cassini.internal.MediaTypes.parse(mt);
-                    if (io.vidocq.cassini.internal.MediaTypes.matches(declared, mediaType)) {
-                        ok = true; break;
+                    if (mediaType == null
+                            || io.vidocq.cassini.internal.MediaTypes.matches(declared, mediaType)) {
+                        // Spécificité : 2 pour type concret, 1 pour subtype concret
+                        int sp = (!declared.isWildcardType() ? 2 : 0)
+                                + (!declared.isWildcardSubtype() ? 1 : 0);
+                        if (sp > score) score = sp;
                     }
                 }
-                if (!ok) continue;
+                if (score < 0) continue;
             }
-            return (ContextResolver<T>) cr;
+            if (score > bestScore) {
+                best = cr;
+                bestScore = score;
+            }
         }
-        return null;
+        return (ContextResolver<T>) best;
     }
 
     private static Class<?> resolveContextType(Class<?> cls) {

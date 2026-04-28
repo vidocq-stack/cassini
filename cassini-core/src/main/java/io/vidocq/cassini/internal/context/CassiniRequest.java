@@ -18,6 +18,13 @@ import java.util.List;
  */
 public final class CassiniRequest implements jakarta.ws.rs.core.Request {
 
+    /** §5.1 / Javadoc Request#selectVariant : "this method also sets the Vary
+     *  header field on the response". On collecte ici les dimensions sur
+     *  lesquelles selectVariant a négocié pour qu'Invoker les écrive
+     *  ensuite dans les headers de la response (au moment du marshal). */
+    public static final ThreadLocal<java.util.Set<String>> PENDING_VARY =
+            ThreadLocal.withInitial(java.util.LinkedHashSet::new);
+
     private final String method;
     private final Request delegate;
 
@@ -38,8 +45,21 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
         if (delegate == null) return null;
         List<MediaType> accepts = MediaTypes.parseList(delegate.headers().firstOrNull("Accept"));
         String acceptLang = delegate.headers().firstOrNull("Accept-Language");
+        boolean langWildcard = acceptLang != null && containsWildcard(acceptLang);
         List<Locale> langs = acceptLang == null ? List.of() : parseLocales(acceptLang);
         String acceptEnc = delegate.headers().firstOrNull("Accept-Encoding");
+        boolean encWildcard = acceptEnc != null && containsWildcard(acceptEnc);
+
+        // §5.1 : dimensions de négociation = toutes celles présentes sur
+        // au moins un Variant. On set Vary pour ces dimensions, indépendamment
+        // de la sélection finale (le client doit savoir comment varier sa requête).
+        boolean anyMedia = variants.stream().anyMatch(v -> v.getMediaType() != null);
+        boolean anyLang = variants.stream().anyMatch(v -> v.getLanguage() != null);
+        boolean anyEnc = variants.stream().anyMatch(v -> v.getEncoding() != null);
+        java.util.Set<String> vary = PENDING_VARY.get();
+        if (anyMedia) vary.add("Accept");
+        if (anyLang) vary.add("Accept-Language");
+        if (anyEnc) vary.add("Accept-Encoding");
 
         Variant best = null;
         for (Variant v : variants) {
@@ -47,17 +67,28 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
                 boolean ok = accepts.stream().anyMatch(a -> MediaTypes.matches(a, v.getMediaType()));
                 if (!ok) continue;
             }
-            if (v.getLanguage() != null && !langs.isEmpty()) {
+            if (v.getLanguage() != null && !langs.isEmpty() && !langWildcard) {
                 boolean ok = langs.stream().anyMatch(l -> sameLang(l, v.getLanguage()));
                 if (!ok) continue;
             }
-            if (v.getEncoding() != null && acceptEnc != null) {
+            if (v.getEncoding() != null && acceptEnc != null && !encWildcard) {
                 if (!acceptEnc.toLowerCase().contains(v.getEncoding().toLowerCase())) continue;
             }
             best = v;
             break;
         }
         return best;
+    }
+
+    /** RFC 7231 §5.3 : un Accept-Language/Encoding peut contenir "*" qui matche
+     *  toute valeur (ou comme part de liste, ex "en-US, *;q=0.5"). */
+    private static boolean containsWildcard(String header) {
+        for (String tok : header.split(",")) {
+            int semi = tok.indexOf(';');
+            String v = (semi < 0 ? tok : tok.substring(0, semi)).trim();
+            if ("*".equals(v)) return true;
+        }
+        return false;
     }
 
     private static boolean sameLang(Locale a, Locale b) {
@@ -68,7 +99,8 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
         for (String tok : raw.split(",")) {
             int semi = tok.indexOf(';');
             String tag = (semi < 0 ? tok : tok.substring(0, semi)).trim();
-            if (!tag.isEmpty()) out.add(Locale.forLanguageTag(tag));
+            if (tag.isEmpty() || "*".equals(tag)) continue;
+            out.add(Locale.forLanguageTag(tag));
         }
         return out;
     }
