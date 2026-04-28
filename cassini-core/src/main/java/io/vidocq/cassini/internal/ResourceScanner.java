@@ -103,6 +103,14 @@ public final class ResourceScanner {
                     if (sub == null) continue;
                     Class<?> returnCls = m.getReturnType();
                     if (returnCls == void.class || returnCls == null) continue;
+                    // §3.4.2 : un locator peut retourner Class<T> — on déballe
+                    // T via le type générique pour scanner ses @Path.
+                    if (returnCls == Class.class
+                            && m.getGenericReturnType() instanceof java.lang.reflect.ParameterizedType pt
+                            && pt.getActualTypeArguments().length == 1
+                            && pt.getActualTypeArguments()[0] instanceof Class<?> argCls) {
+                        returnCls = argCls;
+                    }
                     String locatorPath = combine(basePath, normalize(sub.value()));
                     // Héritage @Produces/@Consumes : locator méthode > classe.
                     Set<String> locatorProduces = produces(m.getAnnotation(Produces.class));

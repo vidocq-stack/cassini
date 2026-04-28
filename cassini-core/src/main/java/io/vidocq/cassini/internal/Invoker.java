@@ -321,6 +321,18 @@ public final class Invoker {
                                 new WebApplicationException("Sub-resource locator returned null", 404),
                                 route, chosen, rctx);
                     }
+                    // §3.4.2 : un locator peut retourner Class<T> — runtime
+                    // instancie la classe via constructor no-arg.
+                    if (intermediate instanceof Class<?> cls) {
+                        try { intermediate = cls.getDeclaredConstructor().newInstance(); }
+                        catch (ReflectiveOperationException e) {
+                            return renderWebAppException(
+                                    new WebApplicationException(
+                                            "Cannot instantiate sub-resource " + cls.getName() + ": " + e.getMessage(),
+                                            500),
+                                    route, chosen, rctx);
+                        }
+                    }
                     FieldInjector.inject(intermediate, match, request);
                     matched.add(0, intermediate);
                 }
