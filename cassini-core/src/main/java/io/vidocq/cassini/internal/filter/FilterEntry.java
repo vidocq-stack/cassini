@@ -39,6 +39,13 @@ public record FilterEntry<T>(
         Set<Class<? extends Annotation>> owned = new HashSet<>();
         collectAnnotationsOfType(declaringClass, owned);
         collectAnnotationsOfType(method, owned);
+        // §6.5.2 : une @NameBinding sur la sous-classe Application
+        // (récupérée via ParamExtractor.currentApplication) s'applique à
+        // toutes les ressources et tous les filtres → bindings globaux.
+        var app = io.vidocq.cassini.internal.ParamExtractor.currentApplication();
+        if (app != null) {
+            collectAnnotationsOfType(app.getClass(), owned);
+        }
         return owned.containsAll(nameBindings);
     }
 
