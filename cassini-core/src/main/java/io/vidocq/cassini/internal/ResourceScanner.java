@@ -232,13 +232,30 @@ public final class ResourceScanner {
         return null;
     }
 
+    /** §3.4.1 : profondeur max pour les sub-resource locators récursifs.
+     *  Le TCK recursiveResourceLocatorTest envoie 10 segments imbriqués —
+     *  on prend une marge confortable. */
+    private static final int MAX_RECURSIVE_DEPTH = 12;
+
     private static void scanLocatorType(Class<?> cls, String basePath,
                                         Set<String> inheritedProduces, Set<String> inheritedConsumes,
                                         Class<?> rootBeanClass, java.util.List<Method> locatorChain,
                                         int rootClassLiterals,
                                         java.util.Set<Class<?>> visited, List<ResourceMethod> out) {
         if (cls == null || cls == Object.class) return;
-        if (!visited.add(cls)) return; // cycle détecté
+        if (!visited.add(cls)) {
+            // §3.4.1 : un locator récursif (cls retourne la même classe) doit
+            // pouvoir matcher une URI imbriquée. On autorise jusqu'à
+            // MAX_RECURSIVE_DEPTH niveaux uniquement si le dernier locator
+            // appelé déclare le même type que cls (vraie auto-récursion),
+            // pas une simple revisite via une autre branche.
+            int depth = 0;
+            for (Method m : locatorChain) if (m.getDeclaringClass() == cls) depth++;
+            if (depth >= MAX_RECURSIVE_DEPTH) return;
+            if (locatorChain.isEmpty()) return;
+            Method last = locatorChain.get(locatorChain.size() - 1);
+            if (last.getDeclaringClass() != cls && last.getReturnType() != cls) return;
+        }
         Set<String> clsProduces = produces(cls.getAnnotation(Produces.class));
         if (clsProduces.isEmpty()) clsProduces = inheritedProduces;
         Set<String> clsConsumes = consumes(cls.getAnnotation(Consumes.class));
