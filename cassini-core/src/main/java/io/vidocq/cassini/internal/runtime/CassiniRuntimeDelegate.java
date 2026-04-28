@@ -19,7 +19,7 @@ import java.util.concurrent.CompletionStage;
  * {@code Response.ok()}, {@code MediaType.toString()} et
  * {@link UriBuilder} côté code utilisateur.
  */
-public final class CassiniRuntimeDelegate extends RuntimeDelegate {
+public class CassiniRuntimeDelegate extends RuntimeDelegate {
 
     @Override public UriBuilder createUriBuilder() { return new CassiniUriBuilder(); }
 

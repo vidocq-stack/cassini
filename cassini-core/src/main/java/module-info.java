@@ -42,6 +42,8 @@ module io.vidocq.cassini.core {
 
     opens io.vidocq.cassini.internal to io.vidocq.cassini.cdi;
 
-    provides jakarta.ws.rs.ext.RuntimeDelegate
-            with io.vidocq.cassini.internal.runtime.CassiniRuntimeDelegate;
+    // jakarta.ws.rs.ext.RuntimeDelegate fourni par cassini-chappe ou
+    // cassini-jdk-http (transport-spécifique pour SeBootstrap). Cassini-core
+    // n'expose pas son CassiniRuntimeDelegate par ServiceLoader pour éviter
+    // la collision : c'est le rôle de l'adapter de transport actif.
 }

@@ -30,6 +30,13 @@
             <groupId>io.vidocq.chappe</groupId>
             <artifactId>chappe-core</artifactId>
         </dependency>
+        <!-- CDI API : ChappeRuntimeDelegate utilise Invoker.forBeanManager
+             via le runtime — accessible en provided. -->
+        <dependency>
+            <groupId>jakarta.enterprise</groupId>
+            <artifactId>jakarta.enterprise.cdi-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>

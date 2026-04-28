@@ -197,7 +197,7 @@
                                 <authpassword>javajoe</authpassword>
                                 <jimage.dir>${project.build.directory}/jimage</jimage.dir>
                                 <sigTestClasspath>${user.home}/.m2/repository/jakarta/ws/rs/jakarta.ws.rs-api/4.0.0/jakarta.ws.rs-api-4.0.0.jar${path.separator}${project.build.directory}/jimage/java.base${path.separator}${project.build.directory}/jimage/java.xml</sigTestClasspath>
-                                <jakarta.ws.rs.ext.RuntimeDelegate>io.vidocq.cassini.internal.runtime.CassiniRuntimeDelegate</jakarta.ws.rs.ext.RuntimeDelegate>
+                                <jakarta.ws.rs.ext.RuntimeDelegate>io.vidocq.cassini.chappe.ChappeRuntimeDelegate</jakarta.ws.rs.ext.RuntimeDelegate>
                             </systemPropertyVariables>
                             <argLine>-Djdk.httpclient.allowRestrictedHeaders=host,connection,content-length,expect,upgrade,origin,date,via,cookie</argLine>
                         </configuration>
