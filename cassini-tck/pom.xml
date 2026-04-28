@@ -59,6 +59,15 @@
             <artifactId>jakarta.ws.rs-api</artifactId>
             <version>4.0.0</version>
         </dependency>
+        <!-- Servlet API : certaines ressources TCK déclarent @Context HttpServletRequest.
+             Cassini ne supporte pas l'injection servlet, mais sans l'API au classpath
+             le scan reflexif (Class.getDeclaredMethods) crash en NoClassDefFoundError. -->
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <version>6.1.0</version>
+            <scope>test</scope>
+        </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -218,6 +227,15 @@
                     <groupId>org.glassfish.jersey.media</groupId>
                     <artifactId>jersey-media-sse</artifactId>
                     <version>4.0.2</version>
+                    <scope>test</scope>
+                </dependency>
+                <!-- Sun TDK Signature Test : §A.1 conformance API.
+                     Sans cette lib, signatureTest échoue en ClassNotFoundException
+                     sur com.sun.tdk.signaturetest.SignatureTest. -->
+                <dependency>
+                    <groupId>jakarta.tck</groupId>
+                    <artifactId>sigtest-maven-plugin</artifactId>
+                    <version>2.5</version>
                     <scope>test</scope>
                 </dependency>
                 <dependency>

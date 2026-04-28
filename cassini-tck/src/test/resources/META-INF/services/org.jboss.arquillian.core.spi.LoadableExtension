@@ -1,1 +1,1 @@
-fr.vidocq.vidocq.ext.rest.cassini.tck.arquillian.VidocqContainerExtension
+io.vidocq.cassini.tck.arquillian.VidocqContainerExtension

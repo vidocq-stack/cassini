@@ -235,14 +235,13 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
             builder.application(appInstance);
             // §11.2.1 : @ApplicationPath sur la sous-classe Application
             // s'ajoute au contextPath de l'archive comme servlet path.
-            // (Saute si le path contient des chars qui seraient encodés
-            // côté client — voir tests applicationpath qui utilisent "!".)
             jakarta.ws.rs.ApplicationPath appPath =
                     appInstance.getClass().getAnnotation(jakarta.ws.rs.ApplicationPath.class);
-            if (appPath != null && !appPath.value().isEmpty()
-                    && appPath.value().chars().allMatch(c -> Character.isLetterOrDigit(c)
-                        || c == '/' || c == '-' || c == '_')) {
-                String ap = appPath.value();
+            if (appPath != null && !appPath.value().isEmpty()) {
+                // §2.3.2 : @ApplicationPath value est URI-encodé, on décode
+                // pour matcher la forme transportée par le client (ex. %21 → !).
+                String ap = java.net.URLDecoder.decode(appPath.value(),
+                        java.nio.charset.StandardCharsets.UTF_8);
                 if (!ap.startsWith("/")) ap = "/" + ap;
                 if (ap.endsWith("/") && ap.length() > 1) ap = ap.substring(0, ap.length() - 1);
                 builder.contextPath(prefix + ap);
