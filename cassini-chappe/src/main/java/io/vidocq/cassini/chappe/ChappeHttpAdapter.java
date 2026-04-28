@@ -1,48 +1,70 @@
-package io.vidocq.cassini.internal;
+package io.vidocq.cassini.chappe;
 
 import fr.vidocq.chappe.api.Body;
 import fr.vidocq.chappe.api.Handler;
 import fr.vidocq.chappe.api.Request;
 import fr.vidocq.chappe.api.Response;
 import fr.vidocq.chappe.api.StatusCode;
-import io.vidocq.vauban.core.context.RequestContext;
+import io.vidocq.cassini.internal.Invoker;
+import io.vidocq.cassini.internal.MatchResult;
+import io.vidocq.cassini.internal.UriRouter;
+import io.vidocq.cassini.internal.transport.CassiniHttpResponse;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * Pont Chappe ↔ runtime JAX-RS Cassini.
+ * Adapter HTTP Chappe → Cassini.
  *
- * <p>Pour chaque requête HTTP reçue, on :</p>
+ * <p>Pour chaque requête HTTP reçue par Chappe :</p>
  * <ol>
- *   <li>active le scope CDI {@code @RequestScoped} via {@link RequestContext};</li>
- *   <li>normalise le chemin (strip du contextPath déjà fait par Chappe);</li>
- *   <li>matche la {@link ResourceMethod} via {@link UriRouter};</li>
- *   <li>invoque la méthode via {@link Invoker} ;</li>
- *   <li>retourne 404 ou 405 si pas de match.</li>
+ *   <li>convertit {@link Request}/{@link Response} Chappe ↔ {@link io.vidocq.cassini.spi.http.CassiniHttpExchange} ;</li>
+ *   <li>exécute les pre-matching filters via {@link Invoker} ;</li>
+ *   <li>matche la route via {@link UriRouter} ;</li>
+ *   <li>invoque la méthode resource via {@link Invoker} ;</li>
+ *   <li>copie le {@link CassiniHttpResponse} produit dans la {@link Response} Chappe.</li>
  * </ol>
  */
-public final class CassiniRestBridge implements Handler {
+public final class ChappeHttpAdapter implements Handler {
 
-    private static final System.Logger LOG = System.getLogger(CassiniRestBridge.class.getName());
+    private static final System.Logger LOG = System.getLogger(ChappeHttpAdapter.class.getName());
+
+    /** Hook lifecycle : entre/sort du scope CDI ({@code @RequestScoped}) si fourni. */
+    @FunctionalInterface
+    public interface Scoped {
+        void runInScope(Runnable action);
+        Scoped IDENTITY = Runnable::run;
+    }
 
     private final UriRouter router;
     private final Invoker invoker;
-    private final RequestContext requestContext;
+    private final Scoped scoped;
 
-    public CassiniRestBridge(UriRouter router, Invoker invoker) {
-        this(router, invoker, new RequestContext());
+    public ChappeHttpAdapter(UriRouter router, Invoker invoker) {
+        this(router, invoker, Scoped.IDENTITY);
     }
 
-    public CassiniRestBridge(UriRouter router, Invoker invoker, RequestContext requestContext) {
+    public ChappeHttpAdapter(UriRouter router, Invoker invoker, Scoped scoped) {
         this.router = router;
         this.invoker = invoker;
-        this.requestContext = requestContext;
+        this.scoped = scoped == null ? Scoped.IDENTITY : scoped;
+    }
+
+    /** Convertit la {@link CassiniHttpResponse} produite par Cassini en {@link Response} Chappe. */
+    private static Response toChappe(CassiniHttpResponse out) {
+        var b = Response.builder().status(StatusCode.of(out.status()));
+        for (var e : out.headers().entrySet()) {
+            for (String v : e.getValue()) b.header(e.getKey(), v);
+        }
+        b.body(out.body() == null || out.body().length == 0 ? Body.empty() : Body.of(out.body()));
+        return b.build();
     }
 
     @Override
     public Response handle(Request request) throws Exception {
+        ChappeHttpExchange exchange = new ChappeHttpExchange(request);
         String verb = request.method().name();
         String path = normalize(request.pathInfo());
         // §6.6.1 : pre-matching filters s'exécutent AVANT le routing → si
@@ -53,8 +75,8 @@ public final class CassiniRestBridge implements Handler {
         if (!preMatchFilters.isEmpty()) {
             Object[] holderPre = new Object[1];
             try {
-                requestContext.runInScope(() -> {
-                    try { holderPre[0] = invoker.runPreMatching(request); }
+                scoped.runInScope(() -> {
+                    try { holderPre[0] = invoker.runPreMatching(exchange); }
                     catch (Exception e) { holderPre[0] = e; }
                 });
             } catch (Exception ignored) {}
@@ -101,33 +123,34 @@ public final class CassiniRestBridge implements Handler {
                 // puissent l'intercepter.
                 var r405 = jakarta.ws.rs.core.Response.status(405)
                         .header("Allow", String.join(", ", allowed)).build();
-                return invoker.renderThrowable(
-                        new jakarta.ws.rs.WebApplicationException(r405), request);
+                return toChappe(invoker.renderThrowable(
+                        new jakarta.ws.rs.WebApplicationException(r405), exchange));
             }
-            return invoker.renderThrowable(
+            return toChappe(invoker.renderThrowable(
                     new jakarta.ws.rs.NotFoundException("No resource matches " + verb + " " + path),
-                    request);
+                    exchange));
         }
 
         MatchResult result = match.get();
         Object[] holder = new Object[1];
         try {
-            requestContext.runInScope(() -> {
+            scoped.runInScope(() -> {
                 try {
-                    holder[0] = invoker.invoke(candidates, request);
+                    holder[0] = invoker.invoke(candidates, exchange);
                 } catch (Exception e) {
                     holder[0] = e;
                 }
             });
             if (holder[0] instanceof Exception ex) throw ex;
-            Response resp = (Response) holder[0];
+            CassiniHttpResponse out = (CassiniHttpResponse) holder[0];
+            Response resp = toChappe(out);
             // §3.3.5 : HEAD invoqué sur méthode @GET → on renvoie le header
             // mais on remplace le body par vide (le client n'en a pas besoin
             // pour HEAD).
             if ("HEAD".equalsIgnoreCase(verb) && !"HEAD".equalsIgnoreCase(result.method().httpMethod())) {
                 var b = Response.builder().status(resp.status());
                 for (var e : resp.headers()) b.header(e.name(), e.value());
-                return b.body(fr.vidocq.chappe.api.Body.empty()).build();
+                return b.body(Body.empty()).build();
             }
             return resp;
         } catch (Exception e) {

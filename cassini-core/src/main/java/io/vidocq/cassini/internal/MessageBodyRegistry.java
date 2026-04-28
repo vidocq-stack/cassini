@@ -570,11 +570,13 @@ public final class MessageBodyRegistry {
         return false;
     }
 
-    /** Fabrique un MultivaluedMap<String, String> depuis les headers Chappe. */
-    public static MultivaluedMap<String, String> adaptHeaders(fr.vidocq.chappe.api.Headers h) {
+    /** Fabrique un MultivaluedMap<String, String> depuis les headers d'un exchange. */
+    public static MultivaluedMap<String, String> adaptExchangeHeaders(java.util.Map<String, java.util.List<String>> headers) {
         MultivaluedMap<String, String> m = new MultivaluedHashMap<>();
-        for (fr.vidocq.chappe.api.Headers.Entry e : h) {
-            m.add(e.name(), e.value());
+        if (headers != null) {
+            for (var e : headers.entrySet()) {
+                for (String v : e.getValue()) m.add(e.getKey(), v);
+            }
         }
         return m;
     }

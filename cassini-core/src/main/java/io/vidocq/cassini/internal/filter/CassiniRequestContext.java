@@ -1,6 +1,6 @@
 package io.vidocq.cassini.internal.filter;
 
-import fr.vidocq.chappe.api.Request;
+import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import io.vidocq.cassini.internal.MediaTypes;
 import io.vidocq.cassini.internal.context.CassiniHttpHeaders;
 import io.vidocq.cassini.internal.context.CassiniSecurityContext;
@@ -32,7 +32,7 @@ import java.util.Map;
  */
 public final class CassiniRequestContext implements ContainerRequestContext {
 
-    private final Request request;
+    private final CassiniHttpExchange exchange;
     private final CassiniHttpHeaders httpHeaders;
     private final Map<String, Object> properties = new HashMap<>();
     private final MultivaluedMap<String, String> headers;
@@ -65,20 +65,20 @@ public final class CassiniRequestContext implements ContainerRequestContext {
         try { action.run(); } finally { responsePhase = prev; }
     }
 
-    public CassiniRequestContext(Request request, UriInfo uriInfo) {
-        this.request = request;
-        this.httpHeaders = new CassiniHttpHeaders(request);
-        this.headers = buildHeaders(request);
-        this.method = request.method().name();
-        this.requestUri = request.uri();
+    public CassiniRequestContext(CassiniHttpExchange exchange, UriInfo uriInfo) {
+        this.exchange = exchange;
+        this.httpHeaders = new CassiniHttpHeaders(exchange);
+        this.headers = buildHeaders(exchange);
+        this.method = exchange.method();
+        this.requestUri = exchange.requestUri();
         this.baseUri = uriInfo.getBaseUri();
-        this.entityStream = request.body() == null ? new ByteArrayInputStream(new byte[0])
-                : request.body().asInputStream();
-        this.securityContext = new CassiniSecurityContext(request);
+        this.entityStream = exchange.requestBody() == null ? new ByteArrayInputStream(new byte[0])
+                : exchange.requestBody();
+        this.securityContext = new CassiniSecurityContext(exchange);
         this.uriInfo = uriInfo;
     }
 
-    public Request chappeRequest() { return request; }
+    public CassiniHttpExchange exchange() { return exchange; }
     public InputStream currentEntityStream() { return entityStream; }
     public boolean isAborted() { return aborted != null; }
     public Response abortedResponse() { return aborted; }
@@ -86,9 +86,11 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     public String currentMethod() { return method; }
     public URI currentRequestUri() { return requestUri; }
 
-    private static MultivaluedMap<String, String> buildHeaders(Request request) {
+    private static MultivaluedMap<String, String> buildHeaders(CassiniHttpExchange exchange) {
         MultivaluedMap<String, String> m = new MultivaluedHashMap<>();
-        for (var e : request.headers()) m.add(e.name(), e.value());
+        for (var e : exchange.requestHeaders().entrySet()) {
+            for (String v : e.getValue()) m.add(e.getKey(), v);
+        }
         return m;
     }
 
@@ -112,7 +114,7 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     }
 
     @Override public jakarta.ws.rs.core.Request getRequest() {
-        return new io.vidocq.cassini.internal.context.CassiniRequest(request);
+        return new io.vidocq.cassini.internal.context.CassiniRequest(exchange);
     }
 
     @Override public String getMethod() { return method; }
@@ -155,7 +157,7 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     @Override public Map<String, Cookie> getCookies() { return httpHeaders.getCookies(); }
 
     @Override public boolean hasEntity() {
-        return request.body() != null && request.body().contentLength() != 0;
+        return exchange.contentLength() != 0;
     }
 
     @Override public InputStream getEntityStream() { return entityStream; }
@@ -190,8 +192,8 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     }
 
     // Used by ParamExtractor / Invoker quand les headers ont été mutés.
-    public static CassiniRequestContext create(Request request, UriInfo uriInfo) {
-        return new CassiniRequestContext(request, uriInfo);
+    public static CassiniRequestContext create(CassiniHttpExchange exchange, UriInfo uriInfo) {
+        return new CassiniRequestContext(exchange, uriInfo);
     }
 
     /**

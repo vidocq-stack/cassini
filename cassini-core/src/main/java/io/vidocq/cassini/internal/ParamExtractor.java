@@ -1,6 +1,6 @@
 package io.vidocq.cassini.internal;
 
-import fr.vidocq.chappe.api.Request;
+import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import io.vidocq.cassini.internal.context.CassiniHttpHeaders;
 import io.vidocq.cassini.internal.context.CassiniProviders;
 import io.vidocq.cassini.internal.context.CassiniRequest;
@@ -84,7 +84,7 @@ public final class ParamExtractor {
      * Les paramètres sans annotation JAX-RS reçoivent leur valeur par défaut
      * (un constructeur ne peut pas consommer le body).
      */
-    public static Object[] resolveConstructorArgs(Parameter[] params, MatchResult match, Request request) {
+    public static Object[] resolveConstructorArgs(Parameter[] params, MatchResult match, CassiniHttpExchange request) {
         Object[] args = new Object[params.length];
         for (int i = 0; i < params.length; i++) {
             args[i] = resolveInjectedParam(params[i], match, request);
@@ -92,7 +92,7 @@ public final class ParamExtractor {
         return args;
     }
 
-    private static Object resolveInjectedParam(Parameter p, MatchResult match, Request request) {
+    private static Object resolveInjectedParam(Parameter p, MatchResult match, CassiniHttpExchange request) {
         String def = defaultValue(p);
         boolean encoded = p.getAnnotation(jakarta.ws.rs.Encoded.class) != null;
         Context context = p.getAnnotation(Context.class);
@@ -118,7 +118,7 @@ public final class ParamExtractor {
         }
         HeaderParam headerParam = p.getAnnotation(HeaderParam.class);
         if (headerParam != null) {
-            List<String> raws = request.headers().all(headerParam.value());
+            List<String> raws = request.headers(headerParam.value());
             return coerce(p, raws.isEmpty() ? emptyOrDefault(def) : raws);
         }
         CookieParam cookieParam = p.getAnnotation(CookieParam.class);
@@ -139,7 +139,7 @@ public final class ParamExtractor {
         return ParamValueConverter.defaultForType(p.getType());
     }
 
-    public static ResolvedArgs resolve(ResourceMethod route, MatchResult match, Request request) {
+    public static ResolvedArgs resolve(ResourceMethod route, MatchResult match, CassiniHttpExchange request) {
         Parameter[] params = route.javaMethod().getParameters();
         Object[] args = new Object[params.length];
         int bodyIndex = -1;
@@ -193,7 +193,7 @@ public final class ParamExtractor {
                 List<String> raws = cache.getOrDefault(queryParam.value(), List.of());
                 args[i] = coerce(p, raws.isEmpty() ? emptyOrDefault(def) : raws);
             } else if (headerParam != null) {
-                List<String> raws = request.headers().all(headerParam.value());
+                List<String> raws = request.headers(headerParam.value());
                 args[i] = coerce(p, raws.isEmpty() ? emptyOrDefault(def) : raws);
             } else if (cookieParam != null) {
                 String raw = cookie(request, cookieParam.value());
@@ -236,7 +236,7 @@ public final class ParamExtractor {
         return true;
     }
 
-    private static Object instantiateBeanParam(Class<?> type, MatchResult match, Request request) {
+    private static Object instantiateBeanParam(Class<?> type, MatchResult match, CassiniHttpExchange request) {
         try {
             Object instance = type.getDeclaredConstructor().newInstance();
             FieldInjector.inject(instance, match, request);
@@ -247,7 +247,7 @@ public final class ParamExtractor {
         }
     }
 
-    private static Object resolveContext(Class<?> type, MatchResult match, Request request) {
+    private static Object resolveContext(Class<?> type, MatchResult match, CassiniHttpExchange request) {
         if (type == UriInfo.class) return new CassiniUriInfo(request, request.contextPath(),
                 match.pathParams(), match.method() == null ? null : match.method().path());
         if (type == HttpHeaders.class) return new CassiniHttpHeaders(request);
@@ -329,7 +329,7 @@ public final class ParamExtractor {
                 @Override public java.util.Set<Object> getInstances() { return java.util.Set.of(); }
             };
         }
-        if (type == Request.class) return request; // Chappe Request passthrough (utile pour tests)
+        if (type == CassiniHttpExchange.class) return request; // SPI HTTP exchange (utile pour tests)
         throw new WebApplicationException("Unsupported @Context type: " + type.getName(), 500);
     }
 
@@ -453,20 +453,13 @@ public final class ParamExtractor {
         return FormDecoder.parse(raw, !encoded);
     }
 
-    private static Map<String, List<String>> parsedQueryFromRequest(Request request, boolean encoded) {
-        String q = request.query();
-        if (q == null || q.isEmpty()) {
-            java.net.URI u = request.uri();
-            if (u != null) {
-                String raw = u.getRawQuery();
-                if (raw != null && !raw.isEmpty()) q = raw;
-            }
-        }
-        return parseQuery(q, encoded);
+    private static Map<String, List<String>> parsedQueryFromRequest(CassiniHttpExchange request, boolean encoded) {
+        String raw = request.requestUri() == null ? null : request.requestUri().getRawQuery();
+        return parseQuery(raw, encoded);
     }
 
-    private static String cookie(Request request, String name) {
-        for (String header : request.headers().all("Cookie")) {
+    private static String cookie(CassiniHttpExchange request, String name) {
+        for (String header : request.headers("Cookie")) {
             for (String pair : header.split(";")) {
                 int eq = pair.indexOf('=');
                 if (eq < 0) continue;
@@ -483,9 +476,9 @@ public final class ParamExtractor {
         return null;
     }
 
-    private static List<String> matrix(Request request, String name, boolean encoded) {
+    private static List<String> matrix(CassiniHttpExchange request, String name, boolean encoded) {
         List<String> out = new ArrayList<>();
-        String path = request.pathInfo();
+        String path = request.requestUri() == null ? null : request.requestUri().getRawPath();
         if (path == null) return out;
         for (String seg : path.split("/")) {
             int semi = seg.indexOf(';');
@@ -505,10 +498,10 @@ public final class ParamExtractor {
         return out;
     }
 
-    private static Map<String, List<String>> readForm(Request request) {
+    private static Map<String, List<String>> readForm(CassiniHttpExchange request) {
         return readForm(request, false);
     }
-    private static Map<String, List<String>> readForm(Request request, boolean encoded) {
+    private static Map<String, List<String>> readForm(CassiniHttpExchange request, boolean encoded) {
         // On a deux caches distincts selon le mode (decoded vs @Encoded).
         if (encoded) {
             Map<String, List<String>> enc = FieldInjector.FORM_CACHE_ENCODED.get();
@@ -520,9 +513,8 @@ public final class ParamExtractor {
         try {
             byte[] bytes = FieldInjector.BODY_CACHE.get();
             if (bytes == null) {
-                var body = request.body();
-                bytes = (body == null || body.contentLength() == 0)
-                        ? new byte[0] : body.asInputStream().readAllBytes();
+                var body = request.requestBody();
+                bytes = body == null ? new byte[0] : body.readAllBytes();
                 FieldInjector.BODY_CACHE.set(bytes);
             }
             if (encoded) {
