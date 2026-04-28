@@ -421,8 +421,13 @@ public final class Invoker {
             // route null = pré-matching abort : on applique les filtres globaux,
             // pas le filtrage par méthode.
             if (route != null && !fe.appliesTo(route.javaMethod(), route.beanClass())) continue;
-            try { fe.instance().filter(rctx, rctx2); }
-            catch (java.io.IOException e) { throw new RuntimeException(e); }
+            Throwable[] err = new Throwable[1];
+            rctx.runDuringResponsePhase(() -> {
+                try { fe.instance().filter(rctx, rctx2); }
+                catch (java.io.IOException | RuntimeException e) { err[0] = e; }
+            });
+            if (err[0] instanceof RuntimeException re) throw re;
+            if (err[0] != null) throw new RuntimeException(err[0]);
         }
         return writeFromContext(rctx2, route, chosen);
     }
@@ -461,8 +466,13 @@ public final class Invoker {
                 entity == null ? null : entity.getClass(), entityAnnotations, headers);
         for (var fe : filters.responseFilters()) {
             if (!fe.appliesTo(route.javaMethod(), route.beanClass())) continue;
-            try { fe.instance().filter(rctx, rctx2); }
-            catch (java.io.IOException e) { throw new RuntimeException(e); }
+            Throwable[] err = new Throwable[1];
+            rctx.runDuringResponsePhase(() -> {
+                try { fe.instance().filter(rctx, rctx2); }
+                catch (java.io.IOException | RuntimeException e) { err[0] = e; }
+            });
+            if (err[0] instanceof RuntimeException re) throw re;
+            if (err[0] != null) throw new RuntimeException(err[0]);
         }
         return writeFromContext(rctx2, route, chosen);
     }

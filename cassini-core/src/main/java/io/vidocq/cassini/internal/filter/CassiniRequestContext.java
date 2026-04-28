@@ -47,8 +47,23 @@ public final class CassiniRequestContext implements ContainerRequestContext {
      *  setRequestUri / setSecurityContext / setEntityStream / abortWith
      *  depuis un filtre @PostMatching pour les mutations illégales. */
     private boolean postMatching = false;
+    /** §6.6 : passage des response filters — abortWith doit lever
+     *  IllegalStateException. Activé via {@link #runDuringResponsePhase}. */
+    private boolean responsePhase = false;
 
     public void markPostMatching() { this.postMatching = true; }
+    /**
+     * Exécute {@code action} avec le flag {@code responsePhase} actif —
+     * ainsi un response filter qui appelle {@code abortWith} déclenche
+     * IllegalStateException, mais l'appel programmatique d'abortWith
+     * en dehors du response chain (ex. exception mapper internal flow)
+     * reste autorisé.
+     */
+    public void runDuringResponsePhase(Runnable action) {
+        boolean prev = responsePhase;
+        responsePhase = true;
+        try { action.run(); } finally { responsePhase = prev; }
+    }
 
     public CassiniRequestContext(Request request, UriInfo uriInfo) {
         this.request = request;
@@ -148,8 +163,10 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     @Override public void abortWith(Response response) {
         // §6.6 : abortWith autorisé dans pre-matching ET post-matching filters.
         // Interdit quand le context est injecté dans une méthode/champ de
-        // ressource (flag postResource).
+        // ressource (postResource), ou pendant la phase response filters
+        // (responsePhase, scoped via runDuringResponsePhase).
         if (postResource) throw new IllegalStateException("abortWith cannot be called from resource methods (§6.6)");
+        if (responsePhase) throw new IllegalStateException("abortWith cannot be called from response filters (§6.6)");
         this.aborted = response;
     }
 
