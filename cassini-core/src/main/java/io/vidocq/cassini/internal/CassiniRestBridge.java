@@ -58,8 +58,26 @@ public final class CassiniRestBridge implements Handler {
                     catch (Exception e) { holderPre[0] = e; }
                 });
             } catch (Exception ignored) {}
-            if (holderPre[0] instanceof Response r) return r;
             if (holderPre[0] instanceof Exception ex) throw ex;
+            if (holderPre[0] instanceof Invoker.PreMatchResult pmr) {
+                if (pmr.response() != null) return pmr.response();
+                // §6.6.1 : si un pre-matching filter a appelé setMethod /
+                // setRequestUri, on relance le routing sur les valeurs mutées.
+                if (pmr.ctx() != null) {
+                    String mutMethod = pmr.ctx().currentMethod();
+                    if (mutMethod != null) verb = mutMethod;
+                    java.net.URI mutUri = pmr.ctx().currentRequestUri();
+                    if (mutUri != null) {
+                        String mutPath = mutUri.getRawPath();
+                        if (mutPath == null) mutPath = mutUri.getPath();
+                        if (mutPath == null) mutPath = "/";
+                        // Strip baseUri prefix : §6.6.1 setRequestUri(absolute)
+                        // pointe vers la ressource cible — on réutilise le path
+                        // après prefix-strip déjà effectué (ContextStrippingHandler).
+                        path = normalize(stripBase(mutPath, request));
+                    }
+                }
+            }
         }
         List<MatchResult> candidates = router.matchAll(verb, path);
         Optional<MatchResult> match = candidates.isEmpty() ? Optional.empty() : Optional.of(candidates.get(0));
@@ -126,5 +144,15 @@ public final class CassiniRestBridge implements Handler {
     private static String normalize(String raw) {
         if (raw == null || raw.isEmpty()) return "/";
         return raw;
+    }
+
+    /** Strip le contextPath de la requête originale du chemin absolu fourni
+     *  par {@code setRequestUri()}, afin de re-router sur les @Path. */
+    private static String stripBase(String absPath, Request originalRequest) {
+        String ctx = originalRequest.contextPath();
+        if (ctx != null && !ctx.isEmpty() && !"/".equals(ctx) && absPath.startsWith(ctx)) {
+            return absPath.substring(ctx.length());
+        }
+        return absPath;
     }
 }

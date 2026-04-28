@@ -67,6 +67,9 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     public InputStream currentEntityStream() { return entityStream; }
     public boolean isAborted() { return aborted != null; }
     public Response abortedResponse() { return aborted; }
+    /** §6.6.1 : method/URI courants après mutation par les pre-matching filters. */
+    public String currentMethod() { return method; }
+    public URI currentRequestUri() { return requestUri; }
 
     private static MultivaluedMap<String, String> buildHeaders(Request request) {
         MultivaluedMap<String, String> m = new MultivaluedHashMap<>();

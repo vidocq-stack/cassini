@@ -162,12 +162,17 @@ public final class Invoker {
         }
     }
 
-    /** §6.6.1 : exécute les pre-matching filters avant le routing. Retourne
-     *  une Response si un filtre a fait abortWith() ou null pour continuer
-     *  vers le matching. Réplique l'exécution dans invokeInternal() pour
-     *  qu'on reste compatible quand le routing matche par la suite. */
-    public Response runPreMatching(Request request) throws Exception {
-        if (filters.preMatching().isEmpty()) return null;
+    /**
+     * §6.6.1 : résultat de l'exécution des pre-matching filters.
+     * Contient soit une {@code response} d'arrêt (abortWith ou exception
+     * mappée), soit (si {@code response == null}) le contexte mutable utilisé
+     * pour relancer le routing avec method/URI éventuellement modifiés.
+     */
+    public record PreMatchResult(Response response, CassiniRequestContext ctx) {}
+
+    /** §6.6.1 : exécute les pre-matching filters avant le routing. */
+    public PreMatchResult runPreMatching(Request request) throws Exception {
+        if (filters.preMatching().isEmpty()) return new PreMatchResult(null, null);
         ParamExtractor.setProviders(new io.vidocq.cassini.internal.context.CassiniProviders(
                 registry, exceptionMappers, filters.contextResolvers()));
         try {
@@ -177,15 +182,17 @@ public final class Invoker {
                 try { fe.instance().filter(preCtx); }
                 catch (java.io.IOException | RuntimeException e) {
                     Response mapped = mapFilterThrowable(e, null, null, preCtx);
-                    if (mapped != null) return mapped;
+                    if (mapped != null) return new PreMatchResult(mapped, preCtx);
                     if (e instanceof RuntimeException re) throw re;
                     throw new RuntimeException(e);
                 }
                 if (preCtx.isAborted()) {
-                    return runResponseFiltersAndWrite(preCtx, preCtx.abortedResponse(), null, null);
+                    return new PreMatchResult(
+                            runResponseFiltersAndWrite(preCtx, preCtx.abortedResponse(), null, null),
+                            preCtx);
                 }
             }
-            return null;
+            return new PreMatchResult(null, preCtx);
         } finally {
             ParamExtractor.clearProviders();
         }

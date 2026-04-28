@@ -51,23 +51,51 @@ public final class CassiniHttpHeaders implements HttpHeaders {
     }
 
     @Override public List<MediaType> getAcceptableMediaTypes() {
-        return MediaTypes.parseList(request.headers().firstOrNull("Accept"));
+        // §6.7.4.7 : la liste retournée est triée par q-value décroissant.
+        List<MediaType> list = MediaTypes.parseList(request.headers().firstOrNull("Accept"));
+        java.util.List<MediaType> mut = new java.util.ArrayList<>(list);
+        mut.sort((a, b) -> Double.compare(qValue(b), qValue(a)));
+        return mut;
     }
 
     @Override public List<Locale> getAcceptableLanguages() {
+        // §6.7.4.7 : tri par q-value décroissant.
         String raw = request.headers().firstOrNull("Accept-Language");
         if (raw == null || raw.isBlank()) return List.of();
-        java.util.List<Locale> out = new java.util.ArrayList<>();
+        java.util.List<java.util.Map.Entry<Locale, Double>> entries = new java.util.ArrayList<>();
         for (String tok : raw.split(",")) {
             int semi = tok.indexOf(';');
             String tag = (semi < 0 ? tok : tok.substring(0, semi)).trim();
-            if (!tag.isEmpty()) out.add(Locale.forLanguageTag(tag));
+            if (tag.isEmpty()) continue;
+            double q = 1.0;
+            if (semi >= 0) {
+                for (String p : tok.substring(semi + 1).split(";")) {
+                    String pt = p.trim();
+                    if (pt.startsWith("q=")) {
+                        try { q = Double.parseDouble(pt.substring(2)); } catch (NumberFormatException ignored) {}
+                    }
+                }
+            }
+            entries.add(java.util.Map.entry(Locale.forLanguageTag(tag), q));
         }
+        entries.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
+        java.util.List<Locale> out = new java.util.ArrayList<>(entries.size());
+        for (var e : entries) out.add(e.getKey());
         return out;
     }
 
+    private static double qValue(MediaType mt) {
+        String q = mt.getParameters().get("q");
+        if (q == null) return 1.0;
+        try { return Double.parseDouble(q); } catch (NumberFormatException e) { return 1.0; }
+    }
+
     @Override public MediaType getMediaType() {
-        return MediaTypes.parse(request.headers().firstOrNull("Content-Type"));
+        // §3.6.4 / §6.7.4 : null si pas de Content-Type
+        // (NE pas tomber sur WILDCARD comme MediaTypes.parse).
+        String raw = request.headers().firstOrNull("Content-Type");
+        if (raw == null || raw.isBlank()) return null;
+        return MediaTypes.parse(raw);
     }
 
     @Override public Locale getLanguage() {
