@@ -21,7 +21,10 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
     /** §5.1 / Javadoc Request#selectVariant : "this method also sets the Vary
      *  header field on the response". On collecte ici les dimensions sur
      *  lesquelles selectVariant a négocié pour qu'Invoker les écrive
-     *  ensuite dans les headers de la response (au moment du marshal). */
+     *  ensuite dans les headers de la response (au moment du marshal).
+     *
+     *  <p>TODO(M2h) : migrer vers un attribut du {@code CassiniHttpExchange}
+     *  (ou ScopedValue) — ce ThreadLocal casse en virtual-thread async. */
     public static final ThreadLocal<java.util.Set<String>> PENDING_VARY =
             ThreadLocal.withInitial(java.util.LinkedHashSet::new);
 

@@ -289,10 +289,13 @@ public final class FieldInjector {
         return out;
     }
 
+    /** TODO(M2h) : déplacer ces caches dans un attribut du {@code CassiniHttpExchange}
+     *  (per-request) — les ThreadLocal cassent en virtual-thread async. */
     static final ThreadLocal<Map<String, List<String>>> FORM_CACHE = new ThreadLocal<>();
     static final ThreadLocal<Map<String, List<String>>> FORM_CACHE_ENCODED = new ThreadLocal<>();
     /** Cache des bytes du body consommés par {@link #readForm} pour les
-     *  MBR invoqués après (@FormParam + body String injectés ensemble). */
+     *  MBR invoqués après (@FormParam + body String injectés ensemble).
+     *  TODO(M2h) : idem — attribut request-scope. */
     public static final ThreadLocal<byte[]> BODY_CACHE = new ThreadLocal<>();
 
     private static Map<String, List<String>> readForm(CassiniHttpExchange request, boolean encoded) {

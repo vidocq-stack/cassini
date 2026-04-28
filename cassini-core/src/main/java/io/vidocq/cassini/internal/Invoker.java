@@ -43,11 +43,16 @@ public final class Invoker {
 
     /** Contexte exposé pendant l'appel {@link #resolver} pour permettre à des
      *  résolveurs (ex. harness TCK) de créer des instances avec injection
-     *  constructeur §3.1.1. */
+     *  constructeur §3.1.1.
+     *
+     *  <p>TODO(M2h) : migrer vers un {@code RequestContext} portable virtual-thread-safe
+     *  (ScopedValue ou contexte attaché au {@link CassiniHttpExchange}). Les
+     *  ThreadLocal cassent en virtual-thread quand l'Invoker yield. */
     public static final ThreadLocal<MatchResult> CURRENT_MATCH = new ThreadLocal<>();
     public static final ThreadLocal<CassiniHttpExchange> CURRENT_REQUEST = new ThreadLocal<>();
     /** §6.5 (UriInfo.getMatchedResources) : chaîne d'instances de ressource
-     *  matchées pour la requête courante (root → la plus profonde via locators). */
+     *  matchées pour la requête courante (root → la plus profonde via locators).
+     *  TODO(M2h) : idem CURRENT_MATCH — migration ScopedValue. */
     public static final ThreadLocal<java.util.List<Object>> CURRENT_MATCHED_RESOURCES =
             ThreadLocal.withInitial(java.util.ArrayList::new);
 
@@ -410,6 +415,11 @@ public final class Invoker {
             throw new RuntimeException(cause);
         }
         if (result instanceof java.util.concurrent.CompletionStage<?> cs) {
+            // TODO(M2h) : propager le stage non-bloquant jusqu'au transport
+            // (cf. CassiniHttpAdapter.dispatch retourne CompletionStage<Void>).
+            // Ce bloc try/get est isolé via Async.awaitBlocking dans toutes les
+            // autres occurrences ; on le garde inline ici car la branche WAE
+            // doit être traitée localement (renderWebAppException).
             try { result = cs.toCompletableFuture().get(); }
             catch (java.util.concurrent.ExecutionException ee) {
                 Throwable cause = ee.getCause();
