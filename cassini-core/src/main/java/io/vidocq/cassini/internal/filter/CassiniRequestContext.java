@@ -97,7 +97,11 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     @Override public void setProperty(String name, Object value) { properties.put(name, value); }
     @Override public void removeProperty(String name) { properties.remove(name); }
 
-    @Override public UriInfo getUriInfo() { return uriInfo; }
+    @Override public UriInfo getUriInfo() {
+        // §6.6.1 : si setRequestUri a été appelé, la UriInfo doit refléter les
+        // nouvelles valeurs de baseUri/requestUri sans recréer toute la chaîne.
+        return new MutableUriInfoView(uriInfo, baseUri, requestUri);
+    }
     @Override public void setRequestUri(URI requestUri) {
         if (postMatching) throw new IllegalStateException("setRequestUri cannot be called in post-matching filters (§6.6)");
         this.requestUri = requestUri;
@@ -126,7 +130,13 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     }
 
     @Override public boolean containsHeaderString(String n, String sep, java.util.function.Predicate<String> p) {
+        // §6.7.4 : recherche case-insensitive (RFC 7230).
         List<String> vs = headers.get(n);
+        if (vs == null) {
+            for (var e : headers.entrySet()) {
+                if (e.getKey().equalsIgnoreCase(n)) { vs = e.getValue(); break; }
+            }
+        }
         if (vs == null) return false;
         for (String v : vs) for (String tok : v.split(sep)) if (p.test(tok.trim())) return true;
         return false;
@@ -182,5 +192,52 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     // Used by ParamExtractor / Invoker quand les headers ont été mutés.
     public static CassiniRequestContext create(Request request, UriInfo uriInfo) {
         return new CassiniRequestContext(request, uriInfo);
+    }
+
+    /**
+     * Vue {@link UriInfo} qui reflète les modifications de baseUri/requestUri
+     * faites via setRequestUri. Délègue au UriInfo source pour les autres
+     * propriétés (PathSegments, parameters, matchedResources, etc.).
+     */
+    private static final class MutableUriInfoView implements UriInfo {
+        private final UriInfo delegate;
+        private final URI base;
+        private final URI request;
+
+        MutableUriInfoView(UriInfo delegate, URI base, URI request) {
+            this.delegate = delegate; this.base = base; this.request = request;
+        }
+        @Override public String getPath() {
+            String b = base == null ? "/" : base.getPath();
+            String r = request == null ? "" : request.getPath();
+            if (b == null) b = "/";
+            if (r == null) r = "";
+            return r.startsWith(b) ? r.substring(b.length()) : r;
+        }
+        @Override public String getPath(boolean decode) { return getPath(); }
+        @Override public java.util.List<jakarta.ws.rs.core.PathSegment> getPathSegments() { return delegate.getPathSegments(); }
+        @Override public java.util.List<jakarta.ws.rs.core.PathSegment> getPathSegments(boolean decode) { return delegate.getPathSegments(decode); }
+        @Override public URI getRequestUri() { return request != null ? request : delegate.getRequestUri(); }
+        @Override public jakarta.ws.rs.core.UriBuilder getRequestUriBuilder() {
+            return jakarta.ws.rs.core.UriBuilder.fromUri(getRequestUri());
+        }
+        @Override public URI getAbsolutePath() { return getRequestUri(); }
+        @Override public jakarta.ws.rs.core.UriBuilder getAbsolutePathBuilder() {
+            return jakarta.ws.rs.core.UriBuilder.fromUri(getAbsolutePath());
+        }
+        @Override public URI getBaseUri() { return base != null ? base : delegate.getBaseUri(); }
+        @Override public jakarta.ws.rs.core.UriBuilder getBaseUriBuilder() {
+            return jakarta.ws.rs.core.UriBuilder.fromUri(getBaseUri());
+        }
+        @Override public MultivaluedMap<String, String> getPathParameters() { return delegate.getPathParameters(); }
+        @Override public MultivaluedMap<String, String> getPathParameters(boolean decode) { return delegate.getPathParameters(decode); }
+        @Override public MultivaluedMap<String, String> getQueryParameters() { return delegate.getQueryParameters(); }
+        @Override public MultivaluedMap<String, String> getQueryParameters(boolean decode) { return delegate.getQueryParameters(decode); }
+        @Override public java.util.List<String> getMatchedURIs() { return delegate.getMatchedURIs(); }
+        @Override public java.util.List<String> getMatchedURIs(boolean decode) { return delegate.getMatchedURIs(decode); }
+        @Override public java.util.List<Object> getMatchedResources() { return delegate.getMatchedResources(); }
+        @Override public URI resolve(URI uri) { return delegate.resolve(uri); }
+        @Override public URI relativize(URI uri) { return delegate.relativize(uri); }
+        public String getMatchedResourceTemplate() { return ""; }
     }
 }
