@@ -350,6 +350,56 @@ Sous-étape D : tests
 
 ---
 
+## 6.bis — Audit du couplage Chappe/Vauban/vidocq-spi (post-import)
+
+**État après import via `git filter-repo`** (commit `758c0ec`) :
+
+### Fichiers à découpler de `fr.vidocq.chappe.*` (8 fichiers, ~50 usages)
+
+| Fichier | Imports | Action |
+|---------|---------|--------|
+| `internal/CassiniRestBridge.java` | `Body, Handler, Request, Response, StatusCode` + `vauban.RequestContext` | **MOVE → cassini-chappe** comme `ChappeHttpAdapter implements CassiniHttpAdapter` (c'est l'adapter natif Chappe) |
+| `internal/Invoker.java` | `Body, Request, Response, StatusCode` | **REFACTOR** → utilise `CassiniHttpExchange` au lieu de Request/Response. Changement de signature : `dispatch(CassiniHttpExchange) → CompletionStage<Void>` |
+| `internal/ParamExtractor.java` | `Request` | **REFACTOR** → lit headers/body via `CassiniHttpExchange` |
+| `internal/FieldInjector.java` | `Request` | **REFACTOR** → idem |
+| `internal/filter/CassiniRequestContext.java` | `Request` | **REFACTOR** → idem |
+| `internal/context/CassiniRequest.java` | `Request` | **REFACTOR** → wrap `CassiniHttpExchange` au lieu de Chappe Request |
+| `internal/context/CassiniHttpHeaders.java` | `Request` | **REFACTOR** → idem |
+| `internal/context/CassiniUriInfo.java` | `Request` | **REFACTOR** → idem |
+| `internal/context/CassiniSecurityContext.java` | `Request` | **REFACTOR** → idem |
+
+### Fichiers à découpler de `io.vidocq.vauban.*` (2 fichiers)
+
+| Fichier | Imports | Action |
+|---------|---------|--------|
+| `internal/CassiniRestBridge.java` | `vauban.core.context.RequestContext` | Disparaît avec le move vers cassini-chappe |
+| `CassiniExtension.java` | `vauban.core.container.VaubanContainerBuilder` | **MOVE OUT → vidocq-mps** |
+
+### Fichiers à découpler de `io.vidocq.mpserver.*` (1 fichier)
+
+| Fichier | Imports | Action |
+|---------|---------|--------|
+| `CassiniExtension.java` | `mpserver.ext.chappe.{ChappeListener, ChappeMountPoint}`, `mpserver.spi.{ExtensionContext, VidocqConfiguration, VidocqExtension}` | **MOVE OUT → vidocq-mps-rest-cassini-extension** (cf. Q12 — `CassiniExtension` reste côté vidocq) |
+
+### Fichiers TCK à découpler (3 fichiers)
+
+| Fichier | Action |
+|---------|--------|
+| `cassini-tck/src/test/java/.../arquillian/VidocqCassiniDeployableContainer.java` | **REFACTOR** → utilise `cassini-chappe` directement, pas `vidocq-mps-chappe-extension` |
+| `cassini-tck/src/test/java/.../arquillian/BasicAuthHandler.java` | **REFACTOR** → idem |
+| `cassini-tck/src/main/java/.../CassiniTestHarness.java` | **REFACTOR** → idem |
+
+### Stratégie de découplage (ordre proposé)
+
+1. **Phase 3a** — Move `CassiniExtension` hors de Cassini (vers vidocq-mps). Disparait CDI + Vauban + Vidocq SPI dépendances de `CassiniExtension.java` côté Cassini.
+2. **Phase 3b** — Refactor `CassiniRequest` & co (les 4 contexts) pour wrapper `CassiniHttpExchange` au lieu de Chappe Request.
+3. **Phase 3c** — Refactor `Invoker` + `ParamExtractor` + `FieldInjector` + `CassiniRequestContext` pour utiliser `CassiniHttpExchange`.
+4. **Phase 3d** — Move `CassiniRestBridge` → `cassini-chappe/ChappeHttpAdapter.java` (impl `CassiniHttpAdapter` côté Chappe).
+5. **Phase 3e** — Refactor TCK runner (3 fichiers Arquillian) pour piloter Cassini via `cassini-chappe`.
+6. **Phase 3f** — Validation : `mvn install` du reactor + `./run-official-tck-restful-4.0.sh all` doit donner 2535/2535.
+
+---
+
 ## 7. Notes & risques
 
 - **ShrinkWrap résolveur** : `cassini-tck` doit rester en POM Model 4.0.0 (cf. note dans le pom existant) — Maven 4.1 / ShrinkWrap 1.2.x ne savent pas se parler.
