@@ -16,6 +16,7 @@
 
     <subprojects>
         <subproject>cassini-examples-chappe</subproject>
+        <subproject>cassini-examples-jdkhttp</subproject>
         <subproject>cassini-examples-vauban</subproject>
     </subprojects>
 </project>

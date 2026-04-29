@@ -26,7 +26,8 @@ module io.vidocq.cassini.core {
     exports io.vidocq.cassini.internal.multipart
             to io.vidocq.cassini.tck;
     exports io.vidocq.cassini.internal.runtime
-            to io.vidocq.cassini.tck;
+            to io.vidocq.cassini.tck,
+               io.vidocq.cassini.jdkhttp;
     exports io.vidocq.cassini.internal.transport
             to io.vidocq.cassini.tck;
 
