@@ -74,6 +74,22 @@
 
     <build>
         <plugins>
+            <!-- Génère META-INF/vauban-beans.list à la compile en scannant les
+                 annotations CDI (@ApplicationScoped, @RequestScoped, etc.).
+                 Le runtime Vauban lira ce fichier via scanClasspath() — fonctionne
+                 aussi en JPMS named module (les ressources META-INF/ sont toujours
+                 accessibles, contrairement au scan de packages). -->
+            <plugin>
+                <groupId>io.vidocq.vauban</groupId>
+                <artifactId>vauban-maven-plugin</artifactId>
+                <version>${vauban.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate</id>
+                        <goals><goal>generate</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>

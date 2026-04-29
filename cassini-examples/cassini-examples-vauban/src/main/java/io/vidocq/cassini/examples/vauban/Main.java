@@ -1,8 +1,5 @@
 package io.vidocq.cassini.examples.vauban;
 
-import io.vidocq.cassini.examples.vauban.resource.GreetingResource;
-import io.vidocq.cassini.examples.vauban.resource.TodoResource;
-import io.vidocq.cassini.examples.vauban.service.TodoService;
 import io.vidocq.chappe.api.Server;
 import io.vidocq.vauban.core.container.VaubanContainer;
 
@@ -25,15 +22,12 @@ import java.util.concurrent.CountDownLatch;
 public class Main {
 
     static void main(String[] args) throws Exception {
-        // Note : VaubanContainer.builder().scanLocal() existe et fonctionne en
-        // classpath mode (unnamed module), mais pas en JPMS named module —
-        // ClassLoader.getResources() ne retourne pas les dossiers des named
-        // modules. Pour rester compatible avec les deux modes, on déclare les
-        // beans explicitement.
+        // scanClasspath() lit META-INF/vauban-beans.list, généré à la compile
+        // par vauban-maven-plugin (goal 'generate'). Fonctionne en JPMS named
+        // module — les ressources META-INF/ sont toujours accessibles via
+        // ClassLoader.getResources() peu importe le mode de packaging.
         var container = VaubanContainer.builder()
-                .addBeanClass(TodoService.class)
-                .addBeanClass(GreetingResource.class)
-                .addBeanClass(TodoResource.class)
+                .scanClasspath()
                 .build();
 
         var server = Server.builder()

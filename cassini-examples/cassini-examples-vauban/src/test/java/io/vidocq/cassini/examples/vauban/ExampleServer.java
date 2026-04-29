@@ -1,8 +1,5 @@
 package io.vidocq.cassini.examples.vauban;
 
-import io.vidocq.cassini.examples.vauban.resource.GreetingResource;
-import io.vidocq.cassini.examples.vauban.resource.TodoResource;
-import io.vidocq.cassini.examples.vauban.service.TodoService;
 import io.vidocq.chappe.api.Server;
 import io.vidocq.vauban.core.container.VaubanContainer;
 
@@ -24,9 +21,7 @@ public class ExampleServer implements AutoCloseable {
         }
 
         this.container = VaubanContainer.builder()
-                .addBeanClass(TodoService.class)
-                .addBeanClass(GreetingResource.class)
-                .addBeanClass(TodoResource.class)
+                .scanClasspath()
                 .build();
 
         this.server = Server.builder()

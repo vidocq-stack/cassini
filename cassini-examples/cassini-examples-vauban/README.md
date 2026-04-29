@@ -64,15 +64,44 @@ ou `Main.java` depuis IntelliJ. Ouvrir `http://localhost:8080/` dans le navigate
 
 ```java
 var container = VaubanContainer.builder()
-        .addBeanClass(TodoService.class)
-        .addBeanClass(GreetingResource.class)
-        .addBeanClass(TodoResource.class)
+        .scanClasspath()
         .build();
 ```
 
-`VaubanContainer.build()` enregistre l'instance comme `CDI.current()` (via `VaubanCDIProvider` ServiceLoader). Toutes les classes sont scannées, leurs annotations CDI traitées (`@ApplicationScoped`, `@Inject`, etc.).
+`scanClasspath()` lit `META-INF/vauban-beans.list`, un fichier index **généré à la compile** par `vauban-maven-plugin:generate` qui liste toutes les classes annotées CDI (`@ApplicationScoped`, `@RequestScoped`, etc.) du module.
 
-> **Pourquoi pas `scanLocal()` ?** Vauban propose un scan auto par package, mais il s'appuie sur `ClassLoader.getResources(packagePath)` qui ne retourne pas les répertoires des **named modules** JPMS — uniquement ceux du classpath (unnamed modules). Comme cassini-examples-vauban est un module nommé, on déclare les beans explicitement pour rester compatible avec les deux modes de lancement.
+```
+# META-INF/vauban-beans.list — généré
+io.vidocq.cassini.examples.vauban.resource.GreetingResource
+io.vidocq.cassini.examples.vauban.resource.TodoResource
+io.vidocq.cassini.examples.vauban.service.TodoService
+```
+
+**Avantages** :
+- Pas de scan runtime, pas de réflexion par package
+- Fonctionne en JPMS named module (les ressources `META-INF/` sont toujours accessibles via `ClassLoader.getResources()`, contrairement au scan de répertoires)
+- Détection à la compile : si un bean est mal annoté, le plugin le signale immédiatement
+- Liste réutilisable : `scanClasspath()` agrège tous les `vauban-beans.list` du classpath, donc multi-module supporté
+
+`VaubanContainer.build()` enregistre l'instance comme `CDI.current()` (via `VaubanCDIProvider` ServiceLoader).
+
+#### Configuration plugin
+
+```xml
+<plugin>
+    <groupId>io.vidocq.vauban</groupId>
+    <artifactId>vauban-maven-plugin</artifactId>
+    <version>${vauban.version}</version>
+    <executions>
+        <execution>
+            <id>generate</id>
+            <goals><goal>generate</goal></goals>
+        </execution>
+    </executions>
+</plugin>
+```
+
+> Alternative `addBeanClass()` (déclaration explicite) reste disponible pour les cas où on ne veut pas (ou pas pu) configurer le plugin Maven.
 
 ### 2. Auto-discovery du `BeanProvider`
 
