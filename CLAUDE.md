@@ -33,19 +33,19 @@ mvn test
 Cassini est une implémentation Jakarta RESTful Web Services 4.0 (Core Profile / SE-Bootstrap) **transport-agnostique**.
 
 ```
-cassini-api     ← SPI HTTP public (CassiniHttpExchange, CassiniHttpAdapter, ResourceFactory)
-cassini-core    ← Implémentation JAX-RS (Invoker, ResourceScanner, MessageBodyRegistry, RuntimeDelegate)
-cassini-cdi     ← Intégration CDI optionnelle (@RequestScoped via BCE)
-cassini-chappe  ← Adapter Chappe (transport de référence, utilisé pour le TCK)
-cassini-jdk-http ← Adapter JDK pur (com.sun.net.httpserver, zéro dépendance externe)
-cassini-tck     ← Runner Arquillian + harness officiel Jakarta REST 4.0
+cassini-api          ← SPI HTTP public (CassiniHttpExchange, CassiniHttpAdapter, ResourceFactory, BeanProvider)
+cassini-core         ← Implémentation JAX-RS (Invoker, ResourceScanner, MessageBodyRegistry, RuntimeDelegate)
+cassini-cdi-vauban   ← Adapter CDI Vauban (BeanProvider + BCE @RequestScoped, optionnel)
+cassini-chappe       ← Adapter Chappe (transport de référence, utilisé pour le TCK)
+cassini-jdk-http     ← Adapter JDK pur (com.sun.net.httpserver, zéro dépendance externe)
+cassini-tck          ← Runner Arquillian + harness officiel Jakarta REST 4.0
 ```
 
 **Flux d'une requête :** `CassiniHttpAdapter.dispatch()` → `Invoker` (core) → resource method → `CassiniHttpResponse` → transport.
 
 **Deux modes d'instanciation des ressources :**
 - Mode A : `new()` via `DefaultResourceFactory` (jdk-http, standalone)
-- Mode B : CDI via `CdiResourceFactory` (cassini-cdi)
+- Mode B : DI via SPI publique `BeanProvider` (`cassini-cdi-vauban` ou tout autre adapter ServiceLoader). Aucun import `jakarta.cdi` dans `cassini-api`/`cassini-core` — découplage strict.
 
 **`RuntimeDelegate`** : déclaré uniquement dans `cassini-chappe` et `cassini-jdk-http` via ServiceLoader. `cassini-core` contient `CassiniRuntimeDelegate` mais ne l'expose plus pour éviter les collisions.
 

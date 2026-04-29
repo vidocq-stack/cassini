@@ -15,14 +15,11 @@ module io.vidocq.cassini.core {
     requires java.xml;
 
     exports io.vidocq.cassini.internal
-            to io.vidocq.cassini.tck,
-               io.vidocq.cassini.cdi;
+            to io.vidocq.cassini.tck;
     exports io.vidocq.cassini.internal.context
-            to io.vidocq.cassini.tck,
-               io.vidocq.cassini.cdi;
+            to io.vidocq.cassini.tck;
     exports io.vidocq.cassini.internal.filter
-            to io.vidocq.cassini.tck,
-               io.vidocq.cassini.cdi;
+            to io.vidocq.cassini.tck;
     exports io.vidocq.cassini.internal.multipart
             to io.vidocq.cassini.tck;
     exports io.vidocq.cassini.internal.runtime
@@ -31,7 +28,6 @@ module io.vidocq.cassini.core {
     exports io.vidocq.cassini.internal.transport
             to io.vidocq.cassini.tck;
 
-    opens io.vidocq.cassini.internal to io.vidocq.cassini.cdi;
     opens io.vidocq.cassini.internal.runtime to io.vidocq.cassini.chappe, io.vidocq.cassini.jdkhttp;
 
     provides io.vidocq.cassini.spi.http.CassiniStack.BuilderFactory

@@ -11,7 +11,7 @@
 
     <artifactId>cassini-examples-vauban</artifactId>
     <name>Cassini :: Examples :: Vauban CDI</name>
-    <description>Exemple Cassini avec intégration Vauban CDI — bootstrap SeBootstrap + CdiResourceFactory</description>
+    <description>Exemple Cassini avec intégration Vauban CDI — SeBootstrap + auto-discovery du BeanProvider Vauban</description>
 
     <dependencies>
         <!-- API compile : SeBootstrap + CDI + JSON-B -->
@@ -32,6 +32,12 @@
             <artifactId>vauban-classloader-spi</artifactId>
             <version>${vauban.version}</version>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- Adapter Vauban CDI : fournit BeanProvider via ServiceLoader -->
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-cdi-vauban</artifactId>
         </dependency>
 
         <!-- Runtime : transport Chappe découvert via ServiceLoader -->

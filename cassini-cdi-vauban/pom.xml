@@ -9,9 +9,9 @@
         <artifactId>cassini-parent</artifactId>
     </parent>
 
-    <artifactId>cassini-cdi</artifactId>
-    <name>Cassini :: CDI Integration</name>
-    <description>SPI d'intégration CDI optionnelle (Mode B : ResourceFactory déléguant à BeanManager + BCE @RequestScoped)</description>
+    <artifactId>cassini-cdi-vauban</artifactId>
+    <name>Cassini :: CDI Vauban Adapter</name>
+    <description>Adapter Vauban CDI pour Cassini : implémente la SPI BeanProvider et fournit une BCE @RequestScoped pour les ressources @Path.</description>
 
     <dependencies>
         <dependency>
@@ -19,13 +19,13 @@
             <artifactId>cassini-api</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.vidocq.cassini</groupId>
-            <artifactId>cassini-core</artifactId>
-        </dependency>
-        <dependency>
             <groupId>jakarta.enterprise</groupId>
             <artifactId>jakarta.enterprise.cdi-api</artifactId>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.vauban</groupId>
+            <artifactId>vauban-core</artifactId>
         </dependency>
 
         <dependency>

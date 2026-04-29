@@ -105,7 +105,7 @@ Le script :
 cassini/
 ├── cassini-api          ← SPI HTTP (zéro dép hors jakarta.ws.rs-api)
 ├── cassini-core         ← Invoker, ResourceScanner, MessageBodyRegistry, providers built-in
-├── cassini-cdi          ← CdiResourceFactory + CassiniScopeExtension (Mode B)
+├── cassini-cdi-vauban   ← VaubanBeanProvider (SPI BeanProvider) + CassiniScopeExtension (Mode B)
 ├── cassini-chappe       ← ChappeHttpAdapter + ChappeRuntimeDelegate (transport TCK)
 ├── cassini-jdk-http     ← JdkHttpAdapter (Mode A pur, JDK natif)
 └── cassini-tck          ← runner Arquillian + 6 challenges
@@ -134,7 +134,8 @@ Cassini est transport-agnostique. Le SPI HTTP (`cassini-api`) :
 - `CassiniHttpAdapter` : point d'entrée serveur (`dispatch → CompletionStage<Void>`)
 - `CassiniAsyncContext` : suspend/resume/timeout/callbacks (M2h)
 - `CassiniStreamingSink` : push chunked (M2i)
-- `ResourceFactory` : Mode A (`new()`) ou Mode B (CDI via `cassini-cdi`)
+- `ResourceFactory` : Mode A (`new()`)
+- `BeanProvider` : Mode B (DI managé — `cassini-cdi-vauban` ou tout autre adapter ServiceLoader)
 
 Deux transports sont fournis :
 - **`cassini-chappe`** : transport de référence (utilisé pour le TCK)

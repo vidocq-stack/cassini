@@ -9,13 +9,11 @@ package io.vidocq.cassini.spi.resource;
  *   <li><b>Mode A (Cassini "pur")</b> — la fabrique par défaut
  *       {@link #defaultFactory()} crée une nouvelle instance par requête via
  *       le constructeur sans argument. Pas d'injection.</li>
- *   <li><b>Mode B (Cassini + CDI)</b> — {@code cassini-cdi} fournit
- *       {@code CdiResourceFactory} qui délègue au {@code BeanManager} pour
- *       support des scopes ({@code @RequestScoped}, {@code @ApplicationScoped})
- *       et de l'injection.</li>
+ *   <li><b>Mode B (Cassini + DI managé)</b> — préférer la SPI
+ *       {@link io.vidocq.cassini.spi.bean.BeanProvider} et son adapter
+ *       {@code cassini-cdi-vauban} (ou tout autre BeanProvider) pour déléguer
+ *       l'instanciation à un container DI.</li>
  * </ul>
- *
- * <p>L'implémentation est sélectionnée via {@link java.util.ServiceLoader}.
  */
 public interface ResourceFactory {
 
@@ -49,7 +47,7 @@ public interface ResourceFactory {
                     throw new IllegalStateException(
                             "Cannot instantiate " + resourceClass.getName()
                                     + " — no public no-arg constructor (Mode A requires one, "
-                                    + "or use cassini-cdi for injection-based instantiation)",
+                                    + "or use a BeanProvider for injection-based instantiation)",
                             e);
                 }
             }

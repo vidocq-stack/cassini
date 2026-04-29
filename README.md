@@ -26,7 +26,7 @@ Cassini est une implémentation complète de **Jakarta RESTful Web Services 4.0*
 | | Jersey 4 | RESTEasy | **Cassini** |
 |---|---|---|---|
 | Transport | Grizzly/Jetty | Undertow | **SPI pluggable (Chappe, JDK HTTP, ...)** |
-| CDI | HK2 bridge | Weld intégré | **Optionnel — `cassini-cdi` ou aucun** |
+| CDI | HK2 bridge | Weld intégré | **Optionnel — SPI `BeanProvider` (`cassini-cdi-vauban`, ...) ou aucun** |
 | JPMS | Partiel | Non | **Natif (`module-info.java` complet)** |
 | SE-Bootstrap | Via Grizzly | Non | **Natif** |
 | JDK minimum | 17 | 11 | **25** |
@@ -57,8 +57,8 @@ graph TB
         JDK[cassini-jdk-http<br/><i>JDK HttpServer, zéro dép externe</i>]
     end
 
-    subgraph "cassini-cdi — optionnel"
-        CDI[CdiResourceFactory<br/><i>scopes + @Inject via BeanManager</i>]
+    subgraph "cassini-cdi-vauban — optionnel"
+        CDI[VaubanBeanProvider<br/><i>scopes + @Inject via VaubanContainer</i>]
         BCE[CassiniScopeExtension<br/><i>BCE : @RequestScoped auto</i>]
     end
 
@@ -107,9 +107,9 @@ sequenceDiagram
 
 | Module | Rôle | Dépendances clés |
 |--------|------|------------------|
-| `cassini-api` | SPI public : `CassiniHttpExchange`, `CassiniHttpAdapter`, `ResourceFactory` | `jakarta.ws.rs-api` uniquement |
+| `cassini-api` | SPI public : `CassiniHttpExchange`, `CassiniHttpAdapter`, `ResourceFactory`, `BeanProvider` | `jakarta.ws.rs-api` uniquement |
 | `cassini-core` | Moteur complet : routing, params, MBR/MBW, filtres, SSE | `cassini-api`, Yasson, Jakarta JSON-B |
-| `cassini-cdi` | Intégration CDI : `CdiResourceFactory`, BCE `@RequestScoped` auto | `cassini-core`, CDI 4.1 |
+| `cassini-cdi-vauban` | Adapter Vauban CDI : `VaubanBeanProvider` (SPI BeanProvider), BCE `@RequestScoped` auto | `cassini-api`, CDI 4.1, `io.vidocq.vauban.core` |
 | `cassini-chappe` | Adapter Chappe + `ChappeRuntimeDelegate` (SE-Bootstrap) | `cassini-core`, `io.vidocq.chappe` |
 | `cassini-jdk-http` | Adapter `com.sun.net.httpserver.HttpServer` (JDK pur) | `cassini-core` |
 | `cassini-tck` | Runner TCK officiel Jakarta REST 4.0 (Arquillian) | — hors reactor |
@@ -324,21 +324,18 @@ server.start();
 
 ---
 
-## Mode C — CDI (Weld / Vauban)
+## Mode C — CDI via SPI `BeanProvider`
 
-`cassini-cdi` active l'injection `@Inject`, les scopes (`@RequestScoped`, `@ApplicationScoped`) et l'ajout automatique de `@RequestScoped` sur les classes `@Path` sans scope explicite.
+Cassini expose une SPI publique `io.vidocq.cassini.spi.bean.BeanProvider` qui découple le moteur de tout container DI. L'adapter de référence est `cassini-cdi-vauban` (CDI Vauban) ; n'importe quel autre adapter (Weld, OpenWebBeans, Pico, etc.) peut implémenter la même SPI et être enregistré via ServiceLoader.
 
-### Dépendances Maven
+`CassiniStack.builder()` détecte automatiquement la `BeanProvider.Factory` de plus haute priorité et l'applique. Le builder accepte aussi un `BeanProvider` explicite via `.beanProvider(provider)`.
+
+### Dépendances Maven (Vauban)
 
 ```xml
 <dependency>
     <groupId>io.vidocq.cassini</groupId>
-    <artifactId>cassini-core</artifactId>
-    <version>${cassini.version}</version>
-</dependency>
-<dependency>
-    <groupId>io.vidocq.cassini</groupId>
-    <artifactId>cassini-cdi</artifactId>
+    <artifactId>cassini-cdi-vauban</artifactId>
     <version>${cassini.version}</version>
 </dependency>
 <dependency>
@@ -346,11 +343,10 @@ server.start();
     <artifactId>cassini-chappe</artifactId>
     <version>${cassini.version}</version>
 </dependency>
-<!-- Implémentation CDI (Weld SE ou Vauban) -->
 <dependency>
-    <groupId>org.jboss.weld.se</groupId>
-    <artifactId>weld-se-core</artifactId>
-    <version>6.0.x</version>
+    <groupId>io.vidocq.vauban</groupId>
+    <artifactId>vauban-core</artifactId>
+    <version>${vauban.version}</version>
 </dependency>
 ```
 
@@ -358,69 +354,43 @@ server.start();
 
 ```java
 @Path("/items")
-@RequestScoped                     // ou automatique via CassiniScopeExtension
+@ApplicationScoped                 // ou @RequestScoped automatique via CassiniScopeExtension
 public class ItemResource {
 
     @Inject
-    private ItemService service;   // scoped bean injecté par CDI
+    ItemService service;           // scoped bean injecté par CDI
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
-    public List<Item> list() {
-        return service.findAll();
-    }
-
-    @GET
-    @Path("/{id}")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Item get(@PathParam("id") long id) {
-        return service.findById(id)
-            .orElseThrow(() -> new NotFoundException("Item " + id + " introuvable"));
-    }
-}
-
-@ApplicationScoped
-public class ItemService {
-    private final List<Item> store = new CopyOnWriteArrayList<>();
-
-    public List<Item> findAll() { return List.copyOf(store); }
-
-    public Optional<Item> findById(long id) {
-        return store.stream().filter(i -> i.id() == id).findFirst();
-    }
+    public List<Item> list() { return service.findAll(); }
 }
 ```
 
-### Démarrage avec Weld SE
+### Démarrage avec Vauban + SeBootstrap
 
 ```java
-import io.vidocq.cassini.cdi.CdiResourceFactory;
-import org.jboss.weld.environment.se.Weld;
+import io.vidocq.vauban.core.container.VaubanContainer;
+import jakarta.ws.rs.SeBootstrap;
+import jakarta.ws.rs.core.Application;
 
 public class Main {
     public static void main(String[] args) throws Exception {
-        // Démarrage du container CDI
-        var weld = new Weld();
-        var container = weld.initialize();
-        var bm = container.getBeanManager();
+        var container = VaubanContainer.builder()
+                .addBeanClass(ItemService.class)
+                .addBeanClass(ItemResource.class)
+                .build();
 
-        // Invoker CDI-aware : scopes + injection
-        var invoker = Invoker.forBeanManager(bm);
-        var routes  = ResourceScanner.discover(bm);   // découverte via BeanManager
-        var router  = new UriRouter(routes);
-
-        Handler handler = new ChappeHttpAdapter(router, invoker,
-            action -> RequestContext.runInScope(bm, action));  // activation @RequestScoped
-
-        Server.builder().port(8080).handler(handler).build().start();
-        System.out.println("Cassini + CDI démarré sur http://localhost:8080");
+        // Application vide : Cassini découvre le BeanProvider Vauban
+        // via ServiceLoader et scanne les classes @Path/@Provider du container.
+        SeBootstrap.start(new Application() {},
+                SeBootstrap.Configuration.builder().host("0.0.0.0").port(8080).build());
     }
 }
 ```
 
 ### `CassiniScopeExtension` — BCE auto-scope
 
-Quand `cassini-cdi` est sur le classpath, la Build Compatible Extension `CassiniScopeExtension` ajoute automatiquement `@RequestScoped` aux classes `@Path` sans scope explicite — aucune annotation supplémentaire requise.
+Quand `cassini-cdi-vauban` est sur le classpath, la Build Compatible Extension `CassiniScopeExtension` ajoute automatiquement `@RequestScoped` aux classes `@Path` sans scope explicite — aucune annotation supplémentaire requise.
 
 ```java
 @Path("/users")

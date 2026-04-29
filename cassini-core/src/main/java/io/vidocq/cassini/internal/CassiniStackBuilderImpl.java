@@ -1,6 +1,7 @@
 package io.vidocq.cassini.internal;
 
 import io.vidocq.cassini.internal.filter.FilterRegistry;
+import io.vidocq.cassini.spi.bean.BeanProvider;
 import io.vidocq.cassini.spi.http.CassiniStack;
 import io.vidocq.cassini.spi.resource.ResourceFactory;
 import jakarta.ws.rs.core.Application;
@@ -24,6 +25,7 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
 
     private Application application;
     private ResourceFactory resourceFactory;
+    private BeanProvider beanProvider;
     private final List<Object> extraProviders = new ArrayList<>();
 
     @Override
@@ -45,6 +47,12 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
     }
 
     @Override
+    public CassiniStack.Builder beanProvider(BeanProvider provider) {
+        this.beanProvider = provider;
+        return this;
+    }
+
+    @Override
     public CassiniStack build() {
         Set<Class<?>> resourceClasses = new LinkedHashSet<>();
         Map<Class<?>, Object> resourceSingletons = new LinkedHashMap<>();
@@ -60,6 +68,13 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
             }
         }
 
+        // Fusionner les classes connues du BeanProvider (annotées @Path/@Provider).
+        if (beanProvider != null) {
+            for (Class<?> c : beanProvider.getResourceClasses()) {
+                resourceClasses.add(jaxrsAnnotatedClass(c));
+            }
+        }
+
         Set<Class<?>> pathClasses = new LinkedHashSet<>();
         FilterRegistry filters = new FilterRegistry();
         MessageBodyRegistry bodies = new MessageBodyRegistry();
@@ -69,6 +84,14 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
             if (c.isAnnotationPresent(jakarta.ws.rs.Path.class)) pathClasses.add(c);
             if (c.isAnnotationPresent(jakarta.ws.rs.ext.Provider.class)) {
                 Object inst = resourceSingletons.computeIfAbsent(c, k -> {
+                    // Préférer le BeanProvider si la classe y est managée.
+                    if (beanProvider != null) {
+                        try {
+                            return beanProvider.getBean(k);
+                        } catch (IllegalArgumentException ignored) {
+                            // fallback ci-dessous
+                        }
+                    }
                     try { return k.getDeclaredConstructor().newInstance(); }
                     catch (ReflectiveOperationException e) { return null; }
                 });
@@ -97,10 +120,18 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
 
         final Map<Class<?>, Object> singletons = Map.copyOf(resourceSingletons);
         final ResourceFactory factory = resourceFactory;
+        final BeanProvider bp = beanProvider;
 
         Function<Class<?>, Object> resolver = cls -> {
             Object fixed = singletons.get(cls);
             if (fixed != null) return fixed;
+            if (bp != null) {
+                try {
+                    return bp.getBean(cls);
+                } catch (IllegalArgumentException ignored) {
+                    // fallback : factory ou newInstance
+                }
+            }
             if (factory != null) {
                 return factory.create(cls);
             }

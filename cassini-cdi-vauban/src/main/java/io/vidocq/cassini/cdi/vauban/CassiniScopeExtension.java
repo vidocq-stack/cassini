@@ -1,4 +1,4 @@
-package io.vidocq.cassini.cdi;
+package io.vidocq.cassini.cdi.vauban;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.Dependent;

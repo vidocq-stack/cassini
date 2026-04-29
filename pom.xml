@@ -108,7 +108,7 @@
     <subprojects>
         <subproject>cassini-api</subproject>
         <subproject>cassini-core</subproject>
-        <subproject>cassini-cdi</subproject>
+        <subproject>cassini-cdi-vauban</subproject>
         <subproject>cassini-chappe</subproject>
         <subproject>cassini-jdk-http</subproject>
         <subproject>cassini-examples</subproject>
@@ -186,7 +186,7 @@
                 <version>${chappe.version}</version>
             </dependency>
 
-            <!-- Vauban (test scope pour cassini-cdi) -->
+            <!-- Vauban (compile scope pour cassini-cdi-vauban) -->
             <dependency>
                 <groupId>io.vidocq.vauban</groupId>
                 <artifactId>vauban-api</artifactId>
@@ -211,7 +211,7 @@
             </dependency>
             <dependency>
                 <groupId>io.vidocq.cassini</groupId>
-                <artifactId>cassini-cdi</artifactId>
+                <artifactId>cassini-cdi-vauban</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

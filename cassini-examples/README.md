@@ -6,7 +6,7 @@ Trois exemples illustrent les manières d'utiliser Cassini selon le transport et
 |---|---|---|---|
 | `cassini-examples-chappe` | Chappe (HTTP/1.1 + HTTP/2) | non | `SeBootstrap.start()` |
 | `cassini-examples-jdkhttp` | JDK natif (`com.sun.net.httpserver`) | non | `CassiniStack.builder()` ou `SeBootstrap.start()` |
-| `cassini-examples-vauban` | Chappe + CDI Vauban | oui (`@ApplicationScoped` + `@Inject`) | `VaubanContainer` + `SeBootstrap.start()` |
+| `cassini-examples-vauban` | Chappe + CDI Vauban | oui (`@ApplicationScoped` + `@Inject`) | `VaubanContainer` + `SeBootstrap.start()` (auto-discovery `BeanProvider`) |
 
 Tous trois exposent les mêmes ressources pour comparaison directe :
 - `GET /greetings` → `"Hello, World!"`
@@ -69,6 +69,33 @@ Dans la pratique, une application n'utilise qu'**un seul** transport : on n'incl
 
 ---
 
+## Découverte du `BeanProvider` (intégration DI)
+
+Cassini expose une SPI publique `io.vidocq.cassini.spi.bean.BeanProvider` permettant à un container DI (CDI Vauban, Weld, OpenWebBeans, ou tout autre mécanisme) de fournir des instances managées de ressources et providers JAX-RS, **sans que `cassini-api` ni `cassini-core` ne dépendent de `jakarta.cdi`**.
+
+```
+CassiniStack.builder()
+    ↓
+ServiceLoader.load(BeanProvider.Factory.class)
+    ↓ (max priority())
+Factory.create() → BeanProvider
+    ↓ utilisé pour instancier @Path / @Provider
+```
+
+| Adapter | Container | Priorité |
+|---|---|---|
+| `cassini-cdi-vauban` | Vauban CDI (`io.vidocq.vauban`) | 100 |
+| (futur) `cassini-cdi-weld` | Weld | — |
+| (futur) `cassini-cdi-owb` | OpenWebBeans | — |
+
+Quand un `BeanProvider` est actif :
+
+- `BeanProvider.getResourceClasses()` est fusionné avec `Application.getClasses()` et `getSingletons()` — l'utilisateur peut donc passer `new Application() {}` vide.
+- Le `resolver` interne tente d'abord `beanProvider.getBean(cls)`. Si la classe n'est pas managée (`IllegalArgumentException`), fallback sur `ResourceFactory` puis sur `newInstance()`.
+- L'utilisateur peut désactiver l'auto-discovery via `CassiniStack.builder().beanProvider(null)`.
+
+---
+
 ## Bootstrap manuel — `CassiniStack`
 
 Pour les cas où on ne veut **pas** passer par `SeBootstrap` (par exemple pour configurer finement le transport, intégrer dans un framework existant, ou dans un pipeline de tests), on bootstrap manuellement :
@@ -79,7 +106,7 @@ import io.vidocq.cassini.spi.http.CassiniHttpAdapter;
 
 var stack = CassiniStack.builder()
     .application(new MyApplication())
-    .resourceFactory(new CdiResourceFactory())  // optionnel pour CDI
+    .beanProvider(myBeanProvider)               // optionnel — sinon auto-discovery
     .provider(new MyExceptionMapper())          // optionnel
     .build();
 
@@ -119,17 +146,13 @@ var container = VaubanContainer.builder()
         .addBeanClass(TodoResource.class)
         .build();
 
-// 2. Récupérer les instances CDI (avec @Inject résolu) et les passer comme singletons
-var todos = container.select(TodoResource.class);
-
-SeBootstrap.start(new Application() {
-    @Override public Set<Object> getSingletons() {
-        return Set.of(todos /* + autres */);
-    }
-}, config);
+// 2. SeBootstrap — l'Application est vide. Cassini découvre le BeanProvider
+//    Vauban via ServiceLoader, scanne les classes @Path/@Provider managées
+//    par le container et les instancie via @Inject résolu.
+SeBootstrap.start(new Application() {}, config);
 ```
 
-L'astuce : `getSingletons()` reçoit des instances déjà managées par CDI — `SeBootstrap` les utilise directement sans ré-instancier. Le `ChappeRuntimeDelegate.jaxrsAnnotatedClass()` remonte la hiérarchie pour trouver `@Path` sur la classe parente (les proxies CDI sont des sous-classes sans annotation directe).
+Aucune liste manuelle de singletons : `VaubanBeanProvider.getResourceClasses()` itère le `BeanManager` et expose toutes les classes annotées `@Path`/`@Provider` au stack. Le `resolver` interne appelle `container.select()` à chaque dispatch (respecte `@RequestScoped` etc.).
 
 ---
 
@@ -152,13 +175,13 @@ L'astuce : `getSingletons()` reçoit des instances déjà managées par CDI — 
    exemple ───┼─ cassini-jdk-http ──→ requires cassini-api + cassini-core
               │     provides RuntimeDelegate with JdkHttpRuntimeDelegate
               │
-   exemple ───┴─ cassini-cdi ──→ requires cassini-api uniquement
-                    provides ResourceFactory with CdiResourceFactory
+   exemple ───┴─ cassini-cdi-vauban ──→ requires cassini-api + io.vidocq.vauban.core
+                    provides BeanProvider.Factory with VaubanBeanProviderFactory
 ```
 
-**Règle d'or** : `cassini-chappe`, `cassini-jdk-http` et `cassini-cdi` n'importent **aucun package interne** de `cassini-core`. Ils utilisent uniquement la SPI publique (`cassini-api` + `CassiniStack`). Le `requires cassini-core` n'est là que pour mettre le module dans le graph (pour la découverte ServiceLoader du `BuilderFactory`).
+**Règle d'or** : `cassini-chappe`, `cassini-jdk-http` et `cassini-cdi-vauban` n'importent **aucun package interne** de `cassini-core`. Ils utilisent uniquement la SPI publique (`cassini-api` + `CassiniStack` + `BeanProvider`). Le `requires cassini-core` n'est même plus nécessaire pour `cassini-cdi-vauban` qui ne parle qu'à `BeanProvider` (SPI publique).
 
-Cette discipline permet à n'importe quel écosystème (Vidocq, Weld, Quarkus, autre) d'écrire son propre transport ou intégration CDI **sans accéder aux internes de Cassini**.
+Cette discipline permet à n'importe quel écosystème (Vidocq, Weld, Quarkus, autre) d'écrire son propre transport ou intégration DI **sans accéder aux internes de Cassini**.
 
 ---
 

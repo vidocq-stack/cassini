@@ -9,9 +9,9 @@ Cassini est l'**implémentation Jakarta REST 4.0 standalone** extraite de
 
 | Module | Rôle |
 |--------|------|
-| `cassini-api` | SPI HTTP (CassiniHttpExchange/Adapter/AsyncContext/StreamingSink + ResourceFactory) |
+| `cassini-api` | SPI HTTP (CassiniHttpExchange/Adapter/AsyncContext/StreamingSink + ResourceFactory + BeanProvider) |
 | `cassini-core` | Moteur REST 4.0 (Invoker, ResourceScanner, MessageBodyRegistry, providers built-in) |
-| `cassini-cdi` | Intégration CDI optionnelle (Mode B) — CdiResourceFactory + CassiniScopeExtension (BCE) |
+| `cassini-cdi-vauban` | Adapter Vauban CDI (Mode B) — VaubanBeanProvider via SPI BeanProvider + CassiniScopeExtension (BCE) |
 | `cassini-chappe` | Adapter HTTP Chappe (transport de référence, utilisé par le TCK) |
 | `cassini-jdk-http` | Adapter HTTP JDK natif (Mode A pur, zéro dép externe) |
 | `cassini-tck` | Runner Arquillian + harness officiel Jakarta REST 4.0 |

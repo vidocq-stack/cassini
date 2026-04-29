@@ -5,6 +5,7 @@ module io.vidocq.cassini.examples.vauban {
     requires jakarta.inject;
     requires jakarta.json.bind;
     requires io.vidocq.vauban.core;
+    requires io.vidocq.cassini.cdi.vauban;
 
     // Ouvert à tous : JAX-RS + JSON-B font de la reflection sur ressources,
     // service et model pour injection et sérialisation.

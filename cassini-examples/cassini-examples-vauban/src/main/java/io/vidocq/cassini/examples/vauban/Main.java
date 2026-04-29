@@ -7,7 +7,6 @@ import io.vidocq.vauban.core.container.VaubanContainer;
 import jakarta.ws.rs.SeBootstrap;
 import jakarta.ws.rs.core.Application;
 
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -17,10 +16,11 @@ import java.util.concurrent.CountDownLatch;
  * <ol>
  *   <li>Démarrer le container CDI Vauban — s'enregistre automatiquement
  *       comme {@code CDI.current()} via {@code VaubanCDIProvider} (ServiceLoader).</li>
- *   <li>Obtenir les instances CDI (injection résolue) et les passer comme
- *       singletons à l'Application JAX-RS.</li>
- *   <li>SeBootstrap découvre {@code ChappeRuntimeDelegate} via ServiceLoader
- *       et démarre le serveur avec ces singletons.</li>
+ *   <li>{@code SeBootstrap.start} — Cassini découvre via ServiceLoader la SPI
+ *       {@code BeanProvider} fournie par {@code cassini-cdi-vauban} et scanne
+ *       automatiquement les classes {@code @Path}/{@code @Provider} connues
+ *       du container, sans qu'il soit nécessaire de les déclarer dans
+ *       {@code Application}.</li>
  * </ol>
  */
 public class Main {
@@ -32,16 +32,8 @@ public class Main {
                 .addBeanClass(TodoResource.class)
                 .build();
 
-        // Instances CDI avec injection résolue (@Inject TodoService satisfait)
-        var greeting = container.select(GreetingResource.class);
-        var todos    = container.select(TodoResource.class);
-
         var instance = SeBootstrap.start(
-                new Application() {
-                    @Override public Set<Object> getSingletons() {
-                        return Set.of(greeting, todos);
-                    }
-                },
+                new Application() {},
                 SeBootstrap.Configuration.builder()
                         .host("0.0.0.0").port(8080).build()
         ).toCompletableFuture().get();

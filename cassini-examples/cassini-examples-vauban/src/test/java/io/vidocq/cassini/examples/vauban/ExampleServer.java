@@ -8,14 +8,14 @@ import jakarta.ws.rs.SeBootstrap;
 import jakarta.ws.rs.core.Application;
 
 import java.net.ServerSocket;
-import java.util.Set;
 
 /**
  * Serveur de test — démarre Vauban CDI + Cassini/Chappe sur un port aléatoire.
  *
- * <p>Utilise {@code SeBootstrap} avec des singletons CDI : les instances
- * ressources sont créées par Vauban ({@code @Inject} résolu) puis passées
- * à l'Application JAX-RS. Aucun accès aux packages internes de Cassini.</p>
+ * <p>L'application JAX-RS est volontairement vide : Cassini découvre la SPI
+ * {@code BeanProvider} fournie par {@code cassini-cdi-vauban} via ServiceLoader
+ * et scanne automatiquement les classes {@code @Path}/{@code @Provider}
+ * connues du container Vauban.</p>
  */
 public class ExampleServer implements AutoCloseable {
 
@@ -34,15 +34,8 @@ public class ExampleServer implements AutoCloseable {
                 .addBeanClass(TodoResource.class)
                 .build();
 
-        var greeting = container.select(GreetingResource.class);
-        var todos    = container.select(TodoResource.class);
-
         this.instance = SeBootstrap.start(
-                new Application() {
-                    @Override public Set<Object> getSingletons() {
-                        return Set.of(greeting, todos);
-                    }
-                },
+                new Application() {},
                 SeBootstrap.Configuration.builder()
                         .host("127.0.0.1").port(this.port).build()
         ).toCompletableFuture().get();
