@@ -1,6 +1,5 @@
 module io.vidocq.cassini.cdi {
     requires io.vidocq.cassini.api;
-    requires io.vidocq.cassini.core;
     requires jakarta.cdi;
     requires jakarta.ws.rs;
 

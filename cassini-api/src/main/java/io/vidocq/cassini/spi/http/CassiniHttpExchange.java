@@ -83,6 +83,26 @@ public interface CassiniHttpExchange {
     /** Préfixe d'application (ex. {@code "/api"}). Vide ou {@code "/"} si pas de contexte. */
     default String contextPath() { return ""; }
 
+    /**
+     * Chemin de la requête sans le contextPath — prêt pour le routing.
+     *
+     * <p>L'implémentation par défaut soustrait {@link #contextPath()} de
+     * {@link #requestUri()}{@code .getRawPath()}. Les transports qui disposent
+     * d'un {@code pathInfo} natif (ex. Chappe {@code Request.pathInfo()}) doivent
+     * surcharger cette méthode pour éviter un double-décodage.
+     */
+    default String routingPath() {
+        URI u = requestUri();
+        String path = u != null ? u.getRawPath() : null;
+        if (path == null || path.isEmpty()) path = "/";
+        String ctx = contextPath();
+        if (ctx != null && !ctx.isEmpty() && !"/".equals(ctx) && path.startsWith(ctx)) {
+            path = path.substring(ctx.length());
+            if (path.isEmpty()) path = "/";
+        }
+        return path;
+    }
+
     void setStatus(int code);
 
     /** Headers de réponse mutables, lus juste avant flush du body. */

@@ -75,6 +75,13 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
 
     @Override public String contextPath() { return contextPath; }
 
+    @Override public String routingPath() {
+        // Chappe fournit pathInfo() qui est déjà stripped du contextPath.
+        String pi = request.pathInfo();
+        if (pi == null || pi.isEmpty()) return "/";
+        return pi;
+    }
+
     @Override public void setStatus(int code) { this.responseStatus = code; }
 
     @Override public Map<String, List<String>> responseHeaders() { return responseHeaders; }

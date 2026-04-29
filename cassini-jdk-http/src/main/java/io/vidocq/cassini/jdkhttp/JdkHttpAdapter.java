@@ -2,14 +2,12 @@ package io.vidocq.cassini.jdkhttp;
 
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import io.vidocq.cassini.internal.Invoker;
-import io.vidocq.cassini.internal.MatchResult;
-import io.vidocq.cassini.internal.UriRouter;
-import io.vidocq.cassini.internal.transport.CassiniHttpResponse;
+import io.vidocq.cassini.spi.http.CassiniHttpAdapter;
+import io.vidocq.cassini.spi.http.CassiniStack;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.List;
-import java.util.Optional;
+import java.util.ArrayList;
 
 /**
  * Adapter HTTP basé sur {@link HttpServer} (JDK pur).
@@ -25,17 +23,15 @@ import java.util.Optional;
  */
 public final class JdkHttpAdapter {
 
-    private final UriRouter router;
-    private final Invoker invoker;
+    private final CassiniHttpAdapter engine;
     private final String contextPath;
 
-    public JdkHttpAdapter(UriRouter router, Invoker invoker) {
-        this(router, invoker, "");
+    public JdkHttpAdapter(CassiniHttpAdapter engine) {
+        this(engine, "");
     }
 
-    public JdkHttpAdapter(UriRouter router, Invoker invoker, String contextPath) {
-        this.router = router;
-        this.invoker = invoker;
+    public JdkHttpAdapter(CassiniHttpAdapter engine, String contextPath) {
+        this.engine = engine;
         this.contextPath = contextPath == null ? "" : contextPath;
     }
 
@@ -43,33 +39,9 @@ public final class JdkHttpAdapter {
     public HttpHandler asHandler() {
         return jdkExchange -> {
             JdkHttpExchange exchange = new JdkHttpExchange(jdkExchange, contextPath);
-            String verb = exchange.method();
-            String path = exchange.requestUri().getRawPath();
-            if (path == null || path.isEmpty()) path = "/";
-            if (!contextPath.isEmpty() && path.startsWith(contextPath)) {
-                path = path.substring(contextPath.length());
-                if (path.isEmpty()) path = "/";
-            }
-
             try {
-                CassiniHttpResponse out;
-                List<MatchResult> candidates = router.matchAll(verb, path);
-                if (candidates.isEmpty()) {
-                    var allowed = router.methodsAllowedFor(path);
-                    if (!allowed.isEmpty()) {
-                        var r405 = jakarta.ws.rs.core.Response.status(405)
-                                .header("Allow", String.join(", ", allowed)).build();
-                        out = invoker.renderThrowable(
-                                new jakarta.ws.rs.WebApplicationException(r405), exchange);
-                    } else {
-                        out = invoker.renderThrowable(
-                                new jakarta.ws.rs.NotFoundException("No resource matches " + verb + " " + path),
-                                exchange);
-                    }
-                } else {
-                    out = invoker.invoke(candidates, exchange);
-                }
-                writeResponse(jdkExchange, out);
+                engine.dispatch(exchange).toCompletableFuture().get();
+                writeResponse(jdkExchange, exchange);
             } catch (Exception e) {
                 byte[] body = (e.getMessage() == null ? "Internal Server Error" : e.getMessage())
                         .getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -80,26 +52,37 @@ public final class JdkHttpAdapter {
         };
     }
 
-    private static void writeResponse(com.sun.net.httpserver.HttpExchange jdkExchange,
-                                      CassiniHttpResponse out) throws java.io.IOException {
-        for (var e : out.headers().entrySet()) {
-            jdkExchange.getResponseHeaders().put(e.getKey(), new java.util.ArrayList<>(e.getValue()));
+    private static void writeResponse(com.sun.net.httpserver.HttpExchange jdkEx,
+                                      JdkHttpExchange exchange) throws IOException {
+        var headers = exchange.collectedHeaders();
+        for (var e : headers.entrySet()) {
+            jdkEx.getResponseHeaders().put(e.getKey(), new ArrayList<>(e.getValue()));
         }
-        byte[] body = out.body() == null ? new byte[0] : out.body();
-        jdkExchange.sendResponseHeaders(out.status(), body.length == 0 ? -1 : body.length);
+        byte[] body = exchange.collectedBody();
+        jdkEx.sendResponseHeaders(exchange.collectedStatus(), body.length == 0 ? -1 : body.length);
         if (body.length > 0) {
-            try (var os = jdkExchange.getResponseBody()) { os.write(body); }
+            try (var os = jdkEx.getResponseBody()) { os.write(body); }
         } else {
-            jdkExchange.close();
+            jdkEx.close();
         }
     }
 
     /** Démarre un {@link HttpServer} JDK sur {@code port} et bind l'adapter à {@code contextPath}. */
-    public HttpServer serve(int port) throws java.io.IOException {
+    public HttpServer serve(int port) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext(contextPath.isEmpty() ? "/" : contextPath, asHandler());
         server.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
         server.start();
         return server;
+    }
+
+    /**
+     * Démarre un serveur avec une {@link Application} JAX-RS bootstrappée via
+     * {@link CassiniStack}.
+     */
+    public static HttpServer serve(int port, jakarta.ws.rs.core.Application app)
+            throws IOException {
+        var stack = CassiniStack.builder().application(app).build();
+        return new JdkHttpAdapter(stack.adapter()).serve(port);
     }
 }
