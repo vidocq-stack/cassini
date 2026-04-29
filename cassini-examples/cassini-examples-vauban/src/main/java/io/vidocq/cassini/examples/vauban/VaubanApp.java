@@ -5,12 +5,8 @@ import io.vidocq.cassini.spi.http.CassiniStack;
 import io.vidocq.chappe.api.Body;
 import io.vidocq.chappe.api.Handler;
 import io.vidocq.chappe.api.Request;
-import io.vidocq.chappe.api.Response;
-import io.vidocq.chappe.api.StatusCode;
+import io.vidocq.chappe.api.StaticFileHandler;
 import jakarta.ws.rs.core.Application;
-
-import java.io.IOException;
-import java.io.InputStream;
 
 /**
  * Compose le {@link Handler} Chappe servant l'UI statique sur {@code /}
@@ -30,11 +26,16 @@ public final class VaubanApp {
     public static Handler composeHandler() {
         var stack = CassiniStack.builder().application(new Application() {}).build();
         Handler cassini = new ChappeHttpAdapter(stack.adapter());
-        Handler statique = staticHandler();
+        // Chappe fournit nativement un StaticFileHandler avec support classpath,
+        // index.html par défaut, cache mémoire pour les petites ressources.
+        Handler statique = StaticFileHandler.builder()
+                .addClasspath("static")
+                .cacheInMemory(true)
+                .build();
         return composite(statique, cassini);
     }
 
-    /** Handler combiné : {@code /api/*} → Cassini, sinon → statique. */
+    /** Handler combiné : {@code /api/*} → Cassini (strip), sinon → statique (pathInfo=path). */
     private static Handler composite(Handler staticH, Handler cassiniH) {
         return req -> {
             String path = req.path() == null ? "/" : req.path();
@@ -43,7 +44,11 @@ public final class VaubanApp {
                 if (stripped.isEmpty()) stripped = "/";
                 return cassiniH.handle(stripContext(req, API_PREFIX, stripped));
             }
-            return staticH.handle(req);
+            // StaticFileHandler utilise pathInfo() — on garantit qu'il est rempli.
+            // Réécriture / → /index.html (le fallback indexFile interne est cassé
+            // quand getResource("static/") retourne l'URL du directory en mode classpath).
+            String resolved = (path.endsWith("/")) ? path + "index.html" : path;
+            return staticH.handle(stripContext(req, "", resolved));
         };
     }
 
@@ -64,53 +69,4 @@ public final class VaubanApp {
         };
     }
 
-    /** Sert les fichiers depuis {@code classpath:/static/} ; {@code /} → {@code index.html}. */
-    private static Handler staticHandler() {
-        return req -> {
-            String path = req.path();
-            if (path == null || "/".equals(path)) path = "/index.html";
-            // Sécurité minimale : pas de traversée
-            if (path.contains("..")) {
-                return Response.builder()
-                        .status(StatusCode.BAD_REQUEST).body(Body.empty()).build();
-            }
-            String resourcePath = "/static" + path;
-            try (InputStream in = VaubanApp.class.getResourceAsStream(resourcePath)) {
-                if (in == null) {
-                    return Response.builder()
-                            .status(StatusCode.NOT_FOUND)
-                            .header("Content-Type", "text/plain;charset=utf-8")
-                            .body(Body.of("Not Found: " + path))
-                            .build();
-                }
-                byte[] bytes = in.readAllBytes();
-                return Response.builder()
-                        .status(StatusCode.OK)
-                        .header("Content-Type", contentType(path))
-                        .header("Cache-Control", "no-cache")
-                        .body(Body.of(bytes))
-                        .build();
-            } catch (IOException e) {
-                return Response.builder()
-                        .status(StatusCode.INTERNAL_SERVER_ERROR)
-                        .body(Body.of(e.getMessage() == null ? "I/O error" : e.getMessage()))
-                        .build();
-            }
-        };
-    }
-
-    private static String contentType(String path) {
-        int dot = path.lastIndexOf('.');
-        if (dot < 0) return "application/octet-stream";
-        return switch (path.substring(dot + 1).toLowerCase()) {
-            case "html", "htm" -> "text/html;charset=utf-8";
-            case "css"         -> "text/css;charset=utf-8";
-            case "js"          -> "application/javascript;charset=utf-8";
-            case "json"        -> "application/json";
-            case "svg"         -> "image/svg+xml";
-            case "png"         -> "image/png";
-            case "ico"         -> "image/x-icon";
-            default            -> "application/octet-stream";
-        };
-    }
 }

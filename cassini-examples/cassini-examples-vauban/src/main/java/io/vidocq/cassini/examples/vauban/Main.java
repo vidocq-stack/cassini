@@ -25,6 +25,11 @@ import java.util.concurrent.CountDownLatch;
 public class Main {
 
     static void main(String[] args) throws Exception {
+        // Note : VaubanContainer.builder().scanLocal() existe et fonctionne en
+        // classpath mode (unnamed module), mais pas en JPMS named module —
+        // ClassLoader.getResources() ne retourne pas les dossiers des named
+        // modules. Pour rester compatible avec les deux modes, on déclare les
+        // beans explicitement.
         var container = VaubanContainer.builder()
                 .addBeanClass(TodoService.class)
                 .addBeanClass(GreetingResource.class)

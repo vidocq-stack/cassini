@@ -72,6 +72,8 @@ var container = VaubanContainer.builder()
 
 `VaubanContainer.build()` enregistre l'instance comme `CDI.current()` (via `VaubanCDIProvider` ServiceLoader). Toutes les classes sont scannées, leurs annotations CDI traitées (`@ApplicationScoped`, `@Inject`, etc.).
 
+> **Pourquoi pas `scanLocal()` ?** Vauban propose un scan auto par package, mais il s'appuie sur `ClassLoader.getResources(packagePath)` qui ne retourne pas les répertoires des **named modules** JPMS — uniquement ceux du classpath (unnamed modules). Comme cassini-examples-vauban est un module nommé, on déclare les beans explicitement pour rester compatible avec les deux modes de lancement.
+
 ### 2. Auto-discovery du `BeanProvider`
 
 `CassiniStack.builder()` (appelé par `VaubanApp.composeHandler()`) fait `ServiceLoader.load(BeanProvider.Factory.class)` et trouve **`VaubanBeanProviderFactory`** (priorité 100, déclaré dans `cassini-cdi-vauban/module-info.java`). La factory récupère `VaubanContainer.current()` et l'injecte dans la stack.
@@ -106,7 +108,20 @@ return req -> {
 };
 ```
 
-### 4. UI client
+### 4. Service du statique — `StaticFileHandler` Chappe
+
+Chappe fournit nativement un `StaticFileHandler` avec support classpath, fallback chain, cache mémoire :
+
+```java
+StaticFileHandler.builder()
+        .addClasspath("static")    // résolu depuis classpath:/static/
+        .cacheInMemory(true)       // cache en RAM pour les ressources < 64 Ko
+        .build();
+```
+
+> **Petit ajustement nécessaire** : le composite handler réécrit `/` en `/index.html` avant de passer la requête au `StaticFileHandler`. En mode classpath, `getResource("static/")` retourne l'URL du directory non-null, ce qui empêche le fallback `indexFile` interne — la réécriture côté composite contourne ça.
+
+### 5. UI client
 
 `src/main/resources/static/` contient :
 
@@ -123,7 +138,7 @@ Le JS appelle :
 - `PUT /api/todos/{id}` au toggle checkbox → marque done
 - `DELETE /api/todos/{id}` au clic ✕ → supprime puis re-render
 
-### 5. Côté serveur
+### 6. Côté serveur
 
 ```java
 // TodoService.java
