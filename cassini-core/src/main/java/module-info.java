@@ -19,8 +19,7 @@ module io.vidocq.cassini.core {
             to io.vidocq.cassini.tck,
                io.vidocq.cassini.cdi,
                io.vidocq.cassini.chappe,
-               io.vidocq.cassini.jdkhttp,
-               io.vidocq.mpserver.ext.rest.cassini;
+               io.vidocq.cassini.jdkhttp;
     exports io.vidocq.cassini.internal.context
             to io.vidocq.cassini.tck,
                io.vidocq.cassini.cdi,
