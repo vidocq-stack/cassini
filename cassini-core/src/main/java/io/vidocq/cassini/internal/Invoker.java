@@ -50,11 +50,8 @@ public final class Invoker {
      *  ThreadLocal cassent en virtual-thread quand l'Invoker yield. */
     public static final ThreadLocal<MatchResult> CURRENT_MATCH = new ThreadLocal<>();
     public static final ThreadLocal<CassiniHttpExchange> CURRENT_REQUEST = new ThreadLocal<>();
-    /** §6.5 (UriInfo.getMatchedResources) : chaîne d'instances de ressource
-     *  matchées pour la requête courante (root → la plus profonde via locators).
-     *  TODO(M2h) : idem CURRENT_MATCH — migration ScopedValue. */
-    public static final ThreadLocal<java.util.List<Object>> CURRENT_MATCHED_RESOURCES =
-            ThreadLocal.withInitial(java.util.ArrayList::new);
+    /** Clé d'attribut exchange pour la chaîne d'instances matchées (M2h). */
+    public static final String ATTR_MATCHED_RESOURCES = "cassini.matched_resources";
 
     private final Function<Class<?>, Object> resolver;
     private final MessageBodyRegistry registry;
@@ -164,24 +161,25 @@ public final class Invoker {
             }
             CassiniHttpResponse resp = invokeInternal(match, request, route);
             // §5.1 : si Request.selectVariant a été appelé pendant l'invocation,
-            // ses dimensions de négociation sont stockées dans le ThreadLocal
+            // ses dimensions de négociation sont stockées dans l'attribut exchange
             // PENDING_VARY → on les ajoute au header Vary de la réponse.
-            return applyPendingVary(resp);
+            return applyPendingVary(resp, request);
         } finally {
             ParamExtractor.clearProviders();
             ParamExtractor.clearParamConverterProviders();
             FieldInjector.clearFormCache();
             CURRENT_MATCH.remove();
             CURRENT_REQUEST.remove();
-            CURRENT_MATCHED_RESOURCES.remove();
             io.vidocq.cassini.internal.runtime.CassiniResponseBuilder.clearBaseUri();
-            io.vidocq.cassini.internal.context.CassiniRequest.PENDING_VARY.remove();
         }
     }
 
     /** §5.1 : injecte le header Vary collecté pendant Request.selectVariant. */
-    private static CassiniHttpResponse applyPendingVary(CassiniHttpResponse resp) {
-        var dims = io.vidocq.cassini.internal.context.CassiniRequest.PENDING_VARY.get();
+    @SuppressWarnings("unchecked")
+    private static CassiniHttpResponse applyPendingVary(CassiniHttpResponse resp,
+                                                        CassiniHttpExchange request) {
+        var dims = (java.util.Set<String>) request.getAttribute(
+                io.vidocq.cassini.internal.context.CassiniRequest.ATTR_PENDING_VARY);
         if (dims == null || dims.isEmpty()) return resp;
         // On reconstruit la Response avec le header Vary supplémentaire.
         var b = CassiniHttpResponse.builder().status(resp.status()).body(resp.body());
@@ -216,7 +214,7 @@ public final class Invoker {
         matched.add(root);
         CURRENT_MATCH.set(match);
         CURRENT_REQUEST.set(request);
-        CURRENT_MATCHED_RESOURCES.set(matched);
+        request.setAttribute(ATTR_MATCHED_RESOURCES, matched);
         Object intermediate = root;
         for (java.lang.reflect.Method locStep : route.locatorChain()) {
             Parameter[] lps = locStep.getParameters();
@@ -311,7 +309,7 @@ public final class Invoker {
         Object intermediate = startInstance;
         CURRENT_MATCH.set(match);
         CURRENT_REQUEST.set(request);
-        CURRENT_MATCHED_RESOURCES.set(matchedSoFar);
+        request.setAttribute(ATTR_MATCHED_RESOURCES, matchedSoFar);
         for (java.lang.reflect.Method locStep : route.locatorChain()) {
             // Sauter les locators déjà exécutés (présents en haut de la chaîne
             // de l'instance courante). On reconnaît un locator déjà fait par
@@ -596,6 +594,18 @@ public final class Invoker {
         }
         MediaType chosen = negotiated.orElse(MediaType.WILDCARD_TYPE);
 
+        // §8.2 : @Suspended AsyncResponse — créer l'impl AVANT l'extraction des params
+        // pour que ParamExtractor puisse l'injecter via l'attribut exchange.
+        CassiniAsyncResponseImpl asyncResponse = null;
+        for (java.lang.reflect.Parameter p : route.javaMethod().getParameters()) {
+            if (p.getAnnotation(jakarta.ws.rs.container.Suspended.class) != null
+                    && jakarta.ws.rs.container.AsyncResponse.class.isAssignableFrom(p.getType())) {
+                asyncResponse = new CassiniAsyncResponseImpl();
+                request.setAttribute(CassiniAsyncResponseImpl.ATTR_KEY, asyncResponse);
+                break;
+            }
+        }
+
         // 2. Resolve args
         ParamExtractor.ResolvedArgs resolved;
         Object[] args;
@@ -655,7 +665,7 @@ public final class Invoker {
         CURRENT_MATCH.set(match);
         CURRENT_REQUEST.set(request);
         java.util.List<Object> matched = new java.util.ArrayList<>();
-        CURRENT_MATCHED_RESOURCES.set(matched);
+        request.setAttribute(ATTR_MATCHED_RESOURCES, matched);
         try {
             if (route.isLocated()) {
                 // Sub-resource locator §3.4.1 : instantier la ressource racine,
@@ -708,13 +718,19 @@ public final class Invoker {
         }
         Object result;
         // §11.1 : si la méthode a un paramètre SseEventSink, on remplace
-        // l'arg par notre instance (CassiniSseEventSink) et on capture le
-        // résultat sérialisé en response après l'invocation.
+        // l'arg par notre instance (CassiniSseEventSink). En mode streaming
+        // (JDK transport), les events sont écrits directement sur le wire.
         io.vidocq.cassini.internal.sse.CassiniSseEventSink sseSink = null;
         Parameter[] params = route.javaMethod().getParameters();
         for (int pi = 0; pi < params.length; pi++) {
             if (params[pi].getType() == jakarta.ws.rs.sse.SseEventSink.class) {
-                sseSink = new io.vidocq.cassini.internal.sse.CassiniSseEventSink(registry);
+                // Tenter d'ouvrir le streaming chunked (JDK transport).
+                var streamingHeaders = new java.util.LinkedHashMap<String, java.util.List<String>>();
+                streamingHeaders.put("Content-Type",
+                        java.util.List.of("text/event-stream;charset=utf-8"));
+                streamingHeaders.put("Cache-Control", java.util.List.of("no-cache"));
+                var streamingSink = request.openForStreaming(200, streamingHeaders);
+                sseSink = new io.vidocq.cassini.internal.sse.CassiniSseEventSink(registry, streamingSink);
                 args[pi] = sseSink;
                 ParamExtractor.setCurrentSink(sseSink);
                 break;
@@ -745,8 +761,28 @@ public final class Invoker {
             throw new RuntimeException(cause);
         }
 
-        // §9.2 : si la méthode retourne CompletionStage<T>, on attend
-        // le résultat de manière bloquante (M2h Async sera plus complet).
+        // §8.2 : @Suspended AsyncResponse — bloquer le virtual thread jusqu'à resume().
+        // Le virtual thread yield son carrier sans starvation (M2h).
+        if (asyncResponse != null) {
+            try {
+                result = asyncResponse.completionFuture().get();
+            } catch (java.util.concurrent.ExecutionException ee) {
+                Throwable cause = ee.getCause();
+                if (cause instanceof WebApplicationException wae) {
+                    return renderWebAppException(wae, route, chosen, rctx);
+                }
+                var mapped = exceptionMappers.map(cause);
+                if (mapped.isPresent()) return runResponseFiltersAndWrite(rctx, mapped.get(), route, chosen);
+                if (cause instanceof Exception ex) throw ex;
+                throw new RuntimeException(cause);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted waiting for AsyncResponse.resume()", ie);
+            }
+        }
+
+        // §9.2 : CompletionStage<T> retourné par une méthode resource.
+        // On bloque le virtual thread (M2h) — libère le carrier sans starvation.
         if (result instanceof java.util.concurrent.CompletionStage<?> cs) {
             try {
                 result = cs.toCompletableFuture().get();
@@ -765,11 +801,15 @@ public final class Invoker {
             }
         }
 
-        // §11.1 : méthode SSE → on retourne le contenu bufferisé du sink
-        // comme corps text/event-stream (la méthode a typiquement un
-        // return type void et c'est le sink qui contient les events).
+        // §11.1 : méthode SSE → attendre la fermeture du sink (M2i).
         if (sseSink != null) {
             ParamExtractor.clearCurrentSink();
+            sseSink.awaitClose();
+            if (sseSink.isStreaming()) {
+                // Mode streaming (JDK) : la réponse a déjà été envoyée sur le wire.
+                return CassiniHttpResponse.builder().status(200).body(new byte[0]).build();
+            }
+            // Mode bufferisé (Chappe) : assembler la réponse depuis le buffer.
             byte[] body = sseSink.toByteArray();
             return CassiniHttpResponse.builder()
                     .status(200)
@@ -960,16 +1000,14 @@ public final class Invoker {
         // §9.2 : @Context fields des providers user-level (singletons) sont
         // re-injectés à chaque appel pour exposer le contexte courant.
         if (reader != null) injectProviderContexts(reader, request);
-        // Si @FormParam a déjà consommé le body, replay depuis le cache.
-        // Sinon, on bufferise pour que les FieldInjector @BeanParam ultérieurs
-        // (sur la ressource elle-même) puissent re-lire le body côté @FormParam.
-        byte[] cached = FieldInjector.BODY_CACHE.get();
+        // Si @FormParam a déjà consommé le body, replay depuis le cache (attribut exchange, M2h).
+        byte[] cached = (byte[]) request.getAttribute(FieldInjector.ATTR_BODY_CACHE);
         InputStream src;
         if (cached != null) {
             src = new java.io.ByteArrayInputStream(cached);
         } else {
             byte[] all = request.requestBody() == null ? new byte[0] : request.requestBody().readAllBytes();
-            FieldInjector.BODY_CACHE.set(all);
+            request.setAttribute(FieldInjector.ATTR_BODY_CACHE, all);
             src = new java.io.ByteArrayInputStream(all);
         }
         var rInterceptors = rInterceptorsForChoice;

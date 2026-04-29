@@ -18,9 +18,10 @@ import java.util.Optional;
  * externe. Utilisé pour les unit tests Cassini-pur et comme transport de
  * référence si l'utilisateur ne souhaite pas dépendre de Chappe.
  *
- * <p>Limites : pas d'async réel, pas de virtual threads natifs (le
- * {@code HttpServer} JDK utilise un Executor classique). Pour M2h+, préférer
- * {@code cassini-chappe} qui supportera les virtual threads.
+ * <p>Chaque requête est exécutée sur un virtual thread via
+ * {@link java.util.concurrent.Executors#newVirtualThreadPerTaskExecutor()} —
+ * configurer l'executor du {@link HttpServer} en conséquence (ou utiliser
+ * {@link #serve(int)} qui le fait automatiquement).
  */
 public final class JdkHttpAdapter {
 

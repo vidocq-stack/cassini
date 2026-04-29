@@ -289,39 +289,39 @@ public final class FieldInjector {
         return out;
     }
 
-    /** TODO(M2h) : déplacer ces caches dans un attribut du {@code CassiniHttpExchange}
-     *  (per-request) — les ThreadLocal cassent en virtual-thread async. */
-    static final ThreadLocal<Map<String, List<String>>> FORM_CACHE = new ThreadLocal<>();
-    static final ThreadLocal<Map<String, List<String>>> FORM_CACHE_ENCODED = new ThreadLocal<>();
-    /** Cache des bytes du body consommés par {@link #readForm} pour les
-     *  MBR invoqués après (@FormParam + body String injectés ensemble).
-     *  TODO(M2h) : idem — attribut request-scope. */
-    public static final ThreadLocal<byte[]> BODY_CACHE = new ThreadLocal<>();
+    // Clés d'attributs exchange pour les caches per-request (M2h — remplace ThreadLocals).
+    static final String ATTR_FORM_CACHE         = "cassini.form_cache";
+    static final String ATTR_FORM_CACHE_ENCODED = "cassini.form_cache_encoded";
+    /** Clé exchange pour le cache des bytes du body (partagé entre @FormParam et MBR). */
+    public static final String ATTR_BODY_CACHE  = "cassini.body_cache";
 
+    @SuppressWarnings("unchecked")
     private static Map<String, List<String>> readForm(CassiniHttpExchange request, boolean encoded) {
         if (encoded) {
-            Map<String, List<String>> enc = FORM_CACHE_ENCODED.get();
+            Map<String, List<String>> enc =
+                    (Map<String, List<String>>) request.getAttribute(ATTR_FORM_CACHE_ENCODED);
             if (enc != null) return enc;
         } else {
-            Map<String, List<String>> cached = FORM_CACHE.get();
+            Map<String, List<String>> cached =
+                    (Map<String, List<String>>) request.getAttribute(ATTR_FORM_CACHE);
             if (cached != null) return cached;
         }
         try {
-            byte[] bytes = BODY_CACHE.get();
+            byte[] bytes = (byte[]) request.getAttribute(ATTR_BODY_CACHE);
             if (bytes == null) {
                 var body = request.requestBody();
                 bytes = body == null ? new byte[0] : body.readAllBytes();
-                BODY_CACHE.set(bytes);
+                request.setAttribute(ATTR_BODY_CACHE, bytes);
             }
             if (encoded) {
                 Map<String, List<String>> parsed = FormDecoder.parse(
                         new String(bytes, java.nio.charset.StandardCharsets.UTF_8), false);
-                FORM_CACHE_ENCODED.set(parsed);
+                request.setAttribute(ATTR_FORM_CACHE_ENCODED, parsed);
                 return parsed;
             } else {
                 Map<String, List<String>> parsed = bytes.length == 0
                         ? new LinkedHashMap<>() : FormDecoder.decode(bytes);
-                FORM_CACHE.set(parsed);
+                request.setAttribute(ATTR_FORM_CACHE, parsed);
                 return parsed;
             }
         } catch (Exception e) {
@@ -329,9 +329,6 @@ public final class FieldInjector {
         }
     }
 
-    public static void clearFormCache() {
-        FORM_CACHE.remove();
-        FORM_CACHE_ENCODED.remove();
-        BODY_CACHE.remove();
-    }
+    /** No-op depuis M2h : les caches vivent dans les attributs de l'exchange. */
+    public static void clearFormCache() {}
 }

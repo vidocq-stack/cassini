@@ -18,9 +18,8 @@ public final class CassiniSecurityContext implements SecurityContext {
      */
     public record AuthInfo(String username, String authScheme, java.util.Set<String> roles) {}
 
-    /** TODO(M2h) : migrer vers un attribut du {@code CassiniHttpExchange}
-     *  (auth posée par l'adapter de transport, plus de ThreadLocal). */
-    public static final ThreadLocal<AuthInfo> CURRENT_AUTH = new ThreadLocal<>();
+    // InheritableThreadLocal : hérité par les virtual threads créés dans l'adapter (M2h).
+    public static final ThreadLocal<AuthInfo> CURRENT_AUTH = new InheritableThreadLocal<>();
 
     private final CassiniHttpExchange exchange;
 

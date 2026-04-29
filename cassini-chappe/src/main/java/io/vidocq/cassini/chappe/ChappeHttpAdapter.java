@@ -14,6 +14,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Adapter HTTP Chappe → Cassini.
@@ -62,8 +64,35 @@ public final class ChappeHttpAdapter implements Handler {
         return b.build();
     }
 
+    /**
+     * Chaque requête est traitée sur un virtual thread dédié (M2h).
+     * Cela garantit : (1) isolation des ScopedValues request-scope,
+     * (2) aucun starvation de platform thread si la resource method bloque
+     * sur I/O ou attend un CompletionStage.
+     */
     @Override
     public Response handle(Request request) throws Exception {
+        var future = new CompletableFuture<Response>();
+        Thread.ofVirtual().name("cassini-req").start(() -> {
+            try {
+                future.complete(dispatchOnCurrentThread(request));
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
+            }
+        });
+        try {
+            return future.get();
+        } catch (ExecutionException ee) {
+            Throwable cause = ee.getCause();
+            if (cause instanceof Exception ex) throw ex;
+            throw new RuntimeException(cause);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted waiting for virtual thread", ie);
+        }
+    }
+
+    private Response dispatchOnCurrentThread(Request request) throws Exception {
         ChappeHttpExchange exchange = new ChappeHttpExchange(request);
         String verb = request.method().name();
         String path = normalize(request.pathInfo());

@@ -102,4 +102,30 @@ public interface CassiniHttpExchange {
 
     /** Vérification de rôle déléguée au transport (BASIC auth via Chappe, etc.). */
     boolean isUserInRole(String role);
+
+    /**
+     * Store d'attributs request-scope, thread-safe avec virtual threads (M2h).
+     * Remplace les {@code ThreadLocal} per-request dans {@code cassini-core}.
+     */
+    void setAttribute(String key, Object value);
+
+    /** @return la valeur de l'attribut {@code key}, ou {@code null} si absent. */
+    Object getAttribute(String key);
+
+    /**
+     * Ouvre le mode streaming pour SSE / chunked-transfer (M2i).
+     *
+     * <p>Envoie les headers de réponse avec un corps de longueur inconnue
+     * ({@code Transfer-Encoding: chunked} pour HTTP/1.1) et retourne un
+     * {@link CassiniStreamingSink} permettant d'écrire des chunks au fil de l'eau.
+     *
+     * <p>Les transports qui ne supportent pas le streaming retournent {@code null} —
+     * l'appelant doit retomber sur le mode bufferisé.
+     *
+     * @param status code HTTP de la réponse (ex. 200)
+     * @param headers headers de réponse à envoyer avant le corps
+     */
+    default CassiniStreamingSink openForStreaming(int status, Map<String, List<String>> headers) {
+        return null;
+    }
 }

@@ -187,8 +187,10 @@ public final class CassiniUriInfo implements UriInfo {
         return matchedTemplate;
     }
 
-    @Override public List<Object> getMatchedResources() {
-        var matched = io.vidocq.cassini.internal.Invoker.CURRENT_MATCHED_RESOURCES.get();
+    @Override @SuppressWarnings("unchecked")
+    public List<Object> getMatchedResources() {
+        var matched = (java.util.List<Object>) exchange.getAttribute(
+                io.vidocq.cassini.internal.Invoker.ATTR_MATCHED_RESOURCES);
         return matched == null ? List.of() : List.copyOf(matched);
     }
 

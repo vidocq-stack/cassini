@@ -48,7 +48,9 @@ public final class ParamExtractor {
     public record ResolvedArgs(Object[] args, int bodyIndex) {}
 
     private static ThreadLocal<Providers> CURRENT_PROVIDERS = new ThreadLocal<>();
-    private static final ThreadLocal<jakarta.ws.rs.core.Application> CURRENT_APPLICATION = new ThreadLocal<>();
+    // InheritableThreadLocal : hérité par les virtual threads créés dans l'adapter (M2h).
+    private static final ThreadLocal<jakarta.ws.rs.core.Application> CURRENT_APPLICATION =
+            new InheritableThreadLocal<>();
     public static void setApplication(jakarta.ws.rs.core.Application app) { CURRENT_APPLICATION.set(app); }
     public static void clearApplication() { CURRENT_APPLICATION.remove(); }
     public static jakarta.ws.rs.core.Application currentApplication() { return CURRENT_APPLICATION.get(); }
@@ -97,6 +99,10 @@ public final class ParamExtractor {
         boolean encoded = p.getAnnotation(jakarta.ws.rs.Encoded.class) != null;
         Context context = p.getAnnotation(Context.class);
         if (context != null) return resolveContext(p.getType(), match, request);
+
+        if (p.getAnnotation(jakarta.ws.rs.container.Suspended.class) != null) {
+            return request.getAttribute(CassiniAsyncResponseImpl.ATTR_KEY);
+        }
 
         BeanParam beanParam = p.getAnnotation(BeanParam.class);
         if (beanParam != null) return instantiateBeanParam(p.getType(), match, request);
@@ -166,6 +172,12 @@ public final class ParamExtractor {
 
             if (context != null) {
                 args[i] = resolveContext(p.getType(), match, request);
+                continue;
+            }
+            // §8.2 : @Suspended AsyncResponse — injecté depuis l'attribut exchange
+            // posé par l'Invoker avant l'extraction des params.
+            if (p.getAnnotation(jakarta.ws.rs.container.Suspended.class) != null) {
+                args[i] = request.getAttribute(CassiniAsyncResponseImpl.ATTR_KEY);
                 continue;
             }
             if (beanParam != null) {
@@ -501,31 +513,34 @@ public final class ParamExtractor {
     private static Map<String, List<String>> readForm(CassiniHttpExchange request) {
         return readForm(request, false);
     }
+    @SuppressWarnings("unchecked")
     private static Map<String, List<String>> readForm(CassiniHttpExchange request, boolean encoded) {
-        // On a deux caches distincts selon le mode (decoded vs @Encoded).
+        // On a deux caches distincts selon le mode (decoded vs @Encoded) — stockés en attributs exchange (M2h).
         if (encoded) {
-            Map<String, List<String>> enc = FieldInjector.FORM_CACHE_ENCODED.get();
+            Map<String, List<String>> enc =
+                    (Map<String, List<String>>) request.getAttribute(FieldInjector.ATTR_FORM_CACHE_ENCODED);
             if (enc != null) return enc;
         } else {
-            Map<String, List<String>> cached = FieldInjector.FORM_CACHE.get();
+            Map<String, List<String>> cached =
+                    (Map<String, List<String>>) request.getAttribute(FieldInjector.ATTR_FORM_CACHE);
             if (cached != null) return cached;
         }
         try {
-            byte[] bytes = FieldInjector.BODY_CACHE.get();
+            byte[] bytes = (byte[]) request.getAttribute(FieldInjector.ATTR_BODY_CACHE);
             if (bytes == null) {
                 var body = request.requestBody();
                 bytes = body == null ? new byte[0] : body.readAllBytes();
-                FieldInjector.BODY_CACHE.set(bytes);
+                request.setAttribute(FieldInjector.ATTR_BODY_CACHE, bytes);
             }
             if (encoded) {
                 String s = new String(bytes, StandardCharsets.UTF_8);
                 Map<String, List<String>> parsed = FormDecoder.parse(s, false);
-                FieldInjector.FORM_CACHE_ENCODED.set(parsed);
+                request.setAttribute(FieldInjector.ATTR_FORM_CACHE_ENCODED, parsed);
                 return parsed;
             } else {
                 Map<String, List<String>> parsed = bytes.length == 0
                         ? new LinkedHashMap<>() : FormDecoder.decode(bytes);
-                FieldInjector.FORM_CACHE.set(parsed);
+                request.setAttribute(FieldInjector.ATTR_FORM_CACHE, parsed);
                 return parsed;
             }
         } catch (Exception e) {

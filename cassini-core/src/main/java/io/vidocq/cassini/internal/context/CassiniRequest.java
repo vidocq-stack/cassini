@@ -18,15 +18,8 @@ import java.util.List;
  */
 public final class CassiniRequest implements jakarta.ws.rs.core.Request {
 
-    /** §5.1 / Javadoc Request#selectVariant : "this method also sets the Vary
-     *  header field on the response". On collecte ici les dimensions sur
-     *  lesquelles selectVariant a négocié pour qu'Invoker les écrive
-     *  ensuite dans les headers de la response (au moment du marshal).
-     *
-     *  <p>TODO(M2h) : migrer vers un attribut du {@code CassiniHttpExchange}
-     *  (ou ScopedValue) — ce ThreadLocal casse en virtual-thread async. */
-    public static final ThreadLocal<java.util.Set<String>> PENDING_VARY =
-            ThreadLocal.withInitial(java.util.LinkedHashSet::new);
+    /** Clé d'attribut exchange pour les dimensions Vary collectées par selectVariant (M2h). */
+    public static final String ATTR_PENDING_VARY = "cassini.pending_vary";
 
     private final String method;
     private final CassiniHttpExchange delegate;
@@ -59,7 +52,12 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
         boolean anyMedia = variants.stream().anyMatch(v -> v.getMediaType() != null);
         boolean anyLang = variants.stream().anyMatch(v -> v.getLanguage() != null);
         boolean anyEnc = variants.stream().anyMatch(v -> v.getEncoding() != null);
-        java.util.Set<String> vary = PENDING_VARY.get();
+        @SuppressWarnings("unchecked")
+        java.util.Set<String> vary = (java.util.Set<String>) delegate.getAttribute(ATTR_PENDING_VARY);
+        if (vary == null) {
+            vary = new java.util.LinkedHashSet<>();
+            delegate.setAttribute(ATTR_PENDING_VARY, vary);
+        }
         if (anyMedia) vary.add("Accept");
         if (anyLang) vary.add("Accept-Language");
         if (anyEnc) vary.add("Accept-Encoding");

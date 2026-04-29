@@ -28,6 +28,7 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
     private int responseStatus = 200;
     private final Map<String, List<String>> responseHeaders = new LinkedHashMap<>();
     private final ByteArrayOutputStream responseBody = new ByteArrayOutputStream();
+    private final Map<String, Object> attributes = new java.util.HashMap<>();
 
     public ChappeHttpExchange(Request request) {
         this(request, request.contextPath());
@@ -89,4 +90,7 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
     @Override public Principal userPrincipal() { return null; }
 
     @Override public boolean isUserInRole(String role) { return false; }
+
+    @Override public void setAttribute(String key, Object value) { attributes.put(key, value); }
+    @Override public Object getAttribute(String key) { return attributes.get(key); }
 }
