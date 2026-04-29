@@ -1,5 +1,6 @@
 module io.vidocq.cassini.chappe {
     requires io.vidocq.cassini.api;
+    requires io.vidocq.cassini.core;  // dans le module graph — ServiceLoader CassiniStack.BuilderFactory
     requires io.vidocq.chappe.api;
     requires jakarta.ws.rs;
     requires static jakarta.cdi;
