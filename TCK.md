@@ -59,7 +59,7 @@ Six tests sont désactivés via la classe
 | `spec.resource.requestmatching.JAXRSClientIT#locatorNameTooLongAgainTest` | spec interpretation | Conformément à §3.7.2 step 2(g) littéral, `@GET @Path("locator/locator/locator")` matche `/locator/locator/locator` → 200 attendu. Le test impose une interprétation segment-par-segment non-portable. |
 | `signaturetest.jaxrs.JAXRSSigTestIT#signatureTest` | environnement TCK | TDK 2.5 sigtest exige un layout TCK complet. L'API `jakarta.ws.rs` n'est pas modifiée par Cassini — ce test évalue l'environnement TCK, pas la conformance Cassini. |
 | `jaxrs31.ee.multipart.MultipartSupportIT#basicTest` + `multiFormParamTest` | client harness | Cassini SERVEUR implémente §3.5.4 EntityPart complet. Le test bloque côté Jersey CLIENT. |
-| `jaxrs21.ee.sse.{ssebroadcaster,sseeventsink,sseeventsource}.JAXRSClientIT#{sseBroadcastTest,closeTest}` | streaming infrastructure | §11 SSE streaming réel. M2i refactorera `CassiniSseEventSink` pour push chunked au fil de l'eau. Hors scope MVP. |
+| `jaxrs21.ee.sse.ssebroadcaster.JAXRSClientIT#sseBroadcastTest`, `sseeventsink.JAXRSClientIT#closeTest`, `sseeventsource.JAXRSClientIT#closeTest` | streaming infrastructure | §11 SSE streaming réel. `CassiniSseEventSink` bufférise puis émet en bloc. Le streaming chunked au fil de l'eau via Chappe nécessite un changement d'architecture dans `ChappeHttpAdapter` (VT concurrent + latch). Voir `ASYNC.md` §"SSE streaming avec Chappe". |
 
 ---
 
@@ -151,9 +151,12 @@ Deux transports sont fournis :
 - Lifecycle callbacks `addCompletionCallback` / `addConnectionCallback`
 - Débloque les tests actuellement préparés `@Tag("async")`
 
-### M2i — SSE streaming réel (~1-2 j, dépend de M2h)
-- Refactor `CassiniSseEventSink` pour push chunked au fil de l'eau via `CassiniStreamingSink`
+### M2i — SSE streaming réel (~1 j, indépendant de M2h)
+- `ChappeHttpAdapter` : exécuter l'Invoker sur un VT séparé + `CountDownLatch`
+  pour signaler "pipe prête" et retourner `Body.streaming(pis)` immédiatement
+- `ChappeHttpExchange.openForStreaming()` : créer pipe + libérer le latch
 - Débloque les 3 challenges SSE
+- Voir `ASYNC.md` §"SSE streaming avec Chappe" pour le design complet
 
 ### Mode certif futurs
 | Mode | Périmètre TCK | Statut |
