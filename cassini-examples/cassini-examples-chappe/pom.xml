@@ -42,16 +42,16 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- JSON-B runtime pour les tests -->
+        <!-- JSON-B + JSON-P runtime (requis par cassini-core à l'exécution) -->
         <dependency>
             <groupId>org.eclipse</groupId>
             <artifactId>yasson</artifactId>
-            <scope>test</scope>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>org.eclipse.parsson</groupId>
             <artifactId>parsson</artifactId>
-            <scope>test</scope>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
