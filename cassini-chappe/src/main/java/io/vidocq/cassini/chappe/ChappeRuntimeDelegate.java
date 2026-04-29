@@ -75,8 +75,11 @@ public final class ChappeRuntimeDelegate extends CassiniRuntimeDelegate {
                 if (application.getClasses() != null) resourceClasses.addAll(application.getClasses());
                 if (application.getSingletons() != null) {
                     for (Object o : application.getSingletons()) {
-                        resourceClasses.add(o.getClass());
-                        resourceSingletons.put(o.getClass(), o);
+                        // Remonter la hiérarchie pour trouver la classe annotée @Path/@Provider
+                        // (les proxies CDI sont des sous-classes sans annotation directe).
+                        Class<?> jaxrsClass = jaxrsAnnotatedClass(o.getClass());
+                        resourceClasses.add(jaxrsClass);
+                        resourceSingletons.put(jaxrsClass, o);
                     }
                 }
                 java.util.Set<Class<?>> pathClasses = new java.util.LinkedHashSet<>();
@@ -177,5 +180,19 @@ public final class ChappeRuntimeDelegate extends CassiniRuntimeDelegate {
             if (nativeClass.isInstance(server)) return nativeClass.cast(server);
             throw new IllegalArgumentException("Cannot unwrap to " + nativeClass);
         }
+    }
+
+    // Remonte la hiérarchie de classes pour trouver celle portant @Path ou @Provider.
+    // Nécessaire pour les proxies CDI qui sont des sous-classes sans annotation directe.
+    private static Class<?> jaxrsAnnotatedClass(Class<?> c) {
+        Class<?> cur = c;
+        while (cur != null && cur != Object.class) {
+            if (cur.isAnnotationPresent(jakarta.ws.rs.Path.class)
+                    || cur.isAnnotationPresent(jakarta.ws.rs.ext.Provider.class)) {
+                return cur;
+            }
+            cur = cur.getSuperclass();
+        }
+        return c;
     }
 }

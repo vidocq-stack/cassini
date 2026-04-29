@@ -3,92 +3,58 @@ package io.vidocq.cassini.examples.vauban;
 import io.vidocq.cassini.examples.vauban.resource.GreetingResource;
 import io.vidocq.cassini.examples.vauban.resource.TodoResource;
 import io.vidocq.cassini.examples.vauban.service.TodoService;
-import io.vidocq.cassini.chappe.ChappeHttpAdapter;
-import io.vidocq.cassini.internal.ExceptionMapperRegistry;
-import io.vidocq.cassini.internal.Invoker;
-import io.vidocq.cassini.internal.MessageBodyRegistry;
-import io.vidocq.cassini.internal.ResourceScanner;
-import io.vidocq.cassini.internal.UriRouter;
-import io.vidocq.cassini.internal.filter.FilterRegistry;
-import io.vidocq.chappe.api.Server;
 import io.vidocq.vauban.core.container.VaubanContainer;
+import jakarta.ws.rs.SeBootstrap;
+import jakarta.ws.rs.core.Application;
 
 import java.net.ServerSocket;
+import java.util.Set;
 
 /**
- * Serveur de test AutoCloseable — démarre Vauban CDI + Cassini Chappe sur un port aléatoire.
+ * Serveur de test — démarre Vauban CDI + Cassini/Chappe sur un port aléatoire.
  *
- * <p>Utilise le bootstrap direct (pas SeBootstrap) pour intégrer le resolver CDI Vauban.</p>
- *
- * <p>Usage dans JUnit 5 :</p>
- * <pre>{@code
- * private static ExampleServer server;
- *
- * @BeforeAll
- * static void start() throws Exception { server = new ExampleServer(); }
- *
- * @AfterAll
- * static void close() throws Exception { server.close(); }
- * }</pre>
+ * <p>Utilise {@code SeBootstrap} avec des singletons CDI : les instances
+ * ressources sont créées par Vauban ({@code @Inject} résolu) puis passées
+ * à l'Application JAX-RS. Aucun accès aux packages internes de Cassini.</p>
  */
 public class ExampleServer implements AutoCloseable {
 
     private final VaubanContainer container;
-    private final Server server;
+    private final SeBootstrap.Instance instance;
     private final int port;
 
     public ExampleServer() throws Exception {
-        // Port aléatoire libre
         try (var ss = new ServerSocket(0)) {
             this.port = ss.getLocalPort();
         }
 
-        // Démarrage du container CDI Vauban
         this.container = VaubanContainer.builder()
                 .addBeanClass(TodoService.class)
                 .addBeanClass(GreetingResource.class)
                 .addBeanClass(TodoResource.class)
                 .build();
 
-        // Bootstrap Cassini avec le resolver CDI Vauban
-        var methods = ResourceScanner.discover(GreetingResource.class, TodoResource.class);
-        var router = new UriRouter(methods);
-        var bodies = new MessageBodyRegistry();
-        var filters = new FilterRegistry();
-        var mappers = new ExceptionMapperRegistry();
-        // Resolver CDI : délègue à VaubanContainer
-        var invoker = new Invoker(
-                clazz -> container.select(clazz),
-                bodies, mappers);
-        invoker.setFilters(filters);
-        var adapter = new ChappeHttpAdapter(router, invoker);
+        var greeting = container.select(GreetingResource.class);
+        var todos    = container.select(TodoResource.class);
 
-        this.server = Server.builder()
-                .host("127.0.0.1")
-                .port(this.port)
-                .handler(adapter)
-                .build();
-        this.server.start();
+        this.instance = SeBootstrap.start(
+                new Application() {
+                    @Override public Set<Object> getSingletons() {
+                        return Set.of(greeting, todos);
+                    }
+                },
+                SeBootstrap.Configuration.builder()
+                        .host("127.0.0.1").port(this.port).build()
+        ).toCompletableFuture().get();
     }
 
-    public int port() {
-        return port;
-    }
-
-    public String baseUrl() {
-        return "http://127.0.0.1:" + port;
-    }
-
-    public VaubanContainer container() {
-        return container;
-    }
+    public int port()                  { return port; }
+    public String baseUrl()            { return "http://127.0.0.1:" + port; }
+    public VaubanContainer container() { return container; }
 
     @Override
     public void close() throws Exception {
-        try {
-            server.stop();
-        } finally {
-            container.close();
-        }
+        try { instance.stop().toCompletableFuture().get(); }
+        finally { container.close(); }
     }
 }

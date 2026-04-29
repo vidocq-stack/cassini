@@ -14,26 +14,7 @@
     <description>Exemple Cassini avec intégration Vauban CDI — bootstrap SeBootstrap + CdiResourceFactory</description>
 
     <dependencies>
-        <dependency>
-            <groupId>io.vidocq.cassini</groupId>
-            <artifactId>cassini-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.vidocq.cassini</groupId>
-            <artifactId>cassini-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.vidocq.cassini</groupId>
-            <artifactId>cassini-chappe</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.vidocq.cassini</groupId>
-            <artifactId>cassini-cdi</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.vidocq.chappe</groupId>
-            <artifactId>chappe-api</artifactId>
-        </dependency>
+        <!-- API compile : SeBootstrap + CDI + JSON-B -->
         <dependency>
             <groupId>jakarta.ws.rs</groupId>
             <artifactId>jakarta.ws.rs-api</artifactId>
@@ -45,6 +26,13 @@
         <dependency>
             <groupId>io.vidocq.vauban</groupId>
             <artifactId>vauban-core</artifactId>
+        </dependency>
+
+        <!-- Runtime : transport Chappe découvert via ServiceLoader -->
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-chappe</artifactId>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- JSON-B runtime (compile + test) -->
