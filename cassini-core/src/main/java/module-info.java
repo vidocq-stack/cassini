@@ -2,7 +2,6 @@ module io.vidocq.cassini.core {
     requires transitive io.vidocq.cassini.api;
     requires transitive jakarta.ws.rs;
     requires static jakarta.annotation;
-    requires static jakarta.cdi;
     requires static jakarta.inject;
 
     requires static jakarta.xml.bind;

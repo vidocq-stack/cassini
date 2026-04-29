@@ -1,9 +1,6 @@
 package io.vidocq.cassini.internal.filter;
 
-import jakarta.enterprise.inject.Any;
-import jakarta.enterprise.inject.spi.Bean;
-import jakarta.enterprise.inject.spi.BeanManager;
-import jakarta.enterprise.util.AnnotationLiteral;
+
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.ext.ParamConverterProvider;
@@ -20,14 +17,12 @@ import java.util.Map;
 
 /**
  * Registre des {@link ContainerRequestFilter} / {@link ContainerResponseFilter}
- * découverts par scan CDI. Expose les listes déjà triées par priorité.
+ * enregistrés manuellement ou via scan. Expose les listes triées par priorité.
  *
  * <p>§6.2 : les request filters s'exécutent dans l'ordre de priorité croissant ;
  * les response filters dans l'ordre décroissant.</p>
  */
 public final class FilterRegistry {
-
-    private static final AnnotationLiteral<Any> ANY = new AnnotationLiteral<Any>() {};
 
     private final List<FilterEntry<ContainerRequestFilter>> requestFilters = new ArrayList<>();
     private final List<FilterEntry<ContainerResponseFilter>> responseFilters = new ArrayList<>();
@@ -153,36 +148,4 @@ public final class FilterRegistry {
         return requestFilters.stream().filter(f -> !f.preMatching()).toList();
     }
 
-    public static FilterRegistry discover(BeanManager bm) {
-        FilterRegistry reg = new FilterRegistry();
-        if (bm == null) return reg;
-        Map<Class<?>, Boolean> seen = new HashMap<>();
-        for (Bean<?> bean : bm.getBeans(Object.class, ANY)) {
-            Class<?> cls = bean.getBeanClass();
-            if (seen.putIfAbsent(cls, Boolean.TRUE) != null) continue;
-            if (cls.getAnnotation(Provider.class) == null) continue;
-            Object instance = null;
-            if (ContainerRequestFilter.class.isAssignableFrom(cls)) {
-                instance = bm.getReference(bean, cls, bm.createCreationalContext(bean));
-                reg.addRequest((ContainerRequestFilter) instance);
-            }
-            if (ContainerResponseFilter.class.isAssignableFrom(cls)) {
-                if (instance == null) instance = bm.getReference(bean, cls, bm.createCreationalContext(bean));
-                reg.addResponse((ContainerResponseFilter) instance);
-            }
-            if (ReaderInterceptor.class.isAssignableFrom(cls)) {
-                if (instance == null) instance = bm.getReference(bean, cls, bm.createCreationalContext(bean));
-                reg.addReaderInterceptor((ReaderInterceptor) instance);
-            }
-            if (WriterInterceptor.class.isAssignableFrom(cls)) {
-                if (instance == null) instance = bm.getReference(bean, cls, bm.createCreationalContext(bean));
-                reg.addWriterInterceptor((WriterInterceptor) instance);
-            }
-            if (ContextResolver.class.isAssignableFrom(cls)) {
-                if (instance == null) instance = bm.getReference(bean, cls, bm.createCreationalContext(bean));
-                reg.addContextResolver((ContextResolver<?>) instance);
-            }
-        }
-        return reg;
-    }
 }
