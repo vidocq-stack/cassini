@@ -31,7 +31,7 @@ class GreetingResourceTest {
     @Test
     void helloWorld() throws Exception {
         var resp = http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/greetings")).GET().build(),
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/greetings")).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
 
         assertEquals(200, resp.statusCode());
@@ -41,7 +41,7 @@ class GreetingResourceTest {
     @Test
     void helloName() throws Exception {
         var resp = http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/greetings/Bob")).GET().build(),
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/greetings/Bob")).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
 
         assertEquals(200, resp.statusCode());
@@ -51,7 +51,7 @@ class GreetingResourceTest {
     @Test
     void contentTypeIsTextPlain() throws Exception {
         var resp = http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/greetings")).GET().build(),
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/greetings")).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
 
         assertTrue(resp.headers().firstValue("content-type")

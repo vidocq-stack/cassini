@@ -4,13 +4,13 @@
 ### --- Greetings ---
 
 ### GET /greetings — Hello World
-GET {{baseUrl}}/greetings
+GET {{baseUrl}}/api/greetings
 Accept: text/plain
 
 ###
 
 ### GET /greetings/{name} — Hello Bob
-GET {{baseUrl}}/greetings/Bob
+GET {{baseUrl}}/api/greetings/Bob
 Accept: text/plain
 
 ###
@@ -18,13 +18,13 @@ Accept: text/plain
 ### --- Todos ---
 
 ### GET /todos — liste vide
-GET {{baseUrl}}/todos
+GET {{baseUrl}}/api/todos
 Accept: application/json
 
 ###
 
 ### POST /todos — créer un todo
-POST {{baseUrl}}/todos
+POST {{baseUrl}}/api/todos
 Content-Type: application/json
 Accept: application/json
 
@@ -37,13 +37,13 @@ Accept: application/json
 ###
 
 ### GET /todos/1 — récupérer le todo id=1
-GET {{baseUrl}}/todos/1
+GET {{baseUrl}}/api/todos/1
 Accept: application/json
 
 ###
 
 ### PUT /todos/1 — mettre à jour le todo id=1
-PUT {{baseUrl}}/todos/1
+PUT {{baseUrl}}/api/todos/1
 Content-Type: application/json
 Accept: application/json
 
@@ -56,12 +56,12 @@ Accept: application/json
 ###
 
 ### DELETE /todos/1 — supprimer le todo id=1
-DELETE {{baseUrl}}/todos/1
+DELETE {{baseUrl}}/api/todos/1
 
 ###
 
 ### GET /todos/999 — 404 Not Found
-GET {{baseUrl}}/todos/999
+GET {{baseUrl}}/api/todos/999
 Accept: application/json
 
 ###

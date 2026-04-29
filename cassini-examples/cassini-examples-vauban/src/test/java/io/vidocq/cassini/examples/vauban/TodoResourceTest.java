@@ -44,7 +44,7 @@ class TodoResourceTest {
     @Order(1)
     void listEmpty() throws Exception {
         var resp = http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos"))
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/todos"))
                         .header("Accept", "application/json")
                         .GET().build(),
                 HttpResponse.BodyHandlers.ofString());
@@ -57,7 +57,7 @@ class TodoResourceTest {
     @Order(2)
     void createTodo() throws Exception {
         var resp = http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos"))
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/todos"))
                         .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(
                                 "{\"id\":0,\"title\":\"Buy milk\",\"done\":false}"))
@@ -76,7 +76,7 @@ class TodoResourceTest {
     void getTodo() throws Exception {
         // Créer d'abord
         http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos"))
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/todos"))
                         .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(
                                 "{\"id\":0,\"title\":\"Buy milk\",\"done\":false}"))
@@ -84,7 +84,7 @@ class TodoResourceTest {
                 HttpResponse.BodyHandlers.ofString());
 
         var resp = http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos/1"))
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/todos/1"))
                         .header("Accept", "application/json")
                         .GET().build(),
                 HttpResponse.BodyHandlers.ofString());
@@ -97,7 +97,7 @@ class TodoResourceTest {
     @Order(4)
     void getTodoNotFound() throws Exception {
         var resp = http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos/999"))
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/todos/999"))
                         .GET().build(),
                 HttpResponse.BodyHandlers.ofString());
 
@@ -109,7 +109,7 @@ class TodoResourceTest {
     void updateTodo() throws Exception {
         // Créer
         http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos"))
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/todos"))
                         .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(
                                 "{\"id\":0,\"title\":\"Buy milk\",\"done\":false}"))
@@ -118,7 +118,7 @@ class TodoResourceTest {
 
         // Mettre à jour
         var resp = http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos/1"))
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/todos/1"))
                         .header("Content-Type", "application/json")
                         .PUT(HttpRequest.BodyPublishers.ofString(
                                 "{\"id\":1,\"title\":\"Buy oat milk\",\"done\":true}"))
@@ -135,7 +135,7 @@ class TodoResourceTest {
     void deleteTodo() throws Exception {
         // Créer
         http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos"))
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/todos"))
                         .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(
                                 "{\"id\":0,\"title\":\"Buy milk\",\"done\":false}"))
@@ -144,7 +144,7 @@ class TodoResourceTest {
 
         // Supprimer
         var del = http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos/1"))
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/todos/1"))
                         .DELETE().build(),
                 HttpResponse.BodyHandlers.ofString());
 
@@ -152,7 +152,7 @@ class TodoResourceTest {
 
         // Vérifier qu'il n'existe plus
         var get = http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos/1"))
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/todos/1"))
                         .GET().build(),
                 HttpResponse.BodyHandlers.ofString());
 
@@ -163,7 +163,7 @@ class TodoResourceTest {
     @Order(7)
     void deleteNotFound() throws Exception {
         var resp = http.send(
-                HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos/999"))
+                HttpRequest.newBuilder(URI.create(server.apiUrl() + "/todos/999"))
                         .DELETE().build(),
                 HttpResponse.BodyHandlers.ofString());
 

@@ -40,10 +40,18 @@
             <artifactId>cassini-cdi-vauban</artifactId>
         </dependency>
 
-        <!-- Runtime : transport Chappe découvert via ServiceLoader -->
+        <!-- Transport Chappe : utilisé directement (handler composite statique + Cassini) -->
         <dependency>
             <groupId>io.vidocq.cassini</groupId>
             <artifactId>cassini-chappe</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.chappe</groupId>
+            <artifactId>chappe-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.chappe</groupId>
+            <artifactId>chappe-core</artifactId>
             <scope>runtime</scope>
         </dependency>
 

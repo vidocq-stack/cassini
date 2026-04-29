@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cassini + Vauban — Todo</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="app">
+        <header>
+            <div class="logo">⚡</div>
+            <h1>Cassini <span class="separator">×</span> Vauban</h1>
+            <p class="subtitle">JAX-RS 4.0 standalone · CDI Vauban · Chappe HTTP</p>
+        </header>
+
+        <section class="greeting" id="greeting">
+            <span class="loading">Chargement…</span>
+        </section>
+
+        <section class="todos">
+            <form id="add-form" class="add-form">
+                <input
+                    id="add-input"
+                    type="text"
+                    placeholder="Ajouter une tâche…"
+                    required
+                    autocomplete="off">
+                <button type="submit" aria-label="Ajouter">＋</button>
+            </form>
+
+            <ul id="todo-list" class="todo-list">
+                <li class="empty">Aucune tâche pour le moment.</li>
+            </ul>
+        </section>
+
+        <footer>
+            <code>GET /api/todos</code> ·
+            <code>POST /api/todos</code> ·
+            <code>PUT /api/todos/{id}</code> ·
+            <code>DELETE /api/todos/{id}</code>
+        </footer>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
