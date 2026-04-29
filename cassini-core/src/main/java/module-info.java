@@ -20,31 +20,26 @@ module io.vidocq.cassini.core {
                io.vidocq.cassini.cdi,
                io.vidocq.cassini.chappe,
                io.vidocq.cassini.jdkhttp,
-               io.vidocq.mpserver.ext.rest.cassini,
-               io.vidocq.cassini.examples.vauban;
+               io.vidocq.mpserver.ext.rest.cassini;
     exports io.vidocq.cassini.internal.context
             to io.vidocq.cassini.tck,
                io.vidocq.cassini.cdi,
                io.vidocq.cassini.chappe,
-               io.vidocq.cassini.jdkhttp,
-               io.vidocq.cassini.examples.vauban;
+               io.vidocq.cassini.jdkhttp;
     exports io.vidocq.cassini.internal.filter
             to io.vidocq.cassini.tck,
                io.vidocq.cassini.cdi,
-               io.vidocq.cassini.chappe,
-               io.vidocq.cassini.examples.vauban;
+               io.vidocq.cassini.chappe;
     exports io.vidocq.cassini.internal.multipart
             to io.vidocq.cassini.tck;
     exports io.vidocq.cassini.internal.runtime
             to io.vidocq.cassini.tck,
                io.vidocq.cassini.chappe,
-               io.vidocq.cassini.jdkhttp,
-               io.vidocq.cassini.examples.vauban;
+               io.vidocq.cassini.jdkhttp;
     exports io.vidocq.cassini.internal.transport
             to io.vidocq.cassini.tck,
                io.vidocq.cassini.chappe,
-               io.vidocq.cassini.jdkhttp,
-               io.vidocq.cassini.examples.vauban;
+               io.vidocq.cassini.jdkhttp;
 
     opens io.vidocq.cassini.internal to io.vidocq.cassini.cdi;
 

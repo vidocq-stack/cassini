@@ -70,14 +70,10 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <testCompilerArgs>
-                        <arg>--add-modules</arg>
-                        <arg>java.net.http</arg>
-                        <arg>--add-reads</arg>
-                        <arg>io.vidocq.cassini.examples.vauban=java.net.http</arg>
-                        <arg>--add-reads</arg>
-                        <arg>io.vidocq.cassini.examples.vauban=ALL-UNNAMED</arg>
-                    </testCompilerArgs>
+                    <compilerArgs>
+                        <arg>--add-exports=io.vidocq.cassini.core/io.vidocq.cassini.internal=ALL-UNNAMED</arg>
+                        <arg>--add-exports=io.vidocq.cassini.core/io.vidocq.cassini.internal.filter=ALL-UNNAMED</arg>
+                    </compilerArgs>
                 </configuration>
             </plugin>
             <plugin>
@@ -85,8 +81,9 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <argLine>
-                        --add-reads io.vidocq.cassini.examples.vauban=java.net.http
-                        --add-reads io.vidocq.cassini.examples.vauban=ALL-UNNAMED
+                        --add-exports io.vidocq.cassini.core/io.vidocq.cassini.internal=ALL-UNNAMED
+                        --add-exports io.vidocq.cassini.core/io.vidocq.cassini.internal.filter=ALL-UNNAMED
+                        --add-opens io.vidocq.cassini.core/io.vidocq.cassini.internal=ALL-UNNAMED
                     </argLine>
                 </configuration>
             </plugin>
