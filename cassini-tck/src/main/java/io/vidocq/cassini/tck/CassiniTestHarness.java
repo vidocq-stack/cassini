@@ -188,7 +188,9 @@ public final class CassiniTestHarness implements AutoCloseable {
             };
             Invoker invoker = new Invoker(resolver, bodies, exceptionMappers);
             invoker.setFilters(filters);
-            ChappeHttpAdapter bridge = new ChappeHttpAdapter(router, invoker);
+            io.vidocq.cassini.internal.DefaultCassiniHttpAdapter engine =
+                    new io.vidocq.cassini.internal.DefaultCassiniHttpAdapter(router, invoker);
+            ChappeHttpAdapter bridge = new ChappeHttpAdapter(engine);
             final String prefix = "/".equals(contextPath) ? "" : contextPath;
             final jakarta.ws.rs.core.Application appInstance = this.application;
             Handler wrappedBridge = appInstance == null ? bridge : (Handler) request -> {

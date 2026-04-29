@@ -4,4 +4,6 @@ module io.vidocq.cassini.api {
 
     exports io.vidocq.cassini.spi.http;
     exports io.vidocq.cassini.spi.resource;
+
+    uses io.vidocq.cassini.spi.http.CassiniStack.BuilderFactory;
 }

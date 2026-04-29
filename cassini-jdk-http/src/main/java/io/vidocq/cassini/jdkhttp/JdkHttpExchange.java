@@ -30,6 +30,7 @@ public final class JdkHttpExchange implements CassiniHttpExchange {
     private final String contextPath;
     private int responseStatus = 200;
     private final Map<String, List<String>> responseHeaders = new LinkedHashMap<>();
+    private final java.io.ByteArrayOutputStream bodyBuffer = new java.io.ByteArrayOutputStream();
     private final Map<String, Object> attributes = new java.util.HashMap<>();
 
     public JdkHttpExchange(HttpExchange exchange) {
@@ -43,6 +44,8 @@ public final class JdkHttpExchange implements CassiniHttpExchange {
 
     public HttpExchange jdkExchange() { return exchange; }
     public int collectedStatus() { return responseStatus; }
+    public byte[] collectedBody() { return bodyBuffer.toByteArray(); }
+    public Map<String, List<String>> collectedHeaders() { return responseHeaders; }
 
     @Override public String method() { return exchange.getRequestMethod(); }
 
@@ -60,7 +63,7 @@ public final class JdkHttpExchange implements CassiniHttpExchange {
 
     @Override public Map<String, List<String>> responseHeaders() { return responseHeaders; }
 
-    @Override public OutputStream responseBody() { return exchange.getResponseBody(); }
+    @Override public OutputStream responseBody() { return bodyBuffer; }
 
     @Override public SocketAddress remoteAddress() { return exchange.getRemoteAddress(); }
 

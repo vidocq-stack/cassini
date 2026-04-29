@@ -36,6 +36,16 @@ public final class ExceptionMapperRegistry {
         mappers.add(new Registration<>(exceptionType, mapper));
     }
 
+    /** Enregistre un instance {@code @Provider} implémentant {@link ExceptionMapper} si applicable.
+     *  Résout le type d'exception via les interfaces génériques. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public void register(Object instance) {
+        if (!(instance instanceof ExceptionMapper)) return;
+        Class<? extends Throwable> excType = resolveExceptionType(instance.getClass());
+        if (excType == null) return;
+        mappers.add(new Registration(excType, (ExceptionMapper) instance));
+    }
+
     /** Scanne le BeanManager à la recherche de beans {@code @Provider} implémentant ExceptionMapper. */
     public static ExceptionMapperRegistry discover(BeanManager bm) {
         ExceptionMapperRegistry reg = new ExceptionMapperRegistry();

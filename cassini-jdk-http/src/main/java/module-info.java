@@ -1,7 +1,7 @@
 module io.vidocq.cassini.jdkhttp {
     requires io.vidocq.cassini.api;
-    requires io.vidocq.cassini.core;
     requires jdk.httpserver;
+    requires static jakarta.ws.rs;
 
     exports io.vidocq.cassini.jdkhttp;
 }
