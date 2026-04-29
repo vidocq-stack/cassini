@@ -25,7 +25,7 @@ import java.util.concurrent.CountDownLatch;
  */
 public class Main {
 
-    public static void main(String[] args) throws Exception {
+    static void main(String[] args) throws Exception {
         var container = VaubanContainer.builder()
                 .addBeanClass(TodoService.class)
                 .addBeanClass(GreetingResource.class)
