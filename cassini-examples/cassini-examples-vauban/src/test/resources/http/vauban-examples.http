@@ -1,0 +1,67 @@
+### Cassini Vauban CDI Examples — IntelliJ HTTP Client
+### Env : "local" (port 8080) ou "test"
+
+### --- Greetings ---
+
+### GET /greetings — Hello World
+GET {{baseUrl}}/greetings
+Accept: text/plain
+
+###
+
+### GET /greetings/{name} — Hello Bob
+GET {{baseUrl}}/greetings/Bob
+Accept: text/plain
+
+###
+
+### --- Todos ---
+
+### GET /todos — liste vide
+GET {{baseUrl}}/todos
+Accept: application/json
+
+###
+
+### POST /todos — créer un todo
+POST {{baseUrl}}/todos
+Content-Type: application/json
+Accept: application/json
+
+{
+  "id": 0,
+  "title": "Buy milk",
+  "done": false
+}
+
+###
+
+### GET /todos/1 — récupérer le todo id=1
+GET {{baseUrl}}/todos/1
+Accept: application/json
+
+###
+
+### PUT /todos/1 — mettre à jour le todo id=1
+PUT {{baseUrl}}/todos/1
+Content-Type: application/json
+Accept: application/json
+
+{
+  "id": 1,
+  "title": "Buy oat milk",
+  "done": true
+}
+
+###
+
+### DELETE /todos/1 — supprimer le todo id=1
+DELETE {{baseUrl}}/todos/1
+
+###
+
+### GET /todos/999 — 404 Not Found
+GET {{baseUrl}}/todos/999
+Accept: application/json
+
+###

@@ -111,6 +111,7 @@
         <subproject>cassini-cdi</subproject>
         <subproject>cassini-chappe</subproject>
         <subproject>cassini-jdk-http</subproject>
+        <subproject>cassini-examples</subproject>
     </subprojects>
 
     <dependencyManagement>
