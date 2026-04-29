@@ -27,6 +27,12 @@
             <groupId>io.vidocq.vauban</groupId>
             <artifactId>vauban-core</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.vidocq.vauban</groupId>
+            <artifactId>vauban-classloader-spi</artifactId>
+            <version>${vauban.version}</version>
+            <scope>runtime</scope>
+        </dependency>
 
         <!-- Runtime : transport Chappe découvert via ServiceLoader -->
         <dependency>
