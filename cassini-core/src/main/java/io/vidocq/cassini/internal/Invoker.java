@@ -801,15 +801,15 @@ public final class Invoker {
             }
         }
 
-        // §11.1 : méthode SSE → attendre la fermeture du sink (M2i).
+        // §11.1 : méthode SSE.
         if (sseSink != null) {
             ParamExtractor.clearCurrentSink();
-            sseSink.awaitClose();
             if (sseSink.isStreaming()) {
                 // Mode streaming (JDK) : la réponse a déjà été envoyée sur le wire.
                 return CassiniHttpResponse.builder().status(200).body(new byte[0]).build();
             }
-            // Mode bufferisé (Chappe) : assembler la réponse depuis le buffer.
+            // Mode bufferisé : attendre sink.close() puis envoyer le buffer en bloc.
+            sseSink.awaitClose();
             byte[] body = sseSink.toByteArray();
             return CassiniHttpResponse.builder()
                     .status(200)
