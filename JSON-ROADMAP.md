@@ -160,7 +160,93 @@ Total ~7 à 10 semaines pour avoir un stack JSON pleinement maison.
 
 ---
 
-## 4. Décisions à prendre
+## 4. Spécifications techniques que `cassini-jsonb` / `cassini-jsonp` DOIVENT respecter
+
+Ces invariants viennent directement des frottements observés avec Yasson +
+Parsson (cf. §1, §2). **Toute violation d'un de ces points fait échouer la
+revue de design.**
+
+### 4.1 Module-path strict ready (priorité absolue)
+
+| # | Règle | Pourquoi | Détail d'impl |
+|---|-------|----------|---------------|
+| **R-1** | **Aucun appel à `setAccessible(true)`** dans le runtime path. | Demande `opens` chez le consommateur ; cassait Yasson + records. | Tout passe par `MethodHandles.publicLookup()`. Si la cible n'est pas publique, soit on lève une erreur claire au binding (pas au runtime), soit on exige un `JsonbAdapter` user. |
+| **R-2** | **Pas d'appel à `Class.getDeclaredConstructors()` / `getDeclaredMethods()`**. Préférer les variantes `public*`. | Idem : nécessite des privilèges réflexion. | Records et POJOs publics → `getRecordComponents()` + `getMethods()` suffisent. Pour les types non-publics, exiger `@JsonbAdapter` ou refuser. |
+| **R-3** | **Aucune dépendance à un `opens` côté consommateur**. Une app dont le `module-info.java` ne contient *aucun* `opens` doit fonctionner. | Le bug Yasson + records survient exactement là. | Tester explicitement avec un test runtime jlink où le module consommateur n'a aucun `opens`. CI obligatoire. |
+| **R-4** | **Pas d'usage de `Lookup.privateLookupIn(...)`** sur le module consommateur. | Cette API requiert `opens to <module>` ciblé. | Seul `MethodHandles.publicLookup()` est acceptable pour traverser les frontières de modules. |
+
+### 4.2 Records — first-class
+
+| # | Règle | Détail d'impl |
+|---|-------|---------------|
+| **R-5** | Le **canonical constructor** d'un record est résolu via `Class.getRecordComponents()` + `MethodHandles.publicLookup().findConstructor(...)`. Pas de `getDeclaredConstructor`. | Le canonical constructor d'un record est *toujours* `public` — on a le droit de le résoudre via `publicLookup` sans opens. |
+| **R-6** | Les **accesseurs** (`title()`, `id()`, `done()`) sont résolus via `publicLookup().findVirtual(...)`. Cached par `ClassValue<RecordBinding>` au premier usage. | Records accesseurs sont publics par construction. Un seul lookup amorti sur tous les appels. |
+| **R-7** | **Aucune annotation requise** sur les records pour qu'ils soient sérialisables/désérialisables. `@JsonbProperty` reste optionnelle (renommage de champ, alias). | C'est ce qui distingue de Yasson 3.0.4 → suppression du boilerplate `@JsonbCreator` factory. |
+| **R-8** | Composants **null** sérialisés selon la config (`nillable=true` par défaut côté `cassini-jsonb` ?  À discuter — Yasson met `false` ; pour les records l'absence d'un champ a un sens différent que `null`). | Décision ouverte (cf. §5). |
+| **R-9** | Records **génériques** (`record Pair<A, B>(A first, B second)`) supportés via `Class.getRecordComponents()[i].getGenericType()`. | Préserver les TypeVariable jusqu'au binding final. |
+
+### 4.3 JSON-P pull-based / push-based
+
+| # | Règle | Détail d'impl |
+|---|-------|---------------|
+| **R-10** | `JsonParser` lit caractère par caractère via un `InputStream` ou `Reader`. **Jamais** `readAllBytes()`. | Critique pour SSE / chunked / gros payloads. Aligne sur `Body.streaming()` de Chappe. |
+| **R-11** | `JsonGenerator` écrit directement sur l'`OutputStream` cible. Pas de `StringBuilder` intermédiaire. | Idem streaming. |
+| **R-12** | Un `JsonParser` doit être positionnable et navigable sans tout charger en mémoire. `JsonObject` complet uniquement à la demande explicite (`getObject()`). | Cohérent avec l'API JSON-P standard, mais souvent oublié par les impls. |
+| **R-13** | `JsonString.getString()` retourne le contenu décodé (sans guillemets) ; les escapes Unicode (`\uXXXX`), surrogate pairs et caractères de contrôle sont décodés correctement (TCK exige). | Fait souvent louper des caractères BMP > U+FFFF. |
+
+### 4.4 Démarrage / coût d'init
+
+| # | Règle | Détail d'impl |
+|---|-------|---------------|
+| **R-14** | `Jsonb.fromJson(...)` doit fonctionner sans aucun side-effect d'init au-delà du premier appel. **Pas d'init JNDI**, pas de scan classpath, pas de CDI lookup. | Coût constant `O(1)` au premier `JsonbBuilder.create()`. |
+| **R-15** | Le binding par classe (record ou POJO) est **lazy** : résolu uniquement à la première sérialisation/désérialisation de cette classe. Cached via `ClassValue`. | Pas de scan global au boot. |
+| **R-16** | Les bindings sont **immutables** une fois créés. Concurrence safe sans synchronisation explicite. | Multi-thread sans contention (HTTP server multi-virtual-threads). |
+| **R-17** | Un benchmark intégré (`cassini-bench`) compare cold start + warm throughput vs Yasson sur un set représentatif (records, POJOs, dates, collections, polymorphisme). Régression > 10 % bloque le merge. | Discipline de perf. |
+
+### 4.5 Module JPMS — `module-info.java`
+
+```java
+module io.vidocq.cassini.jsonp {
+    requires transitive jakarta.json;
+    exports io.vidocq.cassini.jsonp;            // si API publique au-delà du SPI
+    provides jakarta.json.spi.JsonProvider
+        with io.vidocq.cassini.jsonp.CassiniJsonProvider;
+}
+
+module io.vidocq.cassini.jsonb {
+    requires transitive jakarta.json.bind;
+    requires io.vidocq.cassini.jsonp;
+    exports io.vidocq.cassini.jsonb;            // pareil, à minimiser
+    provides jakarta.json.bind.spi.JsonbProvider
+        with io.vidocq.cassini.jsonb.CassiniJsonbProvider;
+}
+```
+
+| # | Règle | Détail |
+|---|-------|--------|
+| **R-18** | Aucun `requires static` sur des modules optionnels. Si un binding optionnel existe (ex. JSR-310 zone-id format), il doit être détecté via `Class.forName()` au binding. | Évite la pollution du module path. |
+| **R-19** | Pas de packages `internal/` exportés sans qualifier. | Encapsulation. |
+| **R-20** | Tests d'intégration jlink dans `cassini-jsonb-tests` : un sous-module `cassini-jsonb-it-jlink` qui produit une image jlink minimale + assert via curl que le round-trip records marche. | Régression-proof contre R-1 à R-7. |
+
+### 4.6 Compatibilité TCK Jakarta
+
+| # | Règle | Détail |
+|---|-------|--------|
+| **R-21** | TCK JSON-P 2.1 exécuté sur `cassini-jsonp` à chaque PR. Cible 100 % avant rétention. | Conformité. |
+| **R-22** | TCK JSON-B 3.0 exécuté sur `cassini-jsonb` à chaque PR. Cible 100 % avant rétention. | Conformité. |
+| **R-23** | Pas de feature non-spec exposée dans l'API publique tant que le TCK n'est pas vert. | Évite la surface d'instabilité. |
+
+### 4.7 Diagnostic & erreurs
+
+| # | Règle | Détail |
+|---|-------|--------|
+| **R-24** | Erreur de binding (record non résoluble, type non supporté) → `JsonbException` avec message explicite : nom du record, composant fautif, raison probable, suggestion. | Le mode "défaut silencieux" de Yasson + records est exactement ce qu'on veut éviter. |
+| **R-25** | Un mode `JsonbConfig.withStrictMode(true)` qui transforme tout warning en erreur (champ JSON inconnu lors de la désérialisation, accesseur non-trouvé, etc.). | Aide le dev à attraper les bugs au plus tôt. |
+| **R-26** | Logging via `System.Logger` (JEP 264), niveau `DEBUG` pour les bindings résolus (une ligne par classe), `WARNING` pour les fallbacks (Adapter custom utilisé, etc.). | Zéro dépendance log lib. |
+
+---
+
+## 5. Décisions à prendre
 
 - [ ] **Module path** : `io.vidocq.cassini.jsonp` et `io.vidocq.cassini.jsonb`
       ou `io.vidocq.jsonp`/`io.vidocq.jsonb` (potentiellement utiles hors
@@ -170,3 +256,7 @@ Total ~7 à 10 semaines pour avoir un stack JSON pleinement maison.
 - [ ] **JSON-P comme dépendance distincte** : extraire `cassini-jsonp` même
       si `cassini-jsonb` est seul consommateur, ou les fondre en un seul
       module ?
+- [ ] **Records `null` policy** (cf. R-8) : `nillable=true` par défaut
+      (champs `null` sérialisés explicitement) ou `false` (omission) ?
+      Le comportement Yasson par défaut est `false` — c'est ce qui a masqué
+      le bug §1. Pencher vers `true` pour `cassini-jsonb` ?
