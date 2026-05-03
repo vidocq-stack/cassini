@@ -6,7 +6,8 @@ module io.vidocq.cassini.examples.jdkhttp {
     requires java.net.http;
     requires jdk.httpserver;
 
-    // Ouvert à tous : JAX-RS + JSON-B font de la reflection sur ressources et model.
+    // JAX-RS injection / param resolution : reflection sur ressources.
     opens io.vidocq.cassini.examples.jdkhttp.resource;
-    opens io.vidocq.cassini.examples.jdkhttp.model;
+    // §R-3 — Champollion résout les records via publicLookup, juste exports.
+    exports io.vidocq.cassini.examples.jdkhttp.model;
 }

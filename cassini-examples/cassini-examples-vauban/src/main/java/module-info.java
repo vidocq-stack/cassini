@@ -10,9 +10,9 @@ module io.vidocq.cassini.examples.vauban {
     requires io.vidocq.cassini.cdi.vauban;
     requires io.vidocq.chappe.api;
 
-    // Ouvert à tous : JAX-RS + JSON-B font de la reflection sur ressources,
-    // service et model pour injection et sérialisation.
+    // JAX-RS injection sur ressources, CDI Vauban sur services.
     opens io.vidocq.cassini.examples.vauban.resource;
     opens io.vidocq.cassini.examples.vauban.service;
-    opens io.vidocq.cassini.examples.vauban.model;
+    // §R-3 — Champollion résout les records via publicLookup, juste exports.
+    exports io.vidocq.cassini.examples.vauban.model;
 }
