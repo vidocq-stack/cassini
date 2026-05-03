@@ -90,8 +90,7 @@
         <jakarta.json.bind.version>3.0.1</jakarta.json.bind.version>
         <jakarta.xml.bind.version>4.0.2</jakarta.xml.bind.version>
         <jakarta.activation.version>2.1.3</jakarta.activation.version>
-        <yasson.version>3.0.4</yasson.version>
-        <parsson.version>1.1.7</parsson.version>
+        <champollion.version>0.1.0-SNAPSHOT</champollion.version>
 
         <chappe.version>0.1.0-SNAPSHOT</chappe.version>
         <vauban.version>0.1.0-SNAPSHOT</vauban.version>
@@ -162,16 +161,21 @@
                 <version>${jakarta.activation.version}</version>
             </dependency>
 
-            <!-- JSON-B / JSON-P impls -->
+            <!-- JSON-B / JSON-P impls : Champollion (zero-dep, JPMS strict, records natifs) -->
             <dependency>
-                <groupId>org.eclipse</groupId>
-                <artifactId>yasson</artifactId>
-                <version>${yasson.version}</version>
+                <groupId>io.vidocq.champollion</groupId>
+                <artifactId>champollion-api</artifactId>
+                <version>${champollion.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.eclipse.parsson</groupId>
-                <artifactId>parsson</artifactId>
-                <version>${parsson.version}</version>
+                <groupId>io.vidocq.champollion</groupId>
+                <artifactId>champollion-jsonp</artifactId>
+                <version>${champollion.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.vidocq.champollion</groupId>
+                <artifactId>champollion-jsonb</artifactId>
+                <version>${champollion.version}</version>
             </dependency>
 
             <!-- Chappe -->
