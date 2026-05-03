@@ -1,16 +1,46 @@
 # JSON-B / JSON-P — état actuel et roadmap d'implémentation maison
 
-**Statut** : Cassini utilise aujourd'hui Yasson 3.0.4 (JSON-B) + Parsson 1.1.7
-(JSON-P) en provider runtime. Plusieurs frottements en mode JPMS strict
-(jlink / jpackage / module-path) justifient à terme une **implémentation
-maison** alignée sur les contraintes Cassini : `cassini-jsonb` et `cassini-jsonp`.
-
-Ce document trace les bugs/workarounds connus et les cibles fonctionnelles
-pour l'impl maison.
+> **STATUT 2026-05-04 : RÉSOLU.** Cassini utilise désormais **Champollion**
+> (`io.vidocq.champollion:{champollion-api,champollion-jsonp,champollion-jsonb}:0.1.0-SNAPSHOT`)
+> en remplacement de Yasson + Parsson. Tous les frottements documentés
+> ci-dessous sont maintenant adressés.
+>
+> - **JSON-P 2.1** : 178/179 PASS au TCK officiel (99,4 %).
+> - **JSON-B 3.0** : 287/295 PASS (97,3 %), zéro FAIL fonctionnel — les 3 ERROR
+>   restants sont environnementaux (CDI runtime + signature binaire).
+> - **TCK Jakarta REST 4.0 sur Cassini avec Champollion** : 2535/2670 PASS
+>   (0 FAIL, 0 ERROR, 135 SKIP) — score nominal préservé après le swap.
+> - **Bench Champollion vs Yasson/Parsson/Jackson** : voir
+>   `champollion/BENCH.md`. Champollion est compétitif avec Yasson sur le
+>   binding (~1× sur write, +28 % sur read MEDIUM), 2,5-3× plus lent que
+>   Parsson sur le streaming JSON-P (chantier d'optimisation P1/P2 ouvert).
+>
+> Les sections ci-dessous sont conservées comme **archive historique** des
+> motivations qui ont conduit à Champollion. Les deux modules `cassini-jsonb`
+> et `cassini-jsonp` originellement prévus sont remplacés par Champollion
+> (factorisation : implémentation JSON générique réutilisable hors Cassini).
 
 ---
 
-## 1. Bug Yasson + `record` + module-path strict (avril 2026)
+## Historique (avant intégration Champollion)
+
+Cassini utilisait Yasson 3.0.4 (JSON-B) + Parsson 1.1.7 (JSON-P) en provider
+runtime. Plusieurs frottements en mode JPMS strict (jlink / jpackage /
+module-path) ont justifié une **implémentation maison** alignée sur les
+contraintes Cassini.
+
+Ce document trace les bugs/workarounds connus et les cibles fonctionnelles
+qui ont guidé Champollion.
+
+---
+
+## 1. Bug Yasson + `record` + module-path strict (avril 2026) — ✅ RÉSOLU avec Champollion
+
+> Champollion résout ce bug nativement : il n'utilise jamais
+> `setAccessible(true)`, résout le canonical constructor des records via
+> `Class.getRecordComponents()` + `MethodHandles.publicLookup()`, et n'exige
+> aucun `opens` côté consommateur. Le workaround `@JsonbCreator` factory
+> n'est plus nécessaire.
 
 ### Symptôme
 
