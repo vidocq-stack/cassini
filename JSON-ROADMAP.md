@@ -1,15 +1,19 @@
 # JSON-B / JSON-P — état actuel et roadmap d'implémentation maison
 
-> **STATUT 2026-05-04 : RÉSOLU.** Cassini utilise désormais **Champollion**
+> **STATUT 2026-05-04 (final) : RÉSOLU.** Cassini utilise désormais **Champollion**
 > (`io.vidocq.champollion:{champollion-api,champollion-jsonp,champollion-jsonb}:0.1.0-SNAPSHOT`)
 > en remplacement de Yasson + Parsson. Tous les frottements documentés
 > ci-dessous sont maintenant adressés.
 >
 > - **JSON-P 2.1** : 178/179 PASS au TCK officiel (99,4 %).
-> - **JSON-B 3.0** : 287/295 PASS (97,3 %), zéro FAIL fonctionnel — les 3 ERROR
->   restants sont environnementaux (CDI runtime + signature binaire).
+> - **JSON-B 3.0** : **289/295 PASS (97,97 %)**, zéro FAIL fonctionnel — le seul
+>   ERROR restant est `JSONBSigTest.signatureTest` (signature binaire, fichier
+>   `.sig` non distribué dans le ZIP TCK 3.0.0). Les 2 ERROR CDI précédents ont
+>   été résolus (M7.16 spec §5 + M7.17 split creator/property — cf. TCK.md).
 > - **TCK Jakarta REST 4.0 sur Cassini avec Champollion** : 2535/2670 PASS
->   (0 FAIL, 0 ERROR, 135 SKIP) — score nominal préservé après le swap.
+>   (0 FAIL, 0 ERROR, 135 SKIP) — **score nominal préservé** après tous les
+>   changements Champollion (M7.16/M7.17 CDI, P6.1/P6.2 perf runtime, P10.1/P10.2
+>   refactor parser, P9 pool parsers).
 > - **Bench Champollion vs Yasson/Parsson/Jackson** : voir
 >   `champollion/BENCH.md`. Champollion est compétitif avec Yasson sur le
 >   binding (~1× sur write, +28 % sur read MEDIUM), 2,5-3× plus lent que
