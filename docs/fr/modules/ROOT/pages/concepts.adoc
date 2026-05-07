@@ -1,0 +1,51 @@
+= Concepts
+:description: Stack, transport SPI, providers statiques, intégration CDI.
+
+== Stack et transports
+
+Cassini sépare strictement la couche **REST** (lecture des annotations, dispatch, content negotiation) du **transport HTTP** :
+
+* `cassini-core` — moteur REST stricte spec, agnostique du transport.
+* `cassini-chappe` — branche `cassini-core` sur xref:chappe::index.adoc[Chappe] (HTTP/1.1 + HTTP/2 + virtual threads).
+* `cassini-jdk-http` — fallback JDK 25 `com.sun.net.httpserver.HttpServer` (utile pour tests rapides ou environnements qui interdisent les frameworks).
+
+L'API `CassiniStack.builder()` choisit le transport via `ServiceLoader`.
+
+== Providers `MessageBodyReader` / `MessageBodyWriter`
+
+Pas de scan classpath au démarrage. Les providers sont :
+
+* déclarés via `META-INF/services/jakarta.ws.rs.ext.MessageBodyReader` (et `Writer`),
+* ou enregistrés à la compilation par un APT qui scan les `@Provider` du module courant.
+
+L'enregistrement runtime via `Application.getClasses()` reste possible, mais il **complète** plutôt qu'il ne remplace.
+
+== Intégration CDI
+
+Trois niveaux possibles :
+
+. **Sans CDI** — ressources instanciées par `Class.getDeclaredConstructor().newInstance()`. Acceptable pour démos, déconseillé en production.
+. **`cassini-cdi`** — CDI Lite minimal (singletons applicatifs, request scope).
+. **`cassini-cdi-vauban`** — intégration build-time avec Vauban : les ressources `@ApplicationScoped` sont résolues comme n'importe quel bean Vauban.
+
+[NOTE]
+====
+Pour un service complet REST + CDI dans le runtime Vidocq, ne pas configurer Cassini directement — laisser l'extension `vidocq-mps-cassini` orchestrer le tout.
+====
+
+== Content negotiation et JSON
+
+`@Produces(MediaType.APPLICATION_JSON)` délègue à xref:champollion::index.adoc[Champollion]. La sérialisation est statique : si un type est utilisé dans une signature de ressource, son `_Binding` aura été généré à la compilation par `champollion-codegen-apt`.
+
+== Filters et interceptors
+
+Les `ContainerRequestFilter`, `ContainerResponseFilter`, `ReaderInterceptor`, `WriterInterceptor` sont supportés. Leur ordre est résolu via `@Priority` à la compilation, pas au runtime.
+
+[TODO]
+====
+Documenter `cassini-tck` :
+
+* commande : `./run-official-tck-restful-4.0.sh`
+* statut courant (suite passée / restant)
+* contournement ShrinkWrap (POM modelVersion 4.0.0 standalone, hors-reactor)
+====

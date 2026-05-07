@@ -1,0 +1,8 @@
+name: cassini-fr
+title: Cassini
+version: ~
+nav:
+  - modules/ROOT/nav.adoc
+asciidoc:
+  attributes:
+    lang: fr

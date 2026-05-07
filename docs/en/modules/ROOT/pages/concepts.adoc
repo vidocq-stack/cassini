@@ -1,0 +1,51 @@
+= Concepts
+:description: Stack, transport SPI, static providers, CDI integration.
+
+== Stack and transports
+
+Cassini cleanly separates the **REST** layer (annotation parsing, dispatch, content negotiation) from the **HTTP transport**:
+
+* `cassini-core` — strict-spec REST engine, transport-agnostic.
+* `cassini-chappe` — wires `cassini-core` onto xref:chappe::index.adoc[Chappe] (HTTP/1.1 + HTTP/2 + virtual threads).
+* `cassini-jdk-http` — JDK 25 `com.sun.net.httpserver.HttpServer` fallback (handy for quick tests or environments that disallow frameworks).
+
+The `CassiniStack.builder()` API picks the transport via `ServiceLoader`.
+
+== `MessageBodyReader` / `MessageBodyWriter` providers
+
+No classpath scan at startup. Providers are:
+
+* declared via `META-INF/services/jakarta.ws.rs.ext.MessageBodyReader` (and `Writer`),
+* or registered at compile time by an APT that scans `@Provider`s in the current module.
+
+Runtime registration via `Application.getClasses()` is still possible, but **complements** rather than replaces.
+
+== CDI integration
+
+Three levels:
+
+. **No CDI** — resources instantiated via `Class.getDeclaredConstructor().newInstance()`. Acceptable for demos, discouraged in production.
+. **`cassini-cdi`** — minimal CDI Lite (application singletons, request scope).
+. **`cassini-cdi-vauban`** — build-time integration with Vauban: `@ApplicationScoped` resources are resolved like any Vauban bean.
+
+[NOTE]
+====
+For a full REST + CDI service inside the Vidocq runtime, do not configure Cassini directly — let the `vidocq-mps-cassini` extension orchestrate it.
+====
+
+== Content negotiation and JSON
+
+`@Produces(MediaType.APPLICATION_JSON)` delegates to xref:champollion::index.adoc[Champollion]. Serialization is static: if a type appears in a resource signature, its `_Binding` will have been emitted at compile time by `champollion-codegen-apt`.
+
+== Filters and interceptors
+
+`ContainerRequestFilter`, `ContainerResponseFilter`, `ReaderInterceptor`, `WriterInterceptor` are supported. Their ordering is resolved via `@Priority` at compile time, not at runtime.
+
+[TODO]
+====
+Document `cassini-tck`:
+
+* command: `./run-official-tck-restful-4.0.sh`
+* current status (suite passed / remaining)
+* ShrinkWrap workaround (standalone modelVersion 4.0.0 POM, out-of-reactor)
+====

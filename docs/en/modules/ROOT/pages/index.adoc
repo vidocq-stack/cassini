@@ -1,0 +1,22 @@
+= Cassini
+:description: Jakarta REST 4.0 implementation — pure REST, pluggable HTTP transport, optional CDI.
+
+[.lead]
+Cassini is a standalone Jakarta RESTful Web Services 4.0 implementation — pure REST 4.0, HTTP transport via SPI (xref:chappe::index.adoc[Chappe] or JDK), CDI optional through xref:vauban::index.adoc[Vauban]. Map the territory accurately, do not add edges to the map.
+
+== Why?
+
+The Cassini dynasty — four generations of cartographers in the service of the French Academy of Sciences — produced between 1747 and 1789 the _Carte de France_ at 1:86,400, the first geodetic topographical survey of any European state. They did not draw France; they measured it, triangle after triangle, meridian after meridian, rejecting the decoration and approximations inherited from nautical charts.
+
+The Cassini REST implementation follows the same principle. No magic, no abstraction layer overshooting the Jakarta REST 4.0 spec. Transport is pluggable (Chappe by default, JDK `HttpServer` as fallback). JSON binding is delegated to xref:champollion::index.adoc[Champollion]. CDI scope is optional: REST without Vauban is fine, or wire Vauban in if you want `@Inject` in your resources.
+
+== At a glance
+
+* **Strict Jakarta REST 4.0** — standard annotations, no proprietary extensions unless justified.
+* **Pluggable transports** — `cassini-chappe` (HTTP/2 + virtual threads), `cassini-jdk-http` (JDK 25 `HttpServer` fallback), open API for other bindings.
+* **Optional CDI** — `cassini-cdi` (CDI Lite), `cassini-cdi-vauban` (build-time integration with Vauban).
+* **Static codegen** — `MessageBodyReader`/`Writer` providers registered at build, no classpath scan at startup.
+* **Jakarta REST 4.0 TCK** — `cassini-tck` module is out-of-reactor (ShrinkWrap constraint, see xref:reference.adoc[Reference]).
+* **Java 25, JPMS** — `module-info.java` everywhere, minimal exports.
+
+xref:getting-started.adoc[Get started →]

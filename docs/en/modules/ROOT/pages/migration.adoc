@@ -1,0 +1,56 @@
+= Migration
+:description: From RESTEasy, Jersey or CXF.
+
+[CAUTION]
+Cassini is at **0.1.0-SNAPSHOT**. Real migration is premature. See also `cassini/cassini-migration.md` at the repo root for complementary notes.
+
+== From RESTEasy (Reactive or Classic)
+
+[cols="1,1,2"]
+|===
+| RESTEasy | Cassini | Note
+
+| Vert.x transport
+| Chappe (`cassini-chappe`)
+| Virtual threads, no Vert.x
+
+| `quarkus-resteasy-reactive`
+| `cassini-cdi-vauban`
+| Equivalent build-time path
+
+| MP `RestClient`
+| `[TODO]` equivalent
+| Dedicated module to come
+
+| Pre/Post-matching filters
+| Same Jakarta REST 4.0
+| Standard annotations preserved
+|===
+
+== From Jersey
+
+[TODO]
+====
+* Jersey SE → `CassiniStack.builder().handler(Application).port(8080).build()`.
+* Jersey + Grizzly → Chappe equivalent.
+* Properties config → MicroProfile Config (once integrated).
+====
+
+== From CXF
+
+[TODO]: to document once a real-world case shows up.
+
+== Jakarta REST 4.0 annotations
+
+All standard annotations are preserved. No expected change on user code if it is strictly spec-compliant — except JSON binding:
+
+* RESTEasy/Jersey often delegate to Yasson or Jackson — Cassini delegates to xref:champollion::index.adoc[Champollion]. Serialization is static: add `champollion-codegen-apt` to the build for new types.
+
+== Known pitfalls
+
+[TODO]
+====
+* Sub-resource locator resources (`@Path` on a method) — validate.
+* `@Suspended` AsyncResponse — validate on Chappe.
+* Tricky `MultivaluedMap<String, ...>` cases — validate.
+====

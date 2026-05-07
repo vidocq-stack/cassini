@@ -1,0 +1,108 @@
+= Démarrage rapide
+:description: Première ressource JAX-RS servie par Cassini sur Chappe.
+
+== Pré-requis
+
+* **Java 25**, **Maven 4.0.0-rc-5** — `.sdkmanrc` à la racine du repo.
+* Connaître les bases de Jakarta REST 4.0 (`@Path`, `@GET`, `@POST`, `Response`).
+
+== Coordonnées Maven
+
+[source,xml]
+----
+<dependencies>
+    <dependency>
+        <groupId>jakarta.ws.rs</groupId>
+        <artifactId>jakarta.ws.rs-api</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>io.vidocq.cassini</groupId>
+        <artifactId>cassini-core</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+        <groupId>io.vidocq.cassini</groupId>
+        <artifactId>cassini-chappe</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <scope>runtime</scope>
+    </dependency>
+</dependencies>
+----
+
+== Hello world
+
+Une ressource JAX-RS standard :
+
+[source,java]
+----
+package io.example;
+
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+
+@Path("/hello")
+public class HelloResource {
+
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    public String hello() {
+        return "Hello, Cassini!";
+    }
+
+    @GET
+    @Path("/{name}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Greeting greet(@PathParam("name") String name) {
+        return new Greeting(name, "Bonjour, " + name);
+    }
+
+    public record Greeting(String name, String message) {}
+}
+----
+
+Démarrage :
+
+[source,java]
+----
+import io.vidocq.cassini.chappe.CassiniStack;
+import jakarta.ws.rs.core.Application;
+import java.util.Set;
+
+public class Main extends Application {
+    @Override public Set<Class<?>> getClasses() {
+        return Set.of(HelloResource.class);
+    }
+
+    public static void main(String[] args) throws Exception {
+        try (var server = CassiniStack.builder()
+                .application(new Main())
+                .port(8080)
+                .build()) {
+            server.start();
+            Thread.currentThread().join();
+        }
+    }
+}
+----
+
+== Build et lancement
+
+[source,bash]
+----
+sdk env
+./mvnw -ntp install -DskipTests
+mvn -pl cassini-examples -am exec:exec
+----
+
+[NOTE]
+====
+Pour brancher CDI : ajouter `cassini-cdi-vauban` au classpath et déclarer les ressources `@ApplicationScoped`. Vauban résout l'injection à la compilation.
+====
+
+[TIP]
+====
+Pour exécuter le TCK Jakarta REST 4.0 officiel : `./run-official-tck-restful-4.0.sh` à la racine du repo `cassini`. Le module `cassini-tck` est volontairement hors-reactor (contrainte ShrinkWrap, voir xref:reference.adoc[Référence]).
+====

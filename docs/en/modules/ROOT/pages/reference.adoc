@@ -1,0 +1,64 @@
+= Reference
+:description: Maven artefacts, transports, TCK, scripts.
+
+== Maven artefacts
+
+[cols="1,3"]
+|===
+| Artefact | Role
+
+| `io.vidocq.cassini:cassini-api:0.1.0-SNAPSHOT`
+| Public API (`CassiniStack`, builders)
+
+| `io.vidocq.cassini:cassini-core:0.1.0-SNAPSHOT`
+| REST engine (dispatch, content negotiation)
+
+| `io.vidocq.cassini:cassini-cdi:0.1.0-SNAPSHOT`
+| CDI Lite integration
+
+| `io.vidocq.cassini:cassini-cdi-vauban:0.1.0-SNAPSHOT`
+| Build-time integration with Vauban
+
+| `io.vidocq.cassini:cassini-chappe:0.1.0-SNAPSHOT`
+| Transport via Chappe (HTTP/2 + virtual threads)
+
+| `io.vidocq.cassini:cassini-jdk-http:0.1.0-SNAPSHOT`
+| Transport via JDK 25 `HttpServer` (fallback)
+
+| `io.vidocq.cassini:cassini-examples:0.1.0-SNAPSHOT`
+| Examples
+|===
+
+NOTE: `cassini-tck` is not published and is **out-of-reactor** (standalone `modelVersion 4.0.0` POM).
+
+== Jakarta REST 4.0 compatibility
+
+Supported annotations:
+
+* `@Path`, `@GET`, `@POST`, `@PUT`, `@DELETE`, `@PATCH`, `@HEAD`, `@OPTIONS`
+* `@Produces`, `@Consumes`
+* `@PathParam`, `@QueryParam`, `@HeaderParam`, `@CookieParam`, `@FormParam`, `@MatrixParam`, `@BeanParam`
+* `@Provider`, `@Priority`
+* `@DefaultValue`, `@Encoded`
+
+[TODO]: `@Suspended` + `AsyncResponse` to validate on the Chappe transport.
+
+== Jakarta REST 4.0 TCK
+
+[source,bash]
+----
+cd cassini
+./run-official-tck-restful-4.0.sh             # smoke
+./run-official-tck-restful-4.0.sh -Dtest=...  # targeted
+----
+
+`cassini-tck` is intentionally outside the parent `<subprojects>`. Reason: ShrinkWrap Maven Resolver 3.3 (transitive of the official TCK) cannot parse `Model 4.1.0` POMs. See `vidocq/CLAUDE.md` at the workspace root for full context.
+
+== Bugs and benchmarks
+
+* `cassini/BUG.md` — reproducible issues.
+* `cassini/BENCH.md` — `[TODO]` JMH/wrk vs RESTEasy/Jersey.
+
+== Migration from…
+
+xref:migration.adoc[See Migration page].
