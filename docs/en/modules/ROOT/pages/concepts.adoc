@@ -1,51 +1,83 @@
 = Concepts
-:description: Stack, transport SPI, static providers, CDI integration.
+:description: JAX-RS vocabulary, Cassini programming model, REST 4.0 vs 3.x differences.
 
-== Stack and transports
+[.lead]
+This page defines the JAX-RS vocabulary as Cassini implements it, and clarifies what Jakarta REST 4.0 brings over JAX-RS 3.x — strict JPMS, `SeBootstrap`, virtual threads.
+
+== JAX-RS vocabulary
+
+[cols="1,4"]
+|===
+| Resource
+| Class annotated `@Path`. Cassini matches it by URI template (`@Path("/users/{id}")`) then dispatches to a **resource method** (`@GET`, `@POST`...) or to a **sub-resource locator** (which returns a new resource for further dispatching).
+
+| Resource method
+| Method annotated with an HTTP verb — `@GET`, `@POST`, `@PUT`, `@DELETE`, `@PATCH`, `@HEAD`, `@OPTIONS`, or a custom `@HttpMethod`.
+
+| Provider
+| `@Provider` component that extends the runtime: `MessageBodyReader/Writer` (serialization), `ContextResolver` (injectable context), `ExceptionMapper` (exception → response mapping), `ParamConverter` (`String` ↔ custom type conversion in `@QueryParam`/`@PathParam`).
+
+| Filter
+| `ContainerRequestFilter` or `ContainerResponseFilter` — intercepts the inbound request or outbound response. `@PreMatching` runs before routing.
+
+| Interceptor
+| `ReaderInterceptor` / `WriterInterceptor` — wraps body (de)serialization.
+
+| Application
+| `jakarta.ws.rs.core.Application` subclass declaring resources and providers. The HTTP root is set by `@ApplicationPath` or by the SE-Bootstrap `Configuration`.
+
+| ParamConverter
+| `ParamConverterProvider` enables custom types in `@PathParam` / `@QueryParam` / `@HeaderParam` etc. — Cassini resolves it at stack startup.
+|===
+
+== Cassini stack and transports
 
 Cassini cleanly separates the **REST** layer (annotation parsing, dispatch, content negotiation) from the **HTTP transport**:
 
-* `cassini-core` — strict-spec REST engine, transport-agnostic.
-* `cassini-chappe` — wires `cassini-core` onto xref:chappe::index.adoc[Chappe] (HTTP/1.1 + HTTP/2 + virtual threads).
-* `cassini-jdk-http` — JDK 25 `com.sun.net.httpserver.HttpServer` fallback (handy for quick tests or environments that disallow frameworks).
+* `cassini-api` — public SPI (`CassiniHttpExchange`, `CassiniHttpAdapter`, `CassiniStack`, `BeanProvider`, `ResourceFactory`). **Zero internal symbol, zero transport dependency.**
+* `cassini-core` — JAX-RS engine (Invoker, ResourceScanner, MessageBodyRegistry). Strict-spec, transport-agnostic.
+* `cassini-chappe` — wires the engine onto xref:chappe::index.adoc[Chappe] (HTTP/1.1, H2, virtual threads). **TCK reference transport.**
+* `cassini-jdk-http` — JDK 25 `com.sun.net.httpserver` fallback (zero external dependency, ideal for smoke tests).
+* `cassini-cdi-vauban` — `BeanProvider` adapter that resolves resources through xref:vauban::index.adoc[Vauban].
 
-The `CassiniStack.builder()` API picks the transport via `ServiceLoader`.
+`CassiniStack.builder()` picks the transport via `ServiceLoader` — application code references no transport-specific symbol.
 
-== `MessageBodyReader` / `MessageBodyWriter` providers
+== Two resource instantiation modes
 
-No classpath scan at startup. Providers are:
+. **Mode A — without CDI**: `new()` via `DefaultResourceFactory`. Used by `cassini-jdk-http` standalone and demos. Resources are `@Singleton` or per-request depending on declared scope.
+. **Mode B — DI via `BeanProvider` SPI**: `cassini-cdi-vauban` or any other `ServiceLoader` adapter. No `jakarta.cdi` import in `cassini-api` / `cassini-core` — strict decoupling.
 
-* declared via `META-INF/services/jakarta.ws.rs.ext.MessageBodyReader` (and `Writer`),
-* or registered at compile time by an APT that scans `@Provider`s in the current module.
+== Routing: Cassini's map
 
-Runtime registration via `Application.getClasses()` is still possible, but **complements** rather than replaces.
+Like geodetic triangulation, JAX-RS routing is hierarchical and deterministic:
 
-== CDI integration
+. **Literal match** has priority over regex match (`{id}` then `{id:\\d+}`).
+. **Best-match** on the (path, verb, media-type) triple — `Request.selectVariant` server-side, `@Produces`/`@Consumes` annotation-side.
+. **Sub-resource locator**: the method returns an instance, its `@Path` is consumed, dispatch resumes from that instance.
 
-Three levels:
+== REST 4.0 vs 3.x differences
 
-. **No CDI** — resources instantiated via `Class.getDeclaredConstructor().newInstance()`. Acceptable for demos, discouraged in production.
-. **`cassini-cdi`** — minimal CDI Lite (application singletons, request scope).
-. **`cassini-cdi-vauban`** — build-time integration with Vauban: `@ApplicationScoped` resources are resolved like any Vauban bean.
+[cols="2,3"]
+|===
+| JAX-RS 3.x | Jakarta REST 4.0 (Cassini)
+| Implicit transport (Servlet 4) | Native `SeBootstrap` §5.2, pluggable transport via `RuntimeDelegate` ServiceLoader
+| Platform threads | **Virtual threads by default** (Java 25), no platform pool needed
+| No official module-info support | **Native JPMS**: complete `module-info.java`, minimal exports
+| Bootstrap limited to container | Standalone `SeBootstrap.start(Application.class, config)`
+| Partial multipart (Forms) | First-class **`EntityPart`** §3.5.4
+| Partial records | Java 17+ records natively supported on the binding side (Champollion)
+|===
 
-[NOTE]
-====
-For a full REST + CDI service inside the Vidocq runtime, do not configure Cassini directly — let the `vidocq-mps-cassini` extension orchestrate it.
-====
+== Static codegen
 
-== Content negotiation and JSON
+Cassini favours **compile-time generation** over runtime reflection:
 
-`@Produces(MediaType.APPLICATION_JSON)` delegates to xref:champollion::index.adoc[Champollion]. Serialization is static: if a type appears in a resource signature, its `_Binding` will have been emitted at compile time by `champollion-codegen-apt`.
+* Resources: APT-like scanner + Class-File API to emit invokers at `compile`.
+* `MessageBodyReader/Writer` providers: registration via `META-INF/services` or APT — no classpath scan at startup.
+* Filters: `@Priority` ordering resolved at stack build, not per request.
 
-== Filters and interceptors
+This is AOT-compatible (GraalVM, Leyden CDS) — see xref:internals.adoc[internals] for details.
 
-`ContainerRequestFilter`, `ContainerResponseFilter`, `ReaderInterceptor`, `WriterInterceptor` are supported. Their ordering is resolved via `@Priority` at compile time, not at runtime.
+== TCK scope: Core Profile / SE-Bootstrap
 
-[TODO]
-====
-Document `cassini-tck`:
-
-* command: `./run-official-tck-restful-4.0.sh`
-* current status (suite passed / remaining)
-* ShrinkWrap workaround (standalone modelVersion 4.0.0 POM, out-of-reactor)
-====
+Cassini targets the **Core Profile / SE-Bootstrap** target: no Servlet on the server side, no JAXB-runtime. The TCK tags `servlet` and `xml_binding` are excluded per TCK Process 1.4.1 §5.2.3. Details in xref:tck.adoc[TCK].

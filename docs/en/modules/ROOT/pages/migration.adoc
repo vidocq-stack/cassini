@@ -1,56 +1,111 @@
 = Migration
-:description: From RESTEasy, Jersey or CXF.
+:description: From Jersey, RESTEasy, Helidon REST, or CXF.
+
+[.lead]
+Cassini strictly implements Jakarta RESTful Web Services 4.0. If your application is already standard (spec annotations, no proprietary API), the migration is mostly a swap of the Maven runtime coordinates. This page documents the gotchas and the mappings.
 
 [CAUTION]
-Cassini is at **0.1.0-SNAPSHOT**. Real migration is premature. See also `cassini/cassini-migration.md` at the repo root for complementary notes.
-
-== From RESTEasy (Reactive or Classic)
-
-[cols="1,1,2"]
-|===
-| RESTEasy | Cassini | Note
-
-| Vert.x transport
-| Chappe (`cassini-chappe`)
-| Virtual threads, no Vert.x
-
-| `quarkus-resteasy-reactive`
-| `cassini-cdi-vauban`
-| Equivalent build-time path
-
-| MP `RestClient`
-| `[TODO]` equivalent
-| Dedicated module to come
-
-| Pre/Post-matching filters
-| Same Jakarta REST 4.0
-| Standard annotations preserved
-|===
+====
+Cassini is at `0.1.0-SNAPSHOT`. A production migration is premature until the first stable release ships. This page anticipates the path for evaluators.
+====
 
 == From Jersey
 
-[TODO]
-====
-* Jersey SE → `CassiniStack.builder().handler(Application).port(8080).build()`.
-* Jersey + Grizzly → Chappe equivalent.
-* Properties config → MicroProfile Config (once integrated).
-====
+[cols="2,2,3",options="header"]
+|===
+| Jersey | Cassini | Note
 
-== From CXF
+| `org.glassfish.jersey.server.ResourceConfig`
+| `jakarta.ws.rs.core.Application`
+| Standard spec. Jersey-isms (`packages()`, `register(Object)`) become `getClasses()` / `getSingletons()`.
 
-[TODO]: to document once a real-world case shows up.
+| `org.glassfish.jersey.containers.grizzly2`
+| `cassini-chappe` (reference transport) or `cassini-jdk-http`
+| Standard `SeBootstrap.start(...)` instead of `GrizzlyHttpServerFactory`.
+
+| HK2 bridge (`hk2-cdi-bridge`)
+| `cassini-cdi-vauban`
+| Vauban resolves injection at build time, not via HK2.
+
+| `jersey-mvc`, `jersey-bean-validation`...
+| No proprietary extensions
+| Cassini stays 100 % spec. Bean Validation must be wired manually (TODO post-1.0).
+
+| `LoggingFeature`
+| Standard `ContainerRequestFilter` + `ContainerResponseFilter`
+| Hand-written impl (10 lines — see xref:usage.adoc[usage]).
+|===
+
+[source,java]
+----
+// Before — Jersey + Grizzly
+ResourceConfig config = new ResourceConfig().packages("com.example");
+GrizzlyHttpServerFactory.createHttpServer(URI.create("http://0.0.0.0:8080/"), config);
+
+// After — Cassini SE-Bootstrap
+SeBootstrap.start(MyApplication.class, SeBootstrap.Configuration.builder()
+    .host("0.0.0.0").port(8080).build()).toCompletableFuture().join();
+----
+
+== From RESTEasy
+
+[cols="2,2,3",options="header"]
+|===
+| RESTEasy | Cassini | Note
+
+| `quarkus-resteasy-reactive`
+| `cassini-cdi-vauban`
+| Equivalent build-time path, without Quarkus. Champollion replaces Quarkus's JSON binding.
+
+| Vert.x transport
+| Chappe (`cassini-chappe`)
+| Native virtual threads, no event-loop. Different concurrency model — see xref:internals.adoc[internals].
+
+| Embedded Weld
+| Vauban (Lite) optional
+| Vauban is CDI 4.1 Lite, not Full. Verify you don't rely on Full features (dynamic decorators, conversation scope, etc.).
+
+| MP `RestClient`
+| TODO post-1.0
+| Not yet shipped on the client side.
+
+| `Pre/Post-matching` filters
+| Same Jakarta REST 4.0
+| No change.
+|===
+
+== From Helidon REST
+
+Helidon SE 4 exposes a custom API (`HttpRouting`, `Handler`). Helidon MP runs Jersey under the hood — migration is then equivalent to "from Jersey" above.
+
+For Helidon SE → Cassini, you need to **rewrite** to standard JAX-RS annotations. Cassini is not a "fluent routing" engine — it is a Jakarta REST engine.
+
+== From CXF (JAX-RS)
+
+CXF tracks the spec closely. Migration is largely a Maven-coordinate swap and replacing `<jaxrs:server>` Spring/Blueprint with `SeBootstrap.start(...)`.
+
+== JSON binding — heads-up
+
+Jersey and RESTEasy default to Yasson or Jackson. Cassini delegates to xref:champollion::index.adoc[Champollion]:
+
+* Static serialization: add `champollion-codegen-apt` to the build for new types.
+* Standard `@JsonbProperty`, `@JsonbDateFormat`, `@JsonbTypeAdapter` annotations supported.
+* Jackson annotations (`@JsonProperty`, `@JsonIgnore`...) **not** supported — convert to JSON-B.
 
 == Jakarta REST 4.0 annotations
 
-All standard annotations are preserved. No expected change on user code if it is strictly spec-compliant — except JSON binding:
-
-* RESTEasy/Jersey often delegate to Yasson or Jackson — Cassini delegates to xref:champollion::index.adoc[Champollion]. Serialization is static: add `champollion-codegen-apt` to the build for new types.
+All standard annotations are preserved. No expected change on user code if it is strictly spec-compliant.
 
 == Known pitfalls
 
-[TODO]
-====
-* Sub-resource locator resources (`@Path` on a method) — validate.
-* `@Suspended` AsyncResponse — validate on Chappe.
-* Tricky `MultivaluedMap<String, ...>` cases — validate.
-====
+* **Sub-resource locators** (`@Path` on a method returning an instance): supported. Verify imports if the application used a proprietary variant.
+* **`@Suspended AsyncResponse`**: supported; full chunked streaming is on milestone M2h (see xref:tck.adoc[TCK]).
+* **SSE backpressure**: `CassiniSseEventSink` buffers in 0.1.0 — real-time streaming arrives in M2i.
+* **Client-side multipart**: Cassini is **server-only**. For multipart requests, use the external Jersey client or wait for the REST 4.0 client delivery.
+* **MicroProfile Config / Health / Metrics**: wire via xref:vidocq::index.adoc[Vidocq-MPS] (orchestrator) — Cassini alone does not configure MP.
+
+== See also
+
+* xref:concepts.adoc[Concepts]
+* xref:tck.adoc[TCK status]
+* lien:{repo-cassini}/src/branch/main/cassini-migration.md[Internal migration notes (repo)]

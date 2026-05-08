@@ -1,0 +1,178 @@
+= Usage
+:description: Sub-resources, providers, filters, content negotiation, async, SSE, Vauban integration.
+
+[.lead]
+This page lists the common recipes beyond Hello World — sub-resources, providers, filters and interceptors, content negotiation, non-blocking async, SSE, and CDI integration via xref:vauban::index.adoc[Vauban].
+
+== Sub-resources and sub-resource locators
+
+[source,java]
+----
+@Path("/users")
+public class UsersResource {
+
+    // Sub-resource method
+    @GET @Produces(MediaType.APPLICATION_JSON)
+    public List<User> list() { ... }
+
+    // Sub-resource locator: returns an instance that takes over dispatching
+    @Path("/{id}")
+    public UserResource user(@PathParam("id") long id) {
+        return new UserResource(id);
+    }
+}
+
+public class UserResource {
+    private final long id;
+    public UserResource(long id) { this.id = id; }
+
+    @GET @Produces(MediaType.APPLICATION_JSON)
+    public User get() { ... }
+
+    @PUT @Consumes(MediaType.APPLICATION_JSON)
+    public Response update(User u) { ... }
+}
+----
+
+== Providers — `MessageBodyReader` / `MessageBodyWriter`
+
+Cassini ships `CassiniJsonbReaderWriter` covering `application/json` via xref:champollion::index.adoc[Champollion]. To add a custom format:
+
+[source,java]
+----
+@Provider
+@Produces("application/x-protobuf")
+@Consumes("application/x-protobuf")
+public class ProtobufProvider
+        implements MessageBodyReader<Message>, MessageBodyWriter<Message> {
+    // ...
+}
+----
+
+Providers are registered via `Application.getClasses()`, the `BeanProvider` (CDI), or `META-INF/services/jakarta.ws.rs.ext.MessageBodyReader`. Best-match resolution is handled by `MessageBodyRegistry` in `cassini-core`.
+
+== `ContextResolver` and `Providers`
+
+[source,java]
+----
+@Provider
+public class JsonbContextResolver implements ContextResolver<Jsonb> {
+    private final Jsonb jsonb = JsonbBuilder.create(
+        new JsonbConfig().withFormatting(true));
+
+    @Override public Jsonb getContext(Class<?> type) { return jsonb; }
+}
+----
+
+Inject `@Context Providers providers` into a resource to fetch an arbitrary `MessageBodyWriter` or `ContextResolver`.
+
+== `ExceptionMapper`
+
+[source,java]
+----
+@Provider
+public class NotFoundExceptionMapper implements ExceptionMapper<NotFoundException> {
+    @Override
+    public Response toResponse(NotFoundException e) {
+        return Response.status(Response.Status.NOT_FOUND)
+            .entity(Map.of("error", e.getMessage()))
+            .type(MediaType.APPLICATION_JSON)
+            .build();
+    }
+}
+----
+
+== Filters and interceptors
+
+[source,java]
+----
+@Provider
+@PreMatching
+public class CorsFilter implements ContainerRequestFilter {
+    @Override
+    public void filter(ContainerRequestContext ctx) {
+        ctx.getHeaders().add("Access-Control-Allow-Origin", "*");
+    }
+}
+
+@Provider
+@Logged                        // custom @NameBinding
+public class LoggingFilter implements ContainerRequestFilter, ContainerResponseFilter {
+    @Override public void filter(ContainerRequestContext req) {
+        System.out.printf("[->] %s %s%n", req.getMethod(), req.getUriInfo().getPath());
+    }
+    @Override public void filter(ContainerRequestContext req, ContainerResponseContext res) {
+        System.out.printf("[<-] %d%n", res.getStatus());
+    }
+}
+----
+
+Ordering is resolved via `@Priority` at stack startup (not per request).
+
+== Content negotiation
+
+Cassini fully implements the §3.7 best-match rules and `Request.selectVariant` (§5.1):
+
+[source,java]
+----
+@GET
+public Response negotiate(@Context Request request) {
+    var variants = Variant.mediaTypes(
+        MediaType.APPLICATION_JSON_TYPE,
+        MediaType.APPLICATION_XML_TYPE).build();
+    var best = request.selectVariant(variants);
+    if (best == null) return Response.notAcceptable(variants).build();
+    return Response.ok(payload(), best).build();
+}
+----
+
+== Async — `@Suspended AsyncResponse`
+
+[source,java]
+----
+@GET @Path("/long")
+public void longRunning(@Suspended AsyncResponse async) {
+    Thread.startVirtualThread(() -> {
+        try {
+            var result = compute();        // may block
+            async.resume(result);
+        } catch (Exception e) {
+            async.resume(e);
+        }
+    });
+}
+----
+
+Async execution leverages virtual threads (Java 25). The `CassiniAsyncContext` (internal SPI) drives `CompletionStage` propagation down to the transport. Full chunked streaming is scheduled for milestone M2h — see xref:tck.adoc[TCK status].
+
+== Server-Sent Events
+
+[source,java]
+----
+@GET @Path("/events") @Produces(MediaType.SERVER_SENT_EVENTS)
+public void events(@Context SseEventSink sink, @Context Sse sse) {
+    try (sink) {
+        for (int i = 0; i < 10; i++) {
+            sink.send(sse.newEvent("tick-" + i));
+        }
+    }
+}
+----
+
+NOTE: The current implementation (`CassiniSseEventSink`) buffers then emits in bulk — spec-compliant per §11 on the contract, but real-time chunked streaming is scheduled for milestone **M2i** (see lien:{repo-cassini}/src/branch/main/ASYNC.md[`ASYNC.md`]).
+
+== CDI / Vauban integration
+
+With `cassini-cdi-vauban` on the classpath, `VaubanBeanProvider.getResourceClasses()` walks the `BeanManager` and exposes all `@Path` / `@Provider` classes to the stack. No manual list of singletons is required.
+
+[source,java]
+----
+var container = VaubanContainer.builder()
+        .addBeanClass(TodoService.class)
+        .addBeanClass(TodoResource.class)
+        .build();
+
+SeBootstrap.start(new Application() {}, config);   // Cassini scans via Vauban
+----
+
+The `CassiniScopeExtension` (BCE) automatically adds `@RequestScoped` to `@Path` classes lacking an explicit scope. See xref:internals.adoc[internals] for the diagram.

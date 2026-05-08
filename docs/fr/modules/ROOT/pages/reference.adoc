@@ -1,64 +1,146 @@
 = Référence
-:description: Artefacts Maven, transports, TCK, scripts.
+:description: Artefacts Maven, modules JPMS, annotations supportées, configuration.
+
+[.lead]
+Référence factuelle : artefacts Maven publiés, modules JPMS exportés, annotations Jakarta REST 4.0 supportées, propriétés de configuration.
 
 == Artefacts Maven
 
-[cols="1,3"]
+[cols="2,3"]
 |===
 | Artefact | Rôle
 
 | `io.vidocq.cassini:cassini-api:0.1.0-SNAPSHOT`
-| API publique (`CassiniStack`, builders)
+| SPI publique (`CassiniHttpExchange`, `CassiniHttpAdapter`, `CassiniStack`, `BeanProvider`, `ResourceFactory`).
 
 | `io.vidocq.cassini:cassini-core:0.1.0-SNAPSHOT`
-| Moteur REST (dispatch, content negotiation)
-
-| `io.vidocq.cassini:cassini-cdi:0.1.0-SNAPSHOT`
-| Intégration CDI Lite
+| Moteur JAX-RS (Invoker, ResourceScanner, MessageBodyRegistry, filtres, providers, SSE, multipart).
 
 | `io.vidocq.cassini:cassini-cdi-vauban:0.1.0-SNAPSHOT`
-| Intégration build-time avec Vauban
+| Adapter `BeanProvider` qui résout les ressources via xref:vauban::index.adoc[Vauban] (BCE `CassiniScopeExtension` incluse).
 
 | `io.vidocq.cassini:cassini-chappe:0.1.0-SNAPSHOT`
-| Transport via Chappe (HTTP/2 + virtual threads)
+| Transport de référence — branche Cassini sur xref:chappe::index.adoc[Chappe] (HTTP/1.1, H2, virtual threads). Utilisé pour le TCK.
 
 | `io.vidocq.cassini:cassini-jdk-http:0.1.0-SNAPSHOT`
-| Transport via JDK 25 `HttpServer` (fallback)
+| Transport JDK pur — `com.sun.net.httpserver.HttpServer`, zéro dépendance externe.
 
-| `io.vidocq.cassini:cassini-examples:0.1.0-SNAPSHOT`
-| Exemples
+| `io.vidocq.cassini:cassini-examples-*`
+| Exemples : `cassini-examples-chappe` (SE-Bootstrap standard), `cassini-examples-jdkhttp` (CassiniStack direct), `cassini-examples-vauban` (CDI + SE-Bootstrap).
 |===
 
-NOTE: `cassini-tck` n'est pas publié et est **hors-reactor** (POM `modelVersion 4.0.0` standalone).
+NOTE: `cassini-tck` n'est pas publié et est **hors-reactor** (POM `modelVersion 4.0.0` standalone). Voir xref:tck.adoc#runner-hors-reactor[TCK — runner hors-reactor].
 
-== Compatibilité Jakarta REST 4.0
+== Modules JPMS
 
-Les annotations supportées :
+[cols="2,3"]
+|===
+| Module | Exports / Provides
 
-* `@Path`, `@GET`, `@POST`, `@PUT`, `@DELETE`, `@PATCH`, `@HEAD`, `@OPTIONS`
-* `@Produces`, `@Consumes`
-* `@PathParam`, `@QueryParam`, `@HeaderParam`, `@CookieParam`, `@FormParam`, `@MatrixParam`, `@BeanParam`
-* `@Provider`, `@Priority`
-* `@DefaultValue`, `@Encoded`
-
-[TODO] : `@Suspended` + `AsyncResponse` à valider sur le transport Chappe.
-
-== TCK Jakarta REST 4.0
-
-[source,bash]
+| `io.vidocq.cassini.api`
+a|
+[source]
 ----
-cd cassini
-./run-official-tck-restful-4.0.sh             # smoke
-./run-official-tck-restful-4.0.sh -Dtest=...  # ciblé
+exports io.vidocq.cassini.spi.http;
+exports io.vidocq.cassini.spi.resource;
+exports io.vidocq.cassini.spi.bean;
+uses io.vidocq.cassini.spi.http.CassiniStack.BuilderFactory;
+uses io.vidocq.cassini.spi.bean.BeanProvider.Factory;
 ----
 
-`cassini-tck` est délibérément hors `<subprojects>` du parent POM. Raison : ShrinkWrap Maven Resolver 3.3 (transitive du TCK officiel) ne sait pas parser les POMs `Model 4.1.0`. Voir `vidocq/CLAUDE.md` à la racine du workspace pour le contexte complet.
+| `io.vidocq.cassini.core`
+a|
+Aucun export public. `internal.*` est ouvert uniquement aux modules
+`cassini.tck`, `cassini.cdi`, `cassini.chappe`, `cassini.jdkhttp`,
+`mpserver.ext.rest.cassini`, `cassini.examples.vauban`.
+[source]
+----
+provides io.vidocq.cassini.spi.http.CassiniStack.BuilderFactory
+    with io.vidocq.cassini.internal.CassiniStackBuilderFactory;
+----
+
+| `io.vidocq.cassini.chappe`
+a|
+[source]
+----
+exports io.vidocq.cassini.chappe;
+provides jakarta.ws.rs.ext.RuntimeDelegate
+    with io.vidocq.cassini.chappe.ChappeRuntimeDelegate;
+----
+
+| `io.vidocq.cassini.jdkhttp`
+a|
+[source]
+----
+exports io.vidocq.cassini.jdkhttp;
+provides jakarta.ws.rs.ext.RuntimeDelegate
+    with io.vidocq.cassini.jdkhttp.JdkHttpRuntimeDelegate;
+----
+
+| `io.vidocq.cassini.cdi`
+a|
+[source]
+----
+exports io.vidocq.cassini.cdi;
+provides io.vidocq.cassini.spi.resource.ResourceFactory
+    with io.vidocq.cassini.cdi.CdiResourceFactory;
+----
+|===
+
+NOTE: `cassini-core` n'expose **pas** son `CassiniRuntimeDelegate` via `ServiceLoader` — c'est volontaire pour éviter une collision avec le `RuntimeDelegate` du transport actif (`cassini-chappe` ou `cassini-jdk-http`).
+
+== Annotations supportées
+
+`@Path`, `@GET`, `@POST`, `@PUT`, `@DELETE`, `@PATCH`, `@HEAD`, `@OPTIONS`, `@HttpMethod`, `@ApplicationPath`,
+`@Produces`, `@Consumes`,
+`@PathParam`, `@QueryParam`, `@HeaderParam`, `@CookieParam`, `@FormParam`, `@MatrixParam`, `@BeanParam`,
+`@DefaultValue`, `@Encoded`,
+`@Provider`, `@Priority`, `@NameBinding`, `@PreMatching`,
+`@Context`,
+`@Suspended` (async — voir xref:tck.adoc[TCK] pour l'état M2h).
+
+CDI (avec `cassini-cdi-vauban`) : `@ApplicationScoped`, `@RequestScoped`, `@Singleton`, `@Inject`.
+
+== Interfaces JAX-RS implémentées
+
+`Application`, `SeBootstrap`, `Configuration`, `Configurable`,
+`UriInfo`, `Request`, `HttpHeaders`, `SecurityContext`, `Providers`,
+`MessageBodyReader`, `MessageBodyWriter`, `ContextResolver`, `ExceptionMapper`,
+`ContainerRequestFilter`, `ContainerResponseFilter`, `ReaderInterceptor`, `WriterInterceptor`,
+`DynamicFeature`, `Feature`,
+`Sse`, `SseEventSink`, `SseBroadcaster`,
+`AsyncResponse`, `CompletionCallback`, `ConnectionCallback`,
+`EntityPart`, `EntityPart.Builder` (multipart §3.5.4).
+
+== Configuration
+
+Cassini se configure via `SeBootstrap.Configuration` (standard) ou via le builder `CassiniStack.builder()` (avancé) :
+
+[cols="2,1,3"]
+|===
+| Propriété | Défaut | Description
+| `host` | `0.0.0.0` | Interface d'écoute du transport.
+| `port` | `0` (auto) | Port HTTP. `0` = aléatoire libre.
+| `rootPath` | `/` | Préfixe de montage de l'`Application`.
+| `protocol` | `HTTP` | `HTTP` ou `HTTPS` (selon support transport).
+|===
+
+Quand Cassini est piloté par xref:vidocq::index.adoc[Vidocq-MPS] (extension `vidocq-rest-cassini`), deux propriétés MicroProfile Config supplémentaires :
+
+[cols="2,1,3"]
+|===
+| Propriété | Défaut | Description
+| `vidocq.rest.context-path` | `/` | Préfixe de montage JAX-RS dans le serveur Vidocq.
+| `vidocq.rest.listener` | `default` | Listener Chappe cible.
+|===
 
 == Bugs et benchmarks
 
-* `cassini/BUG.md` — issues reproductibles.
-* `cassini/BENCH.md` — `[TODO]` JMH/wrk vs RESTEasy/Jersey.
+* lien:{repo-cassini}/src/branch/main/BUG.md[`BUG.md`] — issues reproductibles.
+* lien:{repo-cassini}/src/branch/main/BENCH.md[`BENCH.md`] — JMH/wrk vs RESTEasy / Jersey / Helidon.
 
-== Migration depuis…
+== Voir aussi
 
-xref:migration.adoc[Voir la page Migration].
+* xref:tck.adoc[État TCK]
+* xref:internals.adoc[Fonctionnement interne]
+* xref:migration.adoc[Migration depuis Jersey / RESTEasy / Helidon]

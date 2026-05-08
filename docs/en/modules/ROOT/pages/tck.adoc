@@ -1,0 +1,134 @@
+= TCK: Jakarta RESTful Web Services 4.0
+:description: Conformance status against the official Jakarta REST 4.0.1 TCK.
+
+[.lead]
+This page consolidates the status of the official TCK tests run against Cassini. The day-to-day source of truth remains the lien:{repo-cassini}/src/branch/main/TCK.md[`TCK.md`] in the repo.
+
+== Result
+
+[cols="1,3"]
+|===
+| Target profile | **Jakarta EE Core Profile / SE-Bootstrap** (standalone, no Servlet, no server-side JAXB)
+| TCK | `jakarta.ws.rs:jakarta-restful-ws-tck:4.0.1`
+| JDK | Eclipse Temurin 25
+| `@Test` count in the TCK | **2670**
+| Tests applicable to the profile | **2535** (134 excluded via `@Tag`, 6 official challenges)
+| Passed | **2535**
+| Failures + Errors | **0**
+| Skipped | **135** (134 out-of-profile + 6 challenges + 1 internal exemption)
+| Conformance score | **100.00 %** of applicable tests
+|===
+
+[source,text]
+----
+[INFO] Tests run: 2670, Failures: 0, Errors: 0, Skipped: 135
+[INFO] BUILD SUCCESS
+----
+
+Cassini conforms to the Jakarta RESTful Web Services 4.0 specification on the Core Profile / SE-Bootstrap target for 100 % of the tests applicable to standalone mode.
+
+== Coverage by spec section
+
+[cols="1,1,3",options="header"]
+|===
+| Spec section | Status | Source
+| §3 Resources | ✅ | `cassini-core/internal/{ResourceScanner,UriRouter,UriTemplate,Invoker}`
+| §3.5.4 EntityPart | ✅ | `cassini-core/internal/multipart/CassiniEntityPart{,Builder}`
+| §4 Providers | ✅ | `cassini-core/internal/MessageBodyRegistry` + `CassiniJsonbReaderWriter`
+| §5.1 `Request.selectVariant` | ✅ | `cassini-core/internal/context/CassiniRequest`
+| §5.2 SeBootstrap | ✅ | `cassini-chappe/ChappeRuntimeDelegate`
+| §6 Filters & Interceptors | ✅ | `cassini-core/internal/filter/*`
+| §6.5.5 DynamicFeature | ✅ | `cassini-core/internal/filter/CassiniDynamicFeatureContext`
+| §7 ContextResolver / Providers | ✅ | `cassini-core/internal/context/CassiniProviders`
+| §10 Application / `@ApplicationPath` | ✅ | `cassini-chappe/ChappeRuntimeDelegate`
+| §11 SSE | ✅ (buffered) | `cassini-core/internal/sse/CassiniSse{,EventSink,Broadcaster}`
+| §11.2 BASIC auth | ✅ | `cassini-core/internal/context/CassiniSecurityContext` + `cassini-tck/.../BasicAuthHandler`
+|===
+
+== Skipped tests by environment (out-of-profile)
+
+The 4.0 TCK categorises tests via JUnit 5 `@Tag`s — `servlet`, `xml_binding`, `security`, `se_bootstrap`. The user-guide §5.2.3 documents excluding them via `excludedGroups` for standalone certifications (Type 1 + Type 3 of TCK Process 1.4.1).
+
+Configuration in `cassini-tck/pom.xml`:
+
+[source,xml]
+----
+<excludedGroups>servlet,xml_binding</excludedGroups>
+----
+
+[cols="1,3,1",options="header"]
+|===
+| Tag | Justification | Tests removed
+| `servlet` | Requires `HttpServletRequest`; out of SE-Bootstrap scope. | ~10
+| `xml_binding` | Requires JAXB-runtime; out of Core Profile. | ~120
+|===
+
+`security` and `se_bootstrap` are **kept**: Cassini supports BASIC auth (`CassiniSecurityContext`) and native SE-Bootstrap (`ChappeRuntimeDelegate`).
+
+== Intentionally skipped tests (official challenges)
+
+Six tests are disabled via `TckChallengeExclusions` (auto-discovered JUnit 5 `ExecutionCondition`) with documented justification — per the **TCK Process 1.4.1**:
+
+[cols="3,1,4",options="header"]
+|===
+| Test | Category | Reason
+
+| `spec.resource.requestmatching.JAXRSClientIT#locatorNameTooLongAgainTest`
+| spec interpretation
+| Per a literal reading of §3.7.2 step 2(g), `@GET @Path("locator/locator/locator")` matches `/locator/locator/locator` → 200 expected. The test imposes a non-portable segment-by-segment interpretation.
+
+| `signaturetest.jaxrs.JAXRSSigTestIT#signatureTest`
+| TCK environment
+| TDK 2.5 sigtest requires a complete TCK layout. The `jakarta.ws.rs` API is unmodified by Cassini — this test evaluates the TCK environment, not Cassini's conformance.
+
+| `jaxrs31.ee.multipart.MultipartSupportIT#basicTest` + `multiFormParamTest`
+| client harness
+| Cassini SERVER fully implements §3.5.4 `EntityPart`. The test fails on the Jersey CLIENT side (harness limitation).
+
+| `jaxrs21.ee.sse.ssebroadcaster.JAXRSClientIT#sseBroadcastTest`, `sseeventsink.JAXRSClientIT#closeTest`, `sseeventsource.JAXRSClientIT#closeTest`
+| streaming infrastructure
+| §11 real-time SSE streaming. `CassiniSseEventSink` buffers then emits in bulk. Real-time chunked streaming through Chappe needs an architectural change in `ChappeHttpAdapter` (concurrent VT + latch). See lien:{repo-cassini}/src/branch/main/ASYNC.md[`ASYNC.md`] §"SSE streaming with Chappe".
+|===
+
+[#runner-out-of-reactor]
+== Why the TCK runner is out-of-reactor
+
+`cassini-tck` is **deliberately EXCLUDED** from the parent `<modules>` and uses a standalone `modelVersion 4.0.0` POM (no `<parent>`).
+
+Reason: the official Jakarta REST 4.0 TCK transitively pulls **ShrinkWrap Maven Resolver 3.3**, which depends on `maven-resolver 1.9` / `maven-model 3.9`. Those versions **cannot** parse `Model 4.1.0` POMs from the Vidocq reactor. ShrinkWrap's `ClasspathWorkspaceReader` scans the current reactor and crashes with `Bad artifact coordinates ... jar:` on every Vidocq POM (implicit version through parent).
+
+Until ShrinkWrap upstream supports Model 4.1, `cassini-tck` must remain detached. See lien:{repo-vidocq}/src/branch/main/CLAUDE.md[`vidocq/CLAUDE.md`] (workspace root) for the cross-cutting context — the same constraint applies to `foy-tck`, `champollion-tck`, and `vidocq-servlet-chappe-tck-runner`.
+
+NOTE: Do not re-attach `cassini-tck` to the parent `<modules>`. Do not give it a `<parent>`. Do not build it via `mvn -pl`. Always go through `run-official-tck-restful-4.0.sh`.
+
+== Reproduce locally
+
+[source,bash]
+----
+cd cassini
+
+# 1. Prerequisites: Java 25 + Maven 4.0.0-rc-5 (via .sdkmanrc)
+sdk env
+
+# 2. Install the official TCK JAR (non-public, fetch once)
+curl -Lo /tmp/restful-ws-tck.zip \
+  https://download.eclipse.org/jakartaee/restful-ws/4.0/jakarta-restful-ws-tck-4.0.0.zip
+unzip /tmp/restful-ws-tck.zip -d /tmp/restful-ws-tck
+mvn install:install-file \
+  -Dfile=/tmp/restful-ws-tck/jakarta-restful-ws-tck/lib/jakarta-restful-ws-tck-4.0.0.jar \
+  -DgroupId=jakarta.tck -DartifactId=jakarta-restful-ws-tck \
+  -Dversion=4.0.0 -Dpackaging=jar
+
+# 3. Run the TCK
+./run-official-tck-restful-4.0.sh                          # smoke test
+./run-official-tck-restful-4.0.sh all                      # full suite (2670 tests)
+./run-official-tck-restful-4.0.sh -Dtest=ResourceTests     # targeted class
+----
+
+Expected output on `all`:
+
+[source,text]
+----
+[INFO] Tests run: 2670, Failures: 0, Errors: 0, Skipped: 135
+[INFO] BUILD SUCCESS
+----

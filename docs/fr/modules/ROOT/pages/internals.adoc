@@ -1,0 +1,173 @@
+= Fonctionnement interne
+:description: Diagramme de séquence d'une requête, codegen statique, intégration Champollion / Vauban.
+
+[.lead]
+Cette page décrit le cheminement d'une requête HTTP dans Cassini, les choix d'implémentation côté codegen, et les intégrations avec xref:champollion::index.adoc[Champollion] (JSON) et xref:vauban::index.adoc[Vauban] (CDI). Source de vérité : `cassini-core/src/main/java/io/vidocq/cassini/internal`.
+
+== Vue d'ensemble
+
+[plantuml]
+....
+@startuml
+skinparam componentStyle rectangle
+
+package "transport" {
+  [Chappe HTTP/1.1, H2] as Chappe
+  [JDK HttpServer] as Jdk
+}
+
+package "cassini-api (SPI publique)" {
+  [CassiniHttpExchange] as Exchange
+  [CassiniHttpAdapter] as Adapter
+  [CassiniStack] as Stack
+  [BeanProvider] as BP
+  [ResourceFactory] as RF
+}
+
+package "cassini-core (impl)" {
+  [Invoker]
+  [UriRouter] as Router
+  [MessageBodyRegistry] as MBR
+  [CassiniProviders] as Providers
+}
+
+package "champollion" {
+  [Jsonb / JSON-B]
+}
+
+package "vauban" {
+  [BeanManager CDI]
+}
+
+Chappe --> Adapter
+Jdk --> Adapter
+Adapter --> Router
+Router --> Invoker
+Invoker --> RF
+RF --> BP
+BP --> [BeanManager CDI]
+Invoker --> MBR
+MBR --> [Jsonb / JSON-B]
+Invoker --> Providers
+@enduml
+....
+
+== Séquence d'une requête HTTP
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant C as Client
+  participant T as Chappe
+  participant A as CassiniHttpAdapter
+  participant R as UriRouter
+  participant I as Invoker
+  participant F as ResourceFactory
+  participant P as Providers chain
+  participant Res as @Path Resource
+
+  C->>T: HTTP GET /users/42
+  T->>A: dispatch(CassiniHttpExchange)
+  A->>R: route(method, path, accept)
+  R-->>A: ResourceMatch(method, params)
+  A->>F: instance(ResourceClass)
+  F-->>A: instance (CDI ou new)
+  A->>I: invoke(method, params, body)
+  I->>P: ContainerRequestFilter chain
+  I->>Res: getUser(42)
+  Res-->>I: User (POJO/record)
+  I->>P: ContainerResponseFilter + WriterInterceptor
+  P->>P: MessageBodyWriter (Champollion JSON-B)
+  I-->>A: CassiniHttpResponse
+  A-->>T: bytes
+  T-->>C: 200 OK
+....
+
+== Découplage transport — règle d'or
+
+`cassini-core` ne contient **aucun import `io.vidocq.chappe`**. Le transport est consommé via `cassini-api` (`CassiniHttpExchange`, `CassiniHttpAdapter`). C'est une contrainte fondamentale : un nouveau transport (Netty, Helidon, Vert.x...) peut être ajouté sans toucher au moteur.
+
+[source]
+----
+              ┌─ cassini-api (SPI publique)
+              │     ├── CassiniHttpExchange, CassiniHttpAdapter
+              │     ├── CassiniStack, ResourceFactory
+              │     └── (zéro dépendance hors jakarta.ws.rs-api)
+              │
+              ├─ cassini-core (impl, fermée)
+              │     ├── Invoker, UriRouter, ResourceScanner...
+              │     ├── CassiniRuntimeDelegate (base pour transports)
+              │     └── exports internal.runtime to {tck, jdkhttp, chappe}
+              │
+   ServiceLoader─┬─ cassini-chappe ──→ requires cassini-api + cassini-core
+              │     provides RuntimeDelegate with ChappeRuntimeDelegate
+              │
+              ├─ cassini-jdk-http ──→ requires cassini-api + cassini-core
+              │     provides RuntimeDelegate with JdkHttpRuntimeDelegate
+              │
+              └─ cassini-cdi-vauban ──→ requires cassini-api + io.vidocq.vauban.core
+                    provides BeanProvider.Factory with VaubanBeanProviderFactory
+----
+
+== Codegen statique des resources
+
+Plutôt que de scanner le classpath et générer des invokeurs via réflexion à chaque dispatch, Cassini privilégie la **génération à la compilation** :
+
+. **APT** (Annotation Processor Tool) lit les classes `@Path`, `@Provider`, et les méthodes `@GET/@POST/...` au `process-classes`.
+. **Class-File API (JEP 484)** émet, par classe ressource, un descripteur statique : `(method, uri-template, params, return-type)`.
+. Au démarrage, `ResourceScanner` charge ces descripteurs sans inspecter `Method.getAnnotations()` à chaud.
+. Le `MessageBodyRegistry` est alimenté via `META-INF/services/jakarta.ws.rs.ext.MessageBodyReader` (et `Writer`) — pas de scan jar.
+
+Bénéfices : démarrage froid <50 ms, compatible **AOT** (GraalVM `native-image`, Leyden CDS), prévisible.
+
+== Intégration Champollion (JSON)
+
+`CassiniJsonbReaderWriter` (dans `cassini-core/internal`) implémente `MessageBodyReader<Object>` + `MessageBodyWriter<Object>` pour `application/json` et délègue à xref:champollion::index.adoc[Champollion] (`Jsonb.create().toJson(...)` / `fromJson(...)`).
+
+Le binding lui-même est statique : `champollion-codegen-apt` génère un `<Type>_Binding` à la compilation pour chaque type sérialisable. Pas de réflexion runtime, pas de `setAccessible` à chaud.
+
+== Intégration Vauban (CDI)
+
+[source,java]
+----
+// SPI dans cassini-api :
+public interface BeanProvider {
+    interface Factory {
+        BeanProvider create();
+    }
+    Set<Class<?>> getResourceClasses();
+    <T> T resolve(Class<T> resourceClass);
+}
+----
+
+`cassini-cdi-vauban` fournit `VaubanBeanProviderFactory` via `module-info.java` :
+
+[source,java]
+----
+provides io.vidocq.cassini.spi.bean.BeanProvider.Factory
+    with io.vidocq.cassini.cdi.vauban.VaubanBeanProviderFactory;
+----
+
+Cassini découvre Vauban via `ServiceLoader`, itère le `BeanManager` à la construction du stack, et stocke les classes `@Path` / `@Provider`. Pour chaque dispatch, `resolve()` appelle `container.select()` — le scope CDI (`@RequestScoped`, `@ApplicationScoped`, ...) est respecté.
+
+Le `CassiniScopeExtension` (Build Compatible Extension Vauban) ajoute `@RequestScoped` aux classes `@Path` sans scope explicite — alignement automatique avec la sémantique attendue par les filtres et intercepteurs JAX-RS.
+
+== Virtual threads et async
+
+* Toute I/O bloquante (lecture body, attente backend, SSE) tourne sur un virtual thread créé par `Executors.newVirtualThreadPerTaskExecutor()`.
+* `@Suspended AsyncResponse` libère immédiatement le thread porteur ; la résolution est posée par le code utilisateur sur un VT.
+* `CompletionStage` retourné par une resource method est plombé jusqu'au transport via `CassiniAsyncContext`.
+
+Le streaming chunked complet (SSE backpressure, `StreamingOutput` natif) est planifié pour M2h/M2i — voir xref:tck.adoc[état TCK].
+
+== Points d'extension
+
+[cols="2,3"]
+|===
+| `CassiniHttpAdapter` | Implémenter pour brancher un nouveau transport.
+| `BeanProvider.Factory` | Implémenter pour brancher un autre container CDI/DI.
+| `ResourceFactory` | Surcharger l'instanciation des ressources sans CDI complet.
+| `MessageBodyReader/Writer` | Étendre la sérialisation à de nouveaux media types.
+| `ParamConverterProvider` | Convertir des types custom dans les `@*Param`.
+|===
