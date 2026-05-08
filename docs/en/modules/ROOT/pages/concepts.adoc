@@ -9,7 +9,7 @@ This page defines the JAX-RS vocabulary as Cassini implements it, and clarifies 
 [cols="1,4"]
 |===
 | Resource
-| Class annotated `@Path`. Cassini matches it by URI template (`@Path("/users/{id}")`) then dispatches to a **resource method** (`@GET`, `@POST`...) or to a **sub-resource locator** (which returns a new resource for further dispatching).
+| Class annotated `@Path`. Cassini matches it by URI template (`@Path("/users/\{id\}")`) then dispatches to a **resource method** (`@GET`, `@POST`...) or to a **sub-resource locator** (which returns a new resource for further dispatching).
 
 | Resource method
 | Method annotated with an HTTP verb — `@GET`, `@POST`, `@PUT`, `@DELETE`, `@PATCH`, `@HEAD`, `@OPTIONS`, or a custom `@HttpMethod`.
@@ -51,7 +51,7 @@ Cassini cleanly separates the **REST** layer (annotation parsing, dispatch, cont
 
 Like geodetic triangulation, JAX-RS routing is hierarchical and deterministic:
 
-. **Literal match** has priority over regex match (`{id}` then `{id:\\d+}`).
+. **Literal match** has priority over regex match (`\{id\}` then `\{id:\\d+}`).
 . **Best-match** on the (path, verb, media-type) triple — `Request.selectVariant` server-side, `@Produces`/`@Consumes` annotation-side.
 . **Sub-resource locator**: the method returns an instance, its `@Path` is consumed, dispatch resumes from that instance.
 

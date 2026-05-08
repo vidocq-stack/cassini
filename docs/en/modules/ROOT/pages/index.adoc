@@ -13,7 +13,7 @@ Reference: https://en.wikipedia.org/wiki/Giovanni_Domenico_Cassini[Cassini on Wi
 [cols="1,3"]
 |===
 | Cassini, the astronomer | Cassini, the runtime
-| Geodetic triangulation | URI templates `@Path("/a/{b}/c")`
+| Geodetic triangulation | URI templates `@Path("/a/\{b\}/c")`
 | Hierarchical mesh kingdom → province → town | Root resource → sub-resource locator → method
 | Reference meridian | `UriInfo.getBaseUri()`
 | Single point per 3 angles | Best-match: single method per (path, verb, media-type)

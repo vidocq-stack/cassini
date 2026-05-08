@@ -13,7 +13,7 @@ Lien : https://fr.wikipedia.org/wiki/Giovanni_Domenico_Cassini[Cassini sur Wikip
 [cols="1,3"]
 |===
 | Cassini, l'astronome | Cassini, le runtime
-| Triangulation géodésique | URI templates `@Path("/a/{b}/c")`
+| Triangulation géodésique | URI templates `@Path("/a/\{b\}/c")`
 | Mesh hiérarchique royaume → province → ville | Root resource → sub-resource locator → method
 | Méridien de référence | `UriInfo.getBaseUri()`
 | Point unique par 3 angles | Best-match : méthode unique par (path, verb, media-type)
