@@ -1,6 +1,10 @@
 = Cassini
 :description: Jakarta RESTful Web Services 4.0 (Core Profile / SE-Bootstrap) implementation, transport-agnostic, native JPMS, Java 25.
 
+[.text-center]
+image::cassini-logo.png[Cassini,300,role=module-logo]
+
+
 [.lead]
 Cassini is the Jakarta REST 4.0 implementation of the Vidocq ecosystem. It runs on top of xref:chappe::index.adoc[Chappe] for HTTP transport, on xref:vauban::index.adoc[Vauban] for CDI resolution, and on xref:champollion::index.adoc[Champollion] for JSON serialization. Goal: 100 % TCK conformance on the Core Profile / SE-Bootstrap target, no ad-hoc reflection, no unjustified external dependency.
 
