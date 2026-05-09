@@ -94,6 +94,9 @@
 
         <chappe.version>0.1.0-SNAPSHOT</chappe.version>
         <vauban.version>0.1.0-SNAPSHOT</vauban.version>
+        <ravel.version>0.1.0-SNAPSHOT</ravel.version>
+
+        <microprofile.config.version>3.1.1</microprofile.config.version>
 
         <junit.version>6.0.3</junit.version>
     </properties>
@@ -207,6 +210,29 @@
                 <groupId>io.vidocq.cassini</groupId>
                 <artifactId>cassini-api</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+
+            <!-- Ravel — MicroProfile Config 3.1 (implémentation zéro-dépendance tierce) -->
+            <dependency>
+                <groupId>io.vidocq.ravel</groupId>
+                <artifactId>ravel-api</artifactId>
+                <version>${ravel.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.vidocq.ravel</groupId>
+                <artifactId>ravel-core</artifactId>
+                <version>${ravel.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.vidocq.ravel</groupId>
+                <artifactId>ravel-cdi-vauban</artifactId>
+                <version>${ravel.version}</version>
+            </dependency>
+            <!-- API MicroProfile Config (ré-exportée par ravel-api) -->
+            <dependency>
+                <groupId>org.eclipse.microprofile.config</groupId>
+                <artifactId>microprofile-config-api</artifactId>
+                <version>${microprofile.config.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.vidocq.cassini</groupId>

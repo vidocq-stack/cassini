@@ -28,6 +28,14 @@
             <artifactId>vauban-core</artifactId>
         </dependency>
 
+        <!-- Ravel MicroProfile Config — optionnel : active @ConfigProperty / @ConfigProperties CDI
+             quand ravel-cdi-vauban est sur le classpath (via BCE ServiceLoader auto-découverte) -->
+        <dependency>
+            <groupId>io.vidocq.ravel</groupId>
+            <artifactId>ravel-cdi-vauban</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

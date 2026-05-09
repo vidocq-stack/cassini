@@ -10,9 +10,13 @@ module io.vidocq.cassini.examples.vauban {
     requires io.vidocq.cassini.cdi.vauban;
     requires io.vidocq.chappe.api;
 
+    // Ravel MicroProfile Config (optionnel mais présent dans cet exemple)
+    requires io.vidocq.ravel.api;
+    requires io.vidocq.ravel.cdi.vauban;
+
     // JAX-RS injection sur ressources, CDI Vauban sur services.
     opens io.vidocq.cassini.examples.vauban.resource;
     opens io.vidocq.cassini.examples.vauban.service;
-    // §R-3 — Champollion résout les records via publicLookup, juste exports.
+    // R-3 — Champollion résout les records via publicLookup, juste exports.
     exports io.vidocq.cassini.examples.vauban.model;
 }

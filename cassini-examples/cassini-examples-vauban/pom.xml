@@ -40,6 +40,13 @@
             <artifactId>cassini-cdi-vauban</artifactId>
         </dependency>
 
+        <!-- Ravel — MicroProfile Config 3.1 : @ConfigProperty, @ConfigProperties CDI -->
+        <dependency>
+            <groupId>io.vidocq.ravel</groupId>
+            <artifactId>ravel-cdi-vauban</artifactId>
+            <version>${ravel.version}</version>
+        </dependency>
+
         <!-- Transport Chappe : utilisé directement (handler composite statique + Cassini) -->
         <dependency>
             <groupId>io.vidocq.cassini</groupId>
