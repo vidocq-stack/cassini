@@ -68,3 +68,15 @@ jobs:
 
       - name: Deploy to Forgejo Maven registry
         run: mvn -B -ntp deploy -DskipTests
+
+      # cassini-tck est volontairement hors reactor (pom Model 4.0.0 standalone,
+      # contrainte ShrinkWrap). Le `mvn deploy` ci-dessus ne le couvre pas.
+      # On le build et deploy séparément avec maven.test.skip=true pour éviter
+      # d'avoir besoin du TCK Jakarta officiel (artefact non public requis pour
+      # la compile-test). knock-tck consomme cassini-tck:0.1.0-SNAPSHOT, donc
+      # ce step est nécessaire pour que knock CI passe.
+      - name: Build et deploy cassini-tck (hors reactor)
+        run: |
+          mvn -B -ntp -f cassini-tck/pom.xml \
+              deploy -Dmaven.test.skip=true \
+              -DaltDeploymentRepository=vidocq-snapshots::https://repo.vidocq.dev/snapshots
