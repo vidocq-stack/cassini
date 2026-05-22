@@ -1,17 +1,17 @@
 # Plan de migration — Extraction de Cassini en projet standalone
 
 > **But** : Cassini standalone, REST 4.0 pur, Chappe fourni par une SPI optionnelle, CDI optionnel via SPI dédiée.
-> Permet une intégration propre avec Vauban et Vidocq MPS, et ouvre la voie à trois certifications Jakarta REST 4.0 indépendantes (modes A/B/C).
+> Permet une intégration propre avec Vauban et Vidocq Runtime, et ouvre la voie à trois certifications Jakarta REST 4.0 indépendantes (modes A/B/C).
 
 ---
 
 ## 0. État des lieux (constat avant migration)
 
-### Source actuelle (dans `vidocq-mps`)
-- **Implémentation** : `vidocq-mps-core-extensions/vidocq-mps-rest-cassini-extension/` (≈ 45 fichiers Java)
-  - Package racine : `io.vidocq.mpserver.ext.rest.cassini.*`
-  - Module Java : `io.vidocq.mpserver.ext.rest.cassini`
-- **TCK runner** : `vidocq-mps-core-extensions/vidocq-mps-rest-cassini-tck-runner/` (POM 4.0.0 standalone, hors reactor)
+### Source actuelle (dans `vidocq`)
+- **Implémentation** : `vidocq-runtime-core-extensions/vidocq-runtime-cassini-rest-extension/` (≈ 45 fichiers Java)
+  - Package racine : `io.vidocq.runtime.ext.rest.cassini.*`
+  - Module Java : `io.vidocq.runtime.ext.rest.cassini`
+- **TCK runner** : `vidocq-runtime-core-extensions/vidocq-runtime-rest-cassini-tck-runner/` (POM 4.0.0 standalone, hors reactor)
   - Score actuel : **2535/2535 passants** (100 % Core Profile / SE-Bootstrap)
   - 6 challenges TCK + 134 exclusions de tags (`servlet`, `xml_binding`)
 
@@ -22,14 +22,14 @@
    - `internal/filter/CassiniRequestContext.java`
    - `internal/FieldInjector.java`
    - Types Chappe utilisés : `Request`, `Response`, `Body`, `StatusCode`, `Handler`
-2. **Imports `io.vidocq.mpserver.ext.chappe.*`** (1 fichier) :
+2. **Imports `io.vidocq.runtime.ext.chappe.*`** (1 fichier) :
    - `CassiniExtension.java` → `ChappeListener`, `ChappeMountPoint`
 3. **Imports `io.vidocq.vauban.*`** (2 fichiers) :
    - `CassiniExtension.java` → `VaubanContainerBuilder`
    - `CassiniRestBridge.java` → `RequestContext`
-4. **Imports `io.vidocq.mpserver.spi.*`** (1 fichier) :
+4. **Imports `io.vidocq.runtime.spi.*`** (1 fichier) :
    - `CassiniExtension.java` → `VidocqExtension`, `ExtensionContext`, `VidocqConfiguration`
-5. **`module-info.java`** : `requires fr.vidocq.chappe.api`, `io.vidocq.mpserver.ext.chappe`, `io.vidocq.vauban.core`, `jakarta.cdi`
+5. **`module-info.java`** : `requires fr.vidocq.chappe.api`, `io.vidocq.runtime.ext.chappe`, `io.vidocq.vauban.core`, `jakarta.cdi`
 6. **`CassiniScopeBCE`** : extension CDI Build-Compatible — déclenche le couplage CDI
 
 ### Incohérence de groupId Chappe à clarifier (cf. Q3)
@@ -107,14 +107,14 @@ cassini/
 - **Décision (Q5)** : Cassini livre **deux adapters** dans le repo :
   - `cassini-chappe` : adapter Chappe (transport de référence, dépend de `io.vidocq.chappe:chappe-core` runtime). C'est le transport utilisé pour passer le TCK.
   - `cassini-jdk-http` : adapter JDK natif (`java.net.http.HttpServer`), zéro dép externe — utilisé pour les tests Mode A "pur" et fallback de référence si Vauban a besoin d'un transport sans cycle Chappe.
-- Côté `vidocq-mps`, l'extension `vidocq-mps-rest-cassini-extension` devient un agrégateur léger qui dépend de `io.vidocq.cassini:cassini-chappe` + `cassini-cdi` et héberge `CassiniExtension` (`VidocqExtension`).
+- Côté `vidocq`, l'extension `vidocq-runtime-cassini-rest-extension` devient un agrégateur léger qui dépend de `io.vidocq.cassini:cassini-chappe` + `cassini-cdi` et héberge `CassiniExtension` (`VidocqExtension`).
 
 ### Trois modes de certification
 | Mode | Artefacts | Transport | Périmètre TCK | DI | Statut |
 |------|-----------|-----------|---------------|----|--------|
 | **A** Cassini "pur" | `cassini-api` + `cassini-core` + `cassini-jdk-http` (ou `cassini-chappe`) + `cassini-tck` | JDK HttpServer (par défaut) ou Chappe | REST 4.0 hors tests CDI | aucun (factory `new()`) | **cible immédiate après extraction** |
 | **B** Cassini + Vauban | + `cassini-cdi` + `vauban-core` + `cassini-chappe` | Chappe (Vauban a besoin de virtual-thread-friendly) | REST 4.0 complet | CDI via Vauban | post-extraction, certif principal 2026 |
-| **C** Vidocq MPS | + JSON-P/B + extensions MP | Chappe | Core Profile 11 + MicroProfile | CDI complet | long terme |
+| **C** Vidocq Runtime | + JSON-P/B + extensions MP | Chappe | Core Profile 11 + MicroProfile | CDI complet | long terme |
 
 ---
 
@@ -213,8 +213,8 @@ public interface ResourceFactory {
 
 ### Phase 3 — Migration cassini-core (≈ 2-3 j)
 Sous-étape A : déplacement physique
-- [ ] `git mv` les ~38 fichiers `internal/*` depuis `vidocq-mps-rest-cassini-extension/src/main/java/io/vidocq/mpserver/ext/rest/cassini/internal/` → `cassini-core/src/main/java/io/vidocq/cassini/internal/`
-- [ ] Renommer le package racine `io.vidocq.mpserver.ext.rest.cassini` → `io.vidocq.cassini` (refactor IDE ou `sed` sur tous les `.java`)
+- [ ] `git mv` les ~38 fichiers `internal/*` depuis `vidocq-runtime-cassini-rest-extension/src/main/java/io/vidocq/runtime/ext/rest/cassini/internal/` → `cassini-core/src/main/java/io/vidocq/cassini/internal/`
+- [ ] Renommer le package racine `io.vidocq.runtime.ext.rest.cassini` → `io.vidocq.cassini` (refactor IDE ou `sed` sur tous les `.java`)
 
 Sous-étape B : découplage Chappe
 - [ ] Remplacer chaque `import fr.vidocq.chappe.api.Request` par un usage du `CassiniHttpExchange`
@@ -249,16 +249,16 @@ Sous-étape D : tests
 - [ ] Module `cassini-jdk-http` : implémente les mêmes interfaces sur `com.sun.net.httpserver.HttpServer` (JDK pur). Sert de transport "Mode A" et de filet de sécurité si Vauban a un cycle Chappe.
 - [ ] Tests unitaires basiques : ping/echo HTTP via chaque adapter
 
-**Côté `vidocq-mps`** :
-- [ ] `vidocq-mps-rest-cassini-extension` devient un mince agrégateur :
+**Côté `vidocq`** :
+- [ ] `vidocq-runtime-cassini-rest-extension` devient un mince agrégateur :
    - dépend de `io.vidocq.cassini:cassini-chappe` (récupère `cassini-core` transitivement)
    - dépend de `io.vidocq.cassini:cassini-cdi`
    - héberge `CassiniExtension implements VidocqExtension` (le `VidocqExtension` reste côté vidocq, cf. Q12)
 - [ ] Mettre à jour le `<dependencyManagement>` du parent vidocq pour référencer `io.vidocq.cassini:*:0.1.0-SNAPSHOT`
 
 ### Phase 6 — Migration cassini-tck (≈ 1-2 j)
-- [ ] `git mv` du `vidocq-mps-rest-cassini-tck-runner/` → `cassini-tck/`
-- [ ] Renommer le package `io.vidocq.mpserver.ext.rest.cassini.tck.*` → `io.vidocq.cassini.tck.*`
+- [ ] `git mv` du `vidocq-runtime-rest-cassini-tck-runner/` → `cassini-tck/`
+- [ ] Renommer le package `io.vidocq.runtime.ext.rest.cassini.tck.*` → `io.vidocq.cassini.tck.*`
 - [ ] **Adapter pour le TCK** (Q5 tranchée) : `cassini-tck` dépend de `cassini-chappe` en `<scope>test</scope>` → Chappe est le transport utilisé pour passer le TCK officiel. `cassini-jdk-http` reste disponible en fallback Mode A.
 - [ ] Conserver `TckChallengeExclusions` à l'identique (6 challenges)
 - [ ] Conserver le profil `tck-official` (Jersey CLIENT, JSON-B CLIENT, multipart, sigtest, etc.)
@@ -276,7 +276,7 @@ Sous-étape D : tests
 
 ### Phase 8 — Réintégration vidocq (≈ 0,5 j)
 - [ ] Push initial Cassini en SNAPSHOT vers `repo.vidocq.dev/snapshots`
-- [ ] Dans vidocq : remplacer la dép interne `vidocq-mps-rest-cassini-extension` (Cassini intégré) par `io.vidocq.cassini:cassini-core` + `:cassini-cdi` + adapter local
+- [ ] Dans vidocq : remplacer la dép interne `vidocq-runtime-cassini-rest-extension` (Cassini intégré) par `io.vidocq.cassini:cassini-core` + `:cassini-cdi` + adapter local
 - [ ] `mvn -DskipTests install` du reactor vidocq doit passer
 - [ ] Lancer le TCK depuis vidocq pour valider la non-régression : 2535/2535 toujours
 - [ ] Tag git Cassini : `v0.1.0-extraction` (SNAPSHOT) — pas de release publique encore
@@ -322,7 +322,7 @@ Sous-étape D : tests
 | Q8 | Migration sources | **`git filter-repo`** pour préserver l'historique granulaire des 45 fichiers Cassini |
 | Q10 | Versionnement | **on garde la version `0.1.0-SNAPSHOT`** alignée avec vidocq/chappe |
 | Q11 | CDI référence pour les tests | **Vauban**. Si cycle Vauban→Chappe, basculer ces tests sur `cassini-jdk-http` |
-| Q12 | `CassiniExtension` (`VidocqExtension`) | **reste dans vidocq-mps**. `CassiniRestBridge` devient `cassini-chappe`/`ChappeHttpAdapter` |
+| Q12 | `CassiniExtension` (`VidocqExtension`) | **reste dans vidocq**. `CassiniRestBridge` devient `cassini-chappe`/`ChappeHttpAdapter` |
 | Q13 | JUnit | **JUnit 6** (BOM `6.0.3`) |
 | Q14 | Naming Maven | **`cassini-api`, `cassini-core`, `cassini-cdi`, `cassini-chappe`, `cassini-jdk-http`, `cassini-tck`** |
 
@@ -373,25 +373,25 @@ Sous-étape D : tests
 | Fichier | Imports | Action |
 |---------|---------|--------|
 | `internal/CassiniRestBridge.java` | `vauban.core.context.RequestContext` | Disparaît avec le move vers cassini-chappe |
-| `CassiniExtension.java` | `vauban.core.container.VaubanContainerBuilder` | **MOVE OUT → vidocq-mps** |
+| `CassiniExtension.java` | `vauban.core.container.VaubanContainerBuilder` | **MOVE OUT → vidocq** |
 
-### Fichiers à découpler de `io.vidocq.mpserver.*` (1 fichier)
+### Fichiers à découpler de `io.vidocq.runtime.*` (1 fichier)
 
 | Fichier | Imports | Action |
 |---------|---------|--------|
-| `CassiniExtension.java` | `mpserver.ext.chappe.{ChappeListener, ChappeMountPoint}`, `mpserver.spi.{ExtensionContext, VidocqConfiguration, VidocqExtension}` | **MOVE OUT → vidocq-mps-rest-cassini-extension** (cf. Q12 — `CassiniExtension` reste côté vidocq) |
+| `CassiniExtension.java` | `runtime.ext.chappe.{ChappeListener, ChappeMountPoint}`, `runtime.spi.{ExtensionContext, VidocqConfiguration, VidocqExtension}` | **MOVE OUT → vidocq-runtime-cassini-rest-extension** (cf. Q12 — `CassiniExtension` reste côté vidocq) |
 
 ### Fichiers TCK à découpler (3 fichiers)
 
 | Fichier | Action |
 |---------|--------|
-| `cassini-tck/src/test/java/.../arquillian/VidocqCassiniDeployableContainer.java` | **REFACTOR** → utilise `cassini-chappe` directement, pas `vidocq-mps-chappe-extension` |
+| `cassini-tck/src/test/java/.../arquillian/VidocqCassiniDeployableContainer.java` | **REFACTOR** → utilise `cassini-chappe` directement, pas `vidocq-runtime-chappe-extension` |
 | `cassini-tck/src/test/java/.../arquillian/BasicAuthHandler.java` | **REFACTOR** → idem |
 | `cassini-tck/src/main/java/.../CassiniTestHarness.java` | **REFACTOR** → idem |
 
 ### Stratégie de découplage (ordre proposé)
 
-1. **Phase 3a** — ✅ Move `CassiniExtension` hors de Cassini (vers vidocq-mps). `CassiniScopeBCE` → `cassini-cdi/CassiniScopeExtension`.
+1. **Phase 3a** — ✅ Move `CassiniExtension` hors de Cassini (vers vidocq). `CassiniScopeBCE` → `cassini-cdi/CassiniScopeExtension`.
 2. **Phase 3b** — ✅ Refactor `CassiniRequest`, `CassiniHttpHeaders`, `CassiniUriInfo`, `CassiniSecurityContext` pour wrapper `CassiniHttpExchange`. `FieldInjector` (90 % migré).
 3. **Phase 3c** — 🚧 Refactor `Invoker` + `ParamExtractor` + `CassiniRequestContext` pour utiliser `CassiniHttpExchange`.
 4. **Phase 3c-bis** — 🚧 **DÉCOUVERTE POST-IMPORT** : 4 fichiers dépendent du CDI `BeanManager` (pas seulement Chappe) :

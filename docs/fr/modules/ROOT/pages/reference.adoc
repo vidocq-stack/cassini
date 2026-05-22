@@ -52,7 +52,7 @@ uses io.vidocq.cassini.spi.bean.BeanProvider.Factory;
 a|
 Aucun export public. `internal.*` est ouvert uniquement aux modules
 `cassini.tck`, `cassini.cdi`, `cassini.chappe`, `cassini.jdkhttp`,
-`mpserver.ext.rest.cassini`, `cassini.examples.vauban`.
+`runtime.ext.rest.cassini`, `cassini.examples.vauban`.
 [source]
 ----
 provides io.vidocq.cassini.spi.http.CassiniStack.BuilderFactory
@@ -125,7 +125,7 @@ Cassini se configure via `SeBootstrap.Configuration` (standard) ou via le builde
 | `protocol` | `HTTP` | `HTTP` ou `HTTPS` (selon support transport).
 |===
 
-Quand Cassini est piloté par xref:vidocq::index.adoc[Vidocq-MPS] (extension `vidocq-rest-cassini`), deux propriétés MicroProfile Config supplémentaires :
+Quand Cassini est piloté par xref:vidocq::index.adoc[Vidocq Runtime] (extension `vidocq-rest-cassini`), deux propriétés MicroProfile Config supplémentaires :
 
 [cols="2,1,3"]
 |===

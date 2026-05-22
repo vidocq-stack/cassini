@@ -54,7 +54,7 @@ round-trip POST → GET, **uniquement** quand l'app tourne en module-path
 strict (image jlink ou bundle jpackage). En classpath (`mvn exec:java`,
 `java -cp`) le même code marche.
 
-Reproduction : `vidocq-mps-rest-example` (todo-list) avant le fix.
+Reproduction : `vidocq-runtime-cassini-rest-example` (todo-list) avant le fix.
 
 ```java
 public record Todo(long id, String title, boolean done) {}
@@ -70,7 +70,7 @@ POST /api/todos {"title":"Pain","done":false}
 Yasson désérialise un record via le canonical constructor implicite
 (`Todo(long, String, boolean)`). En module-path strict, la résolution du
 canonical constructor par réflexion échoue silencieusement même avec
-`opens io.vidocq.mpserver.examples.rest;` unconditional dans le module-info,
+`opens io.vidocq.runtime.examples.rest;` unconditional dans le module-info,
 parce que :
 
 - Le canonical constructor d'un record n'a pas d'`@JsonbCreator` explicite ;
@@ -100,7 +100,7 @@ Yasson résout la factory par les noms `@JsonbProperty` et l'invoque comme
 méthode publique standard — pas de privilèges réflexion supplémentaires
 requis.
 
-Implémenté pour `vidocq-mps-rest-example/Todo.java` au commit `86934af`.
+Implémenté pour `vidocq-runtime-cassini-rest-example/Todo.java` au commit `86934af`.
 
 ### Tradeoffs
 
@@ -174,7 +174,7 @@ JSON-P (logging structuré, config, etc.).
    `CassiniJsonbReaderWriter` qui délègue à `cassini-jsonb` plutôt qu'à
    Yasson via `JsonbBuilder`. Yasson reste le fallback si présent en provider.
 
-4. **Migration `vidocq-mps-rest-example`** : retirer la factory
+4. **Migration `vidocq-runtime-cassini-rest-example`** : retirer la factory
    `@JsonbCreator` du `Todo` record une fois `cassini-jsonb` activé.
 
 ### Effort estimé

@@ -102,7 +102,7 @@ All standard annotations are preserved. No expected change on user code if it is
 * **`@Suspended AsyncResponse`**: supported; full chunked streaming is on milestone M2h (see xref:tck.adoc[TCK]).
 * **SSE backpressure**: `CassiniSseEventSink` buffers in 0.1.0 — real-time streaming arrives in M2i.
 * **Client-side multipart**: Cassini is **server-only**. For multipart requests, use the external Jersey client or wait for the REST 4.0 client delivery.
-* **MicroProfile Config / Health / Metrics**: wire via xref:vidocq::index.adoc[Vidocq-MPS] (orchestrator) — Cassini alone does not configure MP.
+* **MicroProfile Config / Health / Metrics**: wire via xref:vidocq::index.adoc[Vidocq Runtime] (orchestrator) — Cassini alone does not configure MP.
 
 == See also
 

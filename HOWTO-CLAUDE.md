@@ -5,7 +5,7 @@ Documentation rapide pour les futurs sessions Claude Code sur ce projet.
 ## Contexte
 
 Cassini est l'**implémentation Jakarta REST 4.0 standalone** extraite de
-`vidocq-mps` en avril 2026. Ses 6 modules :
+`vidocq` en avril 2026. Ses 6 modules :
 
 | Module | Rôle |
 |--------|------|
