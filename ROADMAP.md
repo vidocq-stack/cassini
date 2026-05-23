@@ -46,9 +46,23 @@ et challenges officiels : voir [`TCK.md`](TCK.md).
 ### M2c — UriInfo + Links ✅
 - `UriBuilder`, `Link`, `Link.Builder`, headers `Link:`
 
-### M2d — Client API ✅
-- `Client`, `WebTarget`, `Invocation.Builder`, async (`InvocationCallback`)
-- Sur même implémentation (réutilise MessageBodyRegistry)
+### M2d — Client API _(en cours — déclenché par humboldt M7c.6 le 2026-05-23)_
+
+> **Note historique** : ce jalon avait été marqué ✅ par erreur dans une version
+> antérieure de la roadmap. Le code Client API n'a jamais été implémenté ; le TCK
+> Jakarta REST 4.0 passait à 2535/2535 sans grâce à l'usage de Jersey comme client
+> dans `cassini-tck` (cf. `CassiniMultipartAutoDiscover.java`). L'implémentation
+> commence aujourd'hui pour débloquer le TCK MP Telemetry 2.1 d'humboldt qui exige
+> un provider `jakarta.ws.rs.client.ClientBuilder` sur le classpath.
+
+- [ ] `cassini-client` (nouveau module) — backend `java.net.http.HttpClient` + virtual threads
+- [ ] `Client`, `WebTarget`, `Invocation.Builder`, `Invocation` synchrones (GET/POST/PUT/DELETE)
+- [ ] Filtres CLIENT (`ClientRequestFilter`/`ClientResponseFilter`) — prépare humboldt M7c.12
+- [ ] Sérialisation request/response body via `MessageBodyRegistry` (réutilise les builtins de cassini-core)
+- [ ] Discovery via `META-INF/services/jakarta.ws.rs.client.ClientBuilder` + JPMS `provides`
+- [ ] Tests E2E avec `com.sun.net.httpserver.HttpServer` éphémère in-process
+- [ ] Validation : remplacer Jersey par cassini-client dans cassini-tck (gate : 2535/2535 PASS conservé)
+- [ ] Async (`InvocationCallback`, `CompletionStage`) reporté en M2d.2 si non requis par les TCK consommateurs
 
 ### M2e — Validation + Bean Validation pont ✅
 - `@Valid` sur ressources, retour 400/422 avec messages
