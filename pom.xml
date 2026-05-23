@@ -113,6 +113,7 @@
         <subproject>cassini-cdi-vauban</subproject>
         <subproject>cassini-chappe</subproject>
         <subproject>cassini-jdk-http</subproject>
+        <subproject>cassini-client</subproject>
         <subproject>cassini-examples</subproject>
     </subprojects>
 
@@ -252,6 +253,11 @@
             <dependency>
                 <groupId>io.vidocq.cassini</groupId>
                 <artifactId>cassini-jdk-http</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.vidocq.cassini</groupId>
+                <artifactId>cassini-client</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>
