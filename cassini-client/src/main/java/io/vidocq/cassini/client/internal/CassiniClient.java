@@ -19,19 +19,18 @@ import jakarta.ws.rs.core.UriBuilder;
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executors;
 
-/**
- * Stub minimal — l'impl complète arrive au commit M7c.6 #2 (transport HTTP + GET sync).
- * Toutes les méthodes {@code target(...)} et {@code invocation(Link)} lancent
- * {@link UnsupportedOperationException} en attendant l'introduction de {@code CassiniWebTarget}.
- */
 final class CassiniClient implements Client {
 
     private final CassiniClientConfiguration configuration;
     private final SSLContext sslContext;
     private final HostnameVerifier hostnameVerifier;
+    private final HttpClient httpClient;
     private volatile boolean closed;
 
     CassiniClient(CassiniClientConfiguration configuration,
@@ -40,30 +39,61 @@ final class CassiniClient implements Client {
         this.configuration = configuration;
         this.sslContext = sslContext;
         this.hostnameVerifier = hostnameVerifier;
+        var builder = HttpClient.newBuilder()
+                .executor(configuration.getExecutorService() != null
+                        ? configuration.getExecutorService()
+                        : Executors.newVirtualThreadPerTaskExecutor())
+                .version(HttpClient.Version.HTTP_2);
+        if (configuration.getConnectTimeoutMs() > 0) {
+            builder.connectTimeout(Duration.ofMillis(configuration.getConnectTimeoutMs()));
+        }
+        if (sslContext != null) builder.sslContext(sslContext);
+        this.httpClient = builder.build();
     }
 
     @Override
-    public void close() { closed = true; }
+    public void close() {
+        if (closed) return;
+        closed = true;
+        httpClient.close();
+    }
 
     @Override
     public WebTarget target(String uri) {
         checkOpen();
-        throw new UnsupportedOperationException("M7c.6 #1 stub — WebTarget arrives in commit #2");
+        return new CassiniWebTarget(this, UriBuilder.fromUri(uri), new HashMap<>());
     }
 
-    @Override public WebTarget target(URI uri) { return target(uri.toString()); }
-    @Override public WebTarget target(UriBuilder uriBuilder) { return target(uriBuilder.build().toString()); }
-    @Override public WebTarget target(Link link) { return target(link.getUri().toString()); }
+    @Override
+    public WebTarget target(URI uri) {
+        checkOpen();
+        return new CassiniWebTarget(this, UriBuilder.fromUri(uri), new HashMap<>());
+    }
+
+    @Override
+    public WebTarget target(UriBuilder uriBuilder) {
+        checkOpen();
+        return new CassiniWebTarget(this, uriBuilder.clone(), new HashMap<>());
+    }
+
+    @Override
+    public WebTarget target(Link link) {
+        checkOpen();
+        return new CassiniWebTarget(this, UriBuilder.fromLink(link), new HashMap<>());
+    }
 
     @Override
     public Invocation.Builder invocation(Link link) {
         checkOpen();
-        throw new UnsupportedOperationException("M7c.6 #1 stub — Invocation.Builder arrives in commit #2");
+        return target(link).request();
     }
 
     @Override public SSLContext getSslContext() { return sslContext; }
     @Override public HostnameVerifier getHostnameVerifier() { return hostnameVerifier; }
     @Override public Configuration getConfiguration() { return configuration; }
+
+    HttpClient httpClient() { return httpClient; }
+    CassiniClientConfiguration cassiniConfiguration() { return configuration; }
 
     private void checkOpen() {
         if (closed) throw new IllegalStateException("Client closed");
