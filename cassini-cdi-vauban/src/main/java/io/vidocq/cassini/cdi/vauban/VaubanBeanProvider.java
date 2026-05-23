@@ -23,13 +23,20 @@ public final class VaubanBeanProvider implements BeanProvider {
     private static final AnnotationLiteral<Any> ANY = new AnnotationLiteral<Any>() {};
 
     private final VaubanContainer container;
+    /** Singleton — activera/désactivera le RequestContext autour de chaque dispatch HTTP. */
+    private final VaubanRequestScopeFilter requestScopeFilter;
 
     public VaubanBeanProvider(VaubanContainer container) {
         this.container = container;
+        this.requestScopeFilter = new VaubanRequestScopeFilter(container);
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> T getBean(Class<T> type) {
+        if (type == VaubanRequestScopeFilter.class) {
+            return (T) requestScopeFilter;
+        }
         try {
             return container.select(type);
         } catch (RuntimeException e) {
@@ -49,6 +56,10 @@ public final class VaubanBeanProvider implements BeanProvider {
                 result.add(beanClass);
             }
         }
+        // Auto-injecte le filter d'activation du RequestContext — Cassini l'enregistrera
+        // comme provider (annoté @Provider @PreMatching) et le résoudra via getBean() qui
+        // retourne le singleton interne. L'utilisateur n'a rien à enregistrer manuellement.
+        result.add(VaubanRequestScopeFilter.class);
         return result;
     }
 }
