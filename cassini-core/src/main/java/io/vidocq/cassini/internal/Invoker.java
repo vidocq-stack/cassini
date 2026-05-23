@@ -595,8 +595,16 @@ public final class Invoker {
             rctx = new CassiniRequestContext(request, new CassiniUriInfo(
                     request, request.contextPath(), match.pathParams()));
             rctx.markPostMatching();
+            // §9.2 : set CURRENT_MATCH/REQUEST pour que injectProviderContexts puisse
+            // alimenter les @Context fields (ResourceInfo, UriInfo, etc.) des providers.
+            // Note : pour filters singletons, l'écriture in-place dans des fields partagés
+            // est non thread-safe — acceptable tant qu'on n'a pas de proxy par-thread.
+            CURRENT_MATCH.set(match);
+            CURRENT_REQUEST.set(request);
             for (var fe : filters.postMatching()) {
                 if (!fe.appliesTo(route.javaMethod(), route.beanClass())) continue;
+                // §9.2 : injection @Context dans le provider (filter) singleton.
+                injectProviderContexts(fe.instance(), request);
                 try { fe.instance().filter(rctx); }
                 catch (java.io.IOException e) {
                     CassiniHttpResponse mapped = mapFilterThrowable(e, route, chosen, rctx);
