@@ -65,6 +65,19 @@ final class CassiniClientResponse extends Response {
         return new CassiniClientResponse(response.statusCode(), response.body(), h, hs);
     }
 
+    /**
+     * Construit une {@code CassiniClientResponse} à partir des données d'un
+     * {@link CassiniClientResponseContext} après application de la chaîne de
+     * {@code ClientResponseFilter}. Les headers sont déjà sous forme String et
+     * peuvent avoir été mutés par les filtres.
+     */
+    static CassiniClientResponse fromBufferedBody(int status, byte[] body,
+                                                    MultivaluedMap<String, String> stringHeaders) {
+        MultivaluedMap<String, Object> h = new MultivaluedHashMap<>();
+        stringHeaders.forEach((k, vs) -> vs.forEach(v -> h.add(k, v)));
+        return new CassiniClientResponse(status, body, h, stringHeaders);
+    }
+
     @Override public int getStatus() { return status; }
 
     @Override

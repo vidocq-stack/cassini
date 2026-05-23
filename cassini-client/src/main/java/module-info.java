@@ -13,6 +13,10 @@ module io.vidocq.cassini.client {
     requires io.vidocq.cassini.core;
     requires java.net.http;
 
+    // @Priority utilisé pour résoudre l'ordre des ClientRequest/ResponseFilter
+    // quand aucune entrée explicite n'est passée à register(component, priority).
+    requires static jakarta.annotation;
+
     // jdk.httpserver utilisé exclusivement par FakeHttpServer en src/test/java —
     // `static` car aucune dépendance runtime en production sur com.sun.net.httpserver.
     requires static jdk.httpserver;

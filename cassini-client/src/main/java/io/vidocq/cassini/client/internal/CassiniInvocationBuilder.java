@@ -11,6 +11,8 @@ package io.vidocq.cassini.client.internal;
 
 import jakarta.ws.rs.ProcessingException;
 import jakarta.ws.rs.client.AsyncInvoker;
+import jakarta.ws.rs.client.ClientRequestFilter;
+import jakarta.ws.rs.client.ClientResponseFilter;
 import jakarta.ws.rs.client.CompletionStageRxInvoker;
 import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.client.Invocation;
@@ -29,6 +31,7 @@ import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 
 final class CassiniInvocationBuilder implements Invocation.Builder {
@@ -179,29 +182,71 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
 
     // ---- Internal -------------------------------------------------------------------------
 
+    /**
+     * Pipeline d'invocation conforme JAX-RS §6.3 :
+     * <ol>
+     *   <li>Build {@link CassiniClientRequestContext} mutable depuis l'invocation builder</li>
+     *   <li>Exécuter chaque {@link ClientRequestFilter} (priorité ASC). Si {@code abortWith()}
+     *       est appelé → skip transport et construit la response context depuis la Response</li>
+     *   <li>Sinon : faire l'appel HTTP réel (URI / method / headers / body lus depuis le ctx
+     *       éventuellement muté par les filtres)</li>
+     *   <li>Build {@link CassiniClientResponseContext} (headers + status + body buffered)</li>
+     *   <li>Exécuter chaque {@link ClientResponseFilter} (priorité DESC)</li>
+     *   <li>Retourner {@link CassiniClientResponse} fabriquée depuis le ctx final</li>
+     * </ol>
+     */
     Response invoke(String method, Entity<?> entity) {
+        MediaType entityMediaType = entity == null ? null : entity.getMediaType();
+        Object entityValue = entity == null ? null : entity.getEntity();
+        CassiniClientRequestContext reqCtx = new CassiniClientRequestContext(
+                client, uri, method, headers, entityValue, entityMediaType);
+
+        List<ClientRequestFilter> requestFilters = client.cassiniConfiguration().getRequestFilters();
+        for (ClientRequestFilter f : requestFilters) {
+            try { f.filter(reqCtx); }
+            catch (IOException e) { throw new ProcessingException("ClientRequestFilter " + f.getClass().getName() + " failed", e); }
+            if (reqCtx.abortResponse() != null) break;
+        }
+
+        CassiniClientResponseContext respCtx;
+        if (reqCtx.abortResponse() != null) {
+            respCtx = CassiniClientResponseContext.fromAborted(reqCtx.abortResponse());
+        } else {
+            respCtx = sendHttp(reqCtx);
+        }
+
+        List<ClientResponseFilter> responseFilters = client.cassiniConfiguration().getResponseFilters();
+        for (ClientResponseFilter f : responseFilters) {
+            try { f.filter(reqCtx, respCtx); }
+            catch (IOException e) { throw new ProcessingException("ClientResponseFilter " + f.getClass().getName() + " failed", e); }
+        }
+
+        return respCtx.toResponse();
+    }
+
+    private CassiniClientResponseContext sendHttp(CassiniClientRequestContext reqCtx) {
         try {
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(uri);
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(reqCtx.getUri());
             long readMs = client.cassiniConfiguration().getReadTimeoutMs();
             if (readMs > 0) requestBuilder.timeout(Duration.ofMillis(readMs));
 
-            applyHeaders(requestBuilder);
-            applyBody(requestBuilder, method, entity);
+            applyHeaders(requestBuilder, reqCtx.getHeaders());
+            applyBody(requestBuilder, reqCtx.getMethod(), reqCtx.getOriginalEntity(), reqCtx.getEntityMediaType());
 
             HttpResponse<byte[]> httpResponse = client.httpClient().send(
                     requestBuilder.build(),
                     HttpResponse.BodyHandlers.ofByteArray());
-            return CassiniClientResponse.from(httpResponse);
+            return CassiniClientResponseContext.from(httpResponse);
         } catch (IOException e) {
-            throw new ProcessingException("HTTP I/O failed for " + method + " " + uri, e);
+            throw new ProcessingException("HTTP I/O failed for " + reqCtx.getMethod() + " " + reqCtx.getUri(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ProcessingException("Interrupted during " + method + " " + uri, e);
+            throw new ProcessingException("Interrupted during " + reqCtx.getMethod() + " " + reqCtx.getUri(), e);
         }
     }
 
-    private void applyHeaders(HttpRequest.Builder builder) {
-        for (var entry : headers.entrySet()) {
+    private void applyHeaders(HttpRequest.Builder builder, MultivaluedMap<String, Object> hdrs) {
+        for (var entry : hdrs.entrySet()) {
             String name = entry.getKey();
             if (isRestricted(name)) continue;
             for (Object v : entry.getValue()) {
@@ -210,20 +255,17 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
         }
     }
 
-    private void applyBody(HttpRequest.Builder builder, String method, Entity<?> entity) {
-        if (entity == null) {
+    private void applyBody(HttpRequest.Builder builder, String method, Object entityValue, MediaType mediaType) {
+        if (entityValue == null) {
             builder.method(method, HttpRequest.BodyPublishers.noBody());
             return;
         }
-        // Sérialisation MVP basique — String / byte[]. MessageBodyRegistry intégré en commit #3.
-        Object value = entity.getEntity();
         byte[] payload;
-        if (value == null) payload = new byte[0];
-        else if (value instanceof byte[] b) payload = b;
-        else payload = value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (entityValue instanceof byte[] b) payload = b;
+        else payload = entityValue.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
 
-        if (entity.getMediaType() != null) {
-            builder.header(HttpHeaders.CONTENT_TYPE, entity.getMediaType().toString());
+        if (mediaType != null) {
+            builder.header(HttpHeaders.CONTENT_TYPE, mediaType.toString());
         }
         builder.method(method, HttpRequest.BodyPublishers.ofByteArray(payload));
     }
