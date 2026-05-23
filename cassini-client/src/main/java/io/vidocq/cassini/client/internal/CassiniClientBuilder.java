@@ -12,12 +12,14 @@ package io.vidocq.cassini.client.internal;
 import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.ClientBuilder;
 import jakarta.ws.rs.core.Configuration;
+import jakarta.ws.rs.core.Feature;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
 import java.security.KeyStore;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -100,7 +102,17 @@ public final class CassiniClientBuilder extends ClientBuilder {
 
     @Override
     public Client build() {
-        return new CassiniClient(configuration, sslContext, hostnameVerifier);
+        CassiniClient client = new CassiniClient(configuration, sslContext, hostnameVerifier);
+        // Auto-discovery des jakarta.ws.rs.core.Feature via ServiceLoader :
+        // permet aux modules tiers (humboldt-rest, futurs filtres OTel/auth/log) de
+        // s'auto-enregistrer sans intervention explicite du caller. MP Telemetry 2.1
+        // exige ce comportement pour les tests qui font ClientBuilder.newClient() sec.
+        CassiniClientFeatureContext featureCtx = new CassiniClientFeatureContext(client);
+        for (Feature feature : ServiceLoader.load(Feature.class, Thread.currentThread().getContextClassLoader())) {
+            if (configuration.isRegistered(feature.getClass())) continue;
+            feature.configure(featureCtx);
+        }
+        return client;
     }
 
     @Override

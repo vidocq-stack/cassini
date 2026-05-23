@@ -27,6 +27,12 @@ module io.vidocq.cassini.client {
     provides jakarta.ws.rs.client.ClientBuilder
             with io.vidocq.cassini.client.internal.CassiniClientBuilder;
 
+    // Auto-discovery des Features tiers (instrumentation OTel, auth, logging...) qui
+    // s'enregistrent via ServiceLoader. CassiniClientBuilder.build() les invoque sur
+    // un FeatureContext adapter. MP Telemetry 2.1 exige ce comportement pour que
+    // ClientBuilder.newClient() soit auto-instrumenté sans .register() explicite.
+    uses jakarta.ws.rs.core.Feature;
+
     // RuntimeDelegate : nécessaire pour UriBuilder.fromUri(...) côté Client. Cassini-core
     // contient déjà CassiniRuntimeDelegate mais ne le déclare pas comme service par défaut
     // pour éviter une collision si plusieurs adapters (chappe, jdk-http) sont en classpath.
