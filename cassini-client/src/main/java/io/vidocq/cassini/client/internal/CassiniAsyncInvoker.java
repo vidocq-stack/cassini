@@ -45,33 +45,69 @@ final class CassiniAsyncInvoker implements AsyncInvoker {
 
     // ---- helpers ---------------------------------------------------------------------------
 
+    /**
+     * Capture le {@code io.opentelemetry.context.Context} courant (si OTel est en
+     * classpath via {@link AsyncContextPropagator}) et le ré-attache dans le thread
+     * async. Sans ça, le span CLIENT généré par les filtres OTel humboldt-rest
+     * dans le thread async serait root et la chaîne SERVER → CLIENT → SERVER cible
+     * serait cassée. Cassini-client reste découplé d'OTel grâce à la réflexion.
+     */
     private Future<Response> async(String method, Entity<?> entity) {
-        return CompletableFuture.supplyAsync(() -> builder.invoke(method, entity), executor);
+        Object ctx = AsyncContextPropagator.capture();
+        return CompletableFuture.supplyAsync(() -> {
+            try (var scope = AsyncContextPropagator.activate(ctx)) {
+                return builder.invoke(method, entity);
+            } catch (Exception e) { throw new RuntimeException(e); }
+        }, executor);
     }
 
     @SuppressWarnings("unchecked")
     private <T> Future<T> asyncTyped(String method, Entity<?> entity, Class<T> type) {
-        return CompletableFuture.supplyAsync(
-                () -> (T) builder.invoke(method, entity).readEntity(type), executor);
+        Object ctx = AsyncContextPropagator.capture();
+        return CompletableFuture.supplyAsync(() -> {
+            try (var scope = AsyncContextPropagator.activate(ctx)) {
+                Response r = builder.invoke(method, entity);
+                throwIfErrorStatus(r);
+                return (T) r.readEntity(type);
+            } catch (jakarta.ws.rs.WebApplicationException wae) {
+                throw wae;  // Propage telle quelle pour que Future.get() expose via ExecutionException.getCause()
+            } catch (Exception e) { throw new RuntimeException(e); }
+        }, executor);
     }
 
     @SuppressWarnings("unchecked")
     private <T> Future<T> asyncTyped(String method, Entity<?> entity, GenericType<T> type) {
-        return CompletableFuture.supplyAsync(
-                () -> (T) builder.invoke(method, entity).readEntity(type.getRawType()), executor);
+        Object ctx = AsyncContextPropagator.capture();
+        return CompletableFuture.supplyAsync(() -> {
+            try (var scope = AsyncContextPropagator.activate(ctx)) {
+                Response r = builder.invoke(method, entity);
+                throwIfErrorStatus(r);
+                return (T) r.readEntity(type.getRawType());
+            } catch (jakarta.ws.rs.WebApplicationException wae) {
+                throw wae;
+            } catch (Exception e) { throw new RuntimeException(e); }
+        }, executor);
+    }
+
+    /**
+     * Spec JAX-RS §5.6 — quand un type entity non-null est demandé et que la response
+     * a un status d'erreur (≥400), throw {@link jakarta.ws.rs.WebApplicationException}
+     * (ou sous-classe spécialisée selon le status code, ex: NotFoundException pour 404).
+     */
+    private static void throwIfErrorStatus(Response r) {
+        int s = r.getStatus();
+        if (s < 400) return;
+        throw new jakarta.ws.rs.WebApplicationException("HTTP " + s, r);
     }
 
     private <T> Future<T> asyncCallback(String method, Entity<?> entity, InvocationCallback<T> callback) {
-        @SuppressWarnings("unchecked")
-        Class<T> responseType = (Class<T>) Response.class;
+        Object ctx = AsyncContextPropagator.capture();
         CompletableFuture<T> future = CompletableFuture.supplyAsync(() -> {
-            try {
+            try (var scope = AsyncContextPropagator.activate(ctx)) {
                 @SuppressWarnings("unchecked")
                 T result = (T) builder.invoke(method, entity);
                 return result;
-            } catch (RuntimeException re) {
-                throw re;
-            }
+            } catch (Exception e) { throw new RuntimeException(e); }
         }, executor);
         future.whenComplete((res, ex) -> {
             if (ex != null) callback.failed(ex);
