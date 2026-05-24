@@ -94,7 +94,7 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
 
     @Override
     public AsyncInvoker async() {
-        throw new UnsupportedOperationException("Async invoker not supported in Cassini Client MVP — use submit() via Invocation");
+        return new CassiniAsyncInvoker(this);
     }
 
     @Override
