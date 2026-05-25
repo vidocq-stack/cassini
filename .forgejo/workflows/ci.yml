@@ -1,5 +1,6 @@
 name: CI
 
+# Post-merge flow (push on main). Common steps come from the Vidocq/ci composite actions.
 on:
   push:
     branches: [main]
@@ -7,178 +8,48 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-
-    permissions:
-      packages: write
-      contents: read
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Java 25
-        uses: actions/setup-java@v4
-        with:
-          java-version: '25'
-          distribution: temurin
-          cache: maven
-
-      - name: Install Maven 4
-        run: |
-          wget -q https://dlcdn.apache.org/maven/maven-4/4.0.0-rc-5/binaries/apache-maven-4.0.0-rc-5-bin.tar.gz
-          tar -xzf apache-maven-4.0.0-rc-5-bin.tar.gz -C /opt
-          echo "/opt/apache-maven-4.0.0-rc-5/bin" >> "$GITHUB_PATH"
-
-      - name: Configure Maven credentials
-        run: |
-          mkdir -p ~/.m2
-          cat > ~/.m2/settings.xml <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <settings>
-            <servers>
-              <server>
-                <id>vidocq-snapshots</id>
-                <username>vidocq-ci-deploy</username>
-                <password>${{ secrets.MAVEN_DEPLOY_TOKEN }}</password>
-                <configuration>
-                  <httpConfiguration>
-                    <all>
-                      <usePreemptive>true</usePreemptive>
-                    </all>
-                  </httpConfiguration>
-                </configuration>
-              </server>
-              <server>
-                <id>vidocq-releases</id>
-                <username>vidocq-ci-deploy</username>
-                <password>${{ secrets.MAVEN_DEPLOY_TOKEN }}</password>
-                <configuration>
-                  <httpConfiguration>
-                    <all>
-                      <usePreemptive>true</usePreemptive>
-                    </all>
-                  </httpConfiguration>
-                </configuration>
-              </server>
-            </servers>
-          </settings>
-          EOF
-
-      - name: Wait for upstream Vidocq snapshots
-        # Anti race condition : si un push upstream (vauban, chappe, …) a été fait
-        # quasi-simultanément, son CI peut être encore en train de deploy au moment
-        # où on démarre. Sleep 30s + check 200 OK sur Reposilite metadata.xml.
-        env:
-          REPO_USER: vidocq-ci-deploy
-          REPO_PASS: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
-        run: |
-          set -e
-          echo "⏳ Sleep 30s pour laisser les upstream builds quasi-simultanés se terminer..."
-          sleep 30
-
-          # Sentinelles Vidocq upstream (un artifactId par groupId requis par cassini).
-          DEPS=(
-            "io/vidocq/vauban/vauban-core"
-            "io/vidocq/chappe/chappe-api"
-            "io/vidocq/champollion/champollion-api"
-            "io/vidocq/ravel/ravel-core"
-          )
-          BASE="https://repo.vidocq.dev/snapshots"
-          VERSION="0.1.0-SNAPSHOT"
-          TIMEOUT=300  # 5 min
-
-          start=$(date +%s)
-          for dep in "${DEPS[@]}"; do
-            url="$BASE/$dep/$VERSION/maven-metadata.xml"
-            echo "🔎 Check $dep..."
-            while true; do
-              code=$(curl -s -o /dev/null -w "%{http_code}" -u "$REPO_USER:$REPO_PASS" "$url")
-              if [ "$code" = "200" ]; then
-                echo "  ✅ $dep dispo"
-                break
-              fi
-              elapsed=$(( $(date +%s) - start ))
-              if [ $elapsed -gt $TIMEOUT ]; then
-                echo "  ❌ Timeout (${TIMEOUT}s) — $dep HTTP=$code" >&2
-                exit 1
-              fi
-              echo "  ⏳ $dep HTTP=$code, retry dans 10s (elapsed=${elapsed}s)..."
-              sleep 10
-            done
-          done
-          echo "✅ Tous les snapshots upstream sont disponibles"
+      - uses: https://codeberg.org/Vidocq/ci/setup-maven@v1
 
       - name: Build & test
-        # -U force Maven à re-pull les snapshots à chaque build (sinon cache local
-        # peut servir une version périmée même si une plus récente est sur Reposilite).
-        run: mvn --no-transfer-progress -U verify
+        run: mvn -B -ntp -U verify
 
-      - name: Deploy to Forgejo Maven registry
-        run: mvn -B -ntp deploy -DskipTests
+      - name: Deploy to Maven Central
+        uses: https://codeberg.org/Vidocq/ci/deploy-maven@v1
+        with:
+          central-username: ${{ secrets.CENTRAL_USERNAME }}
+          central-password: ${{ secrets.CENTRAL_PASSWORD }}
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
-      # cassini-tck est volontairement hors reactor (pom Model 4.0.0 standalone,
-      # contrainte ShrinkWrap). Le `mvn deploy` ci-dessus ne le couvre pas.
-      # On le build et deploy séparément avec maven.test.skip=true pour éviter
-      # d'avoir besoin du TCK Jakarta officiel (artefact non public requis pour
-      # la compile-test). knock-tck consomme cassini-tck:0.1.0-SNAPSHOT, donc
-      # ce step est nécessaire pour que knock CI passe.
-      - name: Build et deploy cassini-tck (hors reactor)
+      - name: Deploy cassini-tck (out-of-reactor → central-snapshots)
+        # cassini-tck is Model 4.0.0 standalone (no vidocq-parent), built/deployed separately
+        # with tests skipped (the official Jakarta REST TCK artifact is non-public).
+        # knock consumes io.vidocq.cassini:cassini-tck:0.1.0-SNAPSHOT, so it must be published.
         run: |
-          mvn -B -ntp -f cassini-tck/pom.xml \
-              deploy -Dmaven.test.skip=true \
-              -DaltDeploymentRepository=vidocq-snapshots::https://repo.vidocq.dev/snapshots
+          mvn -B -ntp -U -f cassini-tck/pom.xml deploy -Dmaven.test.skip=true \
+            -DaltDeploymentRepository=central-snapshots::https://central.sonatype.com/repository/maven-snapshots/
+
       - name: Notify Slack on failure
         if: failure()
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          REPO: ${{ github.repository }}
-          REF: ${{ github.ref_name }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}
-        run: |
-          set -euo pipefail
-          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
-            echo "❌ Secret Forgejo manquant : SLACK_WEBHOOK_URL" >&2
-            exit 1
-          fi
-          payload=$(node <<'JS'
-          process.stdout.write(JSON.stringify({
-            text: `[ViBot]: ❌ *Build CI échoué* — \`${process.env.REPO}\`@${process.env.REF}\n<${process.env.RUN_URL}|Voir le run>`
-          }))
-          JS
-          )
-          curl -fsS -X POST "$SLACK_WEBHOOK_URL" \
-            -H 'Content-Type: application/json' \
-            -d "$payload"
-
+        uses: https://codeberg.org/Vidocq/ci/notify-slack@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          status: failure
+          repo: ${{ github.repository }}
+          ref: ${{ github.ref_name }}
+          run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}
 
       - name: Notify Slack on success
         if: success()
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          REPO: ${{ github.repository }}
-          REF: ${{ github.ref_name }}
-          SHA: ${{ github.sha }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
-        run: |
-          set -euo pipefail
-          # Silencieux si secret absent — un build success ne doit pas fail à cause du notify.
-          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
-            echo "ℹ️ Secret SLACK_WEBHOOK_URL absent — notif success skipped"
-            exit 0
-          fi
-          VERSION=$(mvn -q -DforceStdout -N -Dexpression=project.version help:evaluate 2>/dev/null || echo "?")
-          export VERSION
-          export SHORT_SHA="${SHA:0:7}"
-          payload=$(node <<'JS'
-          const msg = process.env.COMMIT_MSG || '';
-          const subject = msg.split('\n')[0];
-          const author = process.env.COMMIT_AUTHOR ? ` par *${process.env.COMMIT_AUTHOR}*` : '';
-          process.stdout.write(JSON.stringify({
-            text: `[ViBot]: ✅ *Build CI réussi* — \`${process.env.REPO}\`@${process.env.REF} (v${process.env.VERSION})\n> \`${process.env.SHORT_SHA}\`${author} — _${subject}_\n<${process.env.RUN_URL}|Voir le run>`
-          }))
-          JS
-          )
-          curl -fsS -X POST "$SLACK_WEBHOOK_URL" \
-            -H 'Content-Type: application/json' \
-            -d "$payload"
+        uses: https://codeberg.org/Vidocq/ci/notify-slack@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          status: success
+          repo: ${{ github.repository }}
+          ref: ${{ github.ref_name }}
+          run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}
+          sha: ${{ github.sha }}
+          commit-message: ${{ github.event.head_commit.message }}
+          commit-author: ${{ github.event.head_commit.author.name }}
