@@ -148,6 +148,9 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
 
         var invoker = new Invoker(resolver, bodies, mappers);
         invoker.setFilters(filters);
+        // §9 : permet à l'Invoker de déproxifier un bean CDI (instance contextuelle réelle)
+        // pour l'injection @Context dans les ressources @RequestScoped (cf. BeanProvider).
+        invoker.setBeanProvider(bp);
 
         var adapter = new DefaultCassiniHttpAdapter(router, invoker);
         return new CassiniStackImpl(adapter);

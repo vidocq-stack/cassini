@@ -53,9 +53,25 @@ public final class Invoker {
     private final MessageBodyRegistry registry;
     private final ExceptionMapperRegistry exceptionMappers;
     private FilterRegistry filters = new FilterRegistry();
+    /** Optionnel — permet de déproxifier un bean CDI (instance contextuelle réelle)
+     *  avant l'injection {@code @Context}. {@code null} en mode {@code newInstance}. */
+    private io.vidocq.cassini.spi.bean.BeanProvider beanProvider;
 
     public void setFilters(FilterRegistry f) { this.filters = f == null ? new FilterRegistry() : f; }
     public FilterRegistry filters() { return filters; }
+    public void setBeanProvider(io.vidocq.cassini.spi.bean.BeanProvider bp) { this.beanProvider = bp; }
+
+    /**
+     * Cible d'injection {@code @Context} pour une instance résolue : l'instance contextuelle
+     * réelle derrière un éventuel client proxy CDI (cf. {@code BeanProvider#contextualInstance}).
+     * L'invocation de la méthode resource reste faite sur l'objet d'origine (le proxy), qui
+     * délègue à cette même instance dans le scope actif — sans quoi les champs {@code @Context}
+     * injectés par réflexion sur le proxy ne sont jamais vus par le corps de la méthode.
+     */
+    private Object injectionTarget(Class<?> beanClass, Object resolved) {
+        return (beanProvider != null && resolved != null)
+                ? beanProvider.contextualInstance(beanClass, resolved) : resolved;
+    }
 
     public Invoker(Function<Class<?>, Object> resolver) {
         this(resolver, new MessageBodyRegistry(), new ExceptionMapperRegistry());
@@ -162,7 +178,7 @@ public final class Invoker {
                     new WebApplicationException("Cannot resolve root " + route.rootBeanClass().getName(), 500),
                     route, MediaType.WILDCARD_TYPE, null);
         }
-        FieldInjector.inject(root, match, request);
+        FieldInjector.inject(injectionTarget(route.rootBeanClass(), root), match, request);
         java.util.List<Object> matched = new java.util.ArrayList<>();
         matched.add(root);
         CURRENT_MATCH.set(match);
@@ -632,7 +648,7 @@ public final class Invoker {
                 // Sub-resource locator §3.4.1 : instantier la ressource racine,
                 // parcourir la chaîne de locators, injecter fields à chaque étape.
                 Object root = resolver.apply(route.rootBeanClass());
-                FieldInjector.inject(root, match, request);
+                FieldInjector.inject(injectionTarget(route.rootBeanClass(), root), match, request);
                 matched.add(0, root);
                 Object intermediate = root;
                 for (java.lang.reflect.Method locStep : route.locatorChain()) {
@@ -664,7 +680,9 @@ public final class Invoker {
                 target = intermediate;
             } else {
                 target = resolver.apply(route.beanClass());
-                FieldInjector.inject(target, match, request);
+                // §9 : injecter les @Context dans l'instance contextuelle réelle (déproxifiée),
+                // mais invoquer la méthode sur `target` (le proxy CDI délègue à cette instance).
+                FieldInjector.inject(injectionTarget(route.beanClass(), target), match, request);
                 matched.add(target);
             }
         } catch (WebApplicationException wae) {
