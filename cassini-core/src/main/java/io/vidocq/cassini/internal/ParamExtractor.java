@@ -264,7 +264,11 @@ public final class ParamExtractor {
                 match.pathParams(), match.method() == null ? null : match.method().path());
         if (type == HttpHeaders.class) return new CassiniHttpHeaders(request);
         if (type == jakarta.ws.rs.core.Request.class) return new CassiniRequest(request);
-        if (type == SecurityContext.class) return new CassiniSecurityContext(request);
+        if (type == SecurityContext.class) {
+            Object filterSc = request.getAttribute(
+                    io.vidocq.cassini.internal.filter.CassiniRequestContext.ATTR_SECURITY_CONTEXT);
+            return filterSc != null ? filterSc : new CassiniSecurityContext(request);
+        }
         if (type == Providers.class) {
             Providers p = CURRENT_PROVIDERS.get();
             if (p != null) return p;
