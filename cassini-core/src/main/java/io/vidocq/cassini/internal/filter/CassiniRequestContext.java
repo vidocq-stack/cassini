@@ -81,7 +81,12 @@ public final class CassiniRequestContext implements ContainerRequestContext {
         this.baseUri = uriInfo.getBaseUri();
         this.entityStream = exchange.requestBody() == null ? new ByteArrayInputStream(new byte[0])
                 : exchange.requestBody();
-        this.securityContext = new CassiniSecurityContext(exchange);
+        // §6 : un filtre @PreMatching peut avoir posé un SecurityContext (stocké sur l'exchange).
+        // Toute instance ultérieure de contexte (ex. celle de la chaîne post-matching où tourne
+        // RolesAllowedRequestFilter) doit le refléter, sinon getSecurityContext() renvoie le défaut
+        // et l'autorisation ne voit pas le principal JWT.
+        Object filterSc = exchange.getAttribute(ATTR_SECURITY_CONTEXT);
+        this.securityContext = filterSc instanceof SecurityContext sc ? sc : new CassiniSecurityContext(exchange);
         this.uriInfo = uriInfo;
     }
 

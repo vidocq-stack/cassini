@@ -116,6 +116,11 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
         }
 
         var routes = ResourceScanner.discover(pathClasses.toArray(Class<?>[]::new));
+        // §6.5.5 : exécuter les DynamicFeature sur chaque resource method — elles enregistrent
+        // leurs filtres/interceptors bornés à la méthode (ex. RolesAllowedDynamicFeature →
+        // @RolesAllowed/@DenyAll/@PermitAll). Sans cet appel, les features étaient collectées mais
+        // jamais appliquées : l'autorisation n'était pas câblée.
+        filters.applyDynamicFeatures(routes);
         var router = new UriRouter(routes);
 
         final Map<Class<?>, Object> singletons = Map.copyOf(resourceSingletons);
