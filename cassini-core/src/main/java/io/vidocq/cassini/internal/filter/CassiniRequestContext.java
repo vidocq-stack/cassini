@@ -32,6 +32,13 @@ import java.util.Map;
  */
 public final class CassiniRequestContext implements ContainerRequestContext {
 
+    /**
+     * Clé d'attribut d'exchange portant le {@link SecurityContext} posé par un filtre
+     * {@code @PreMatching} via {@link #setSecurityContext}. Lue par {@code FieldInjector} et
+     * {@code ParamExtractor} pour l'injection {@code @Context SecurityContext} dans les ressources.
+     */
+    public static final String ATTR_SECURITY_CONTEXT = "io.vidocq.cassini.securityContext";
+
     private final CassiniHttpExchange exchange;
     private final CassiniHttpHeaders httpHeaders;
     private final Map<String, Object> properties = new HashMap<>();
@@ -170,6 +177,11 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     @Override public void setSecurityContext(SecurityContext context) {
         if (postMatching) throw new IllegalStateException("setSecurityContext cannot be called in post-matching filters (§6.6)");
         this.securityContext = context;
+        // §6 : un filtre @PreMatching peut remplacer le SecurityContext. Le propager sur l'exchange
+        // pour que l'injection @Context SecurityContext dans une ressource (FieldInjector /
+        // ParamExtractor) reflète cette valeur — sinon ils reconstruisent un CassiniSecurityContext
+        // neuf et ignorent le contexte posé par le filtre (cas MicroProfile JWT).
+        exchange.setAttribute(ATTR_SECURITY_CONTEXT, context);
     }
 
     @Override public void abortWith(Response response) {

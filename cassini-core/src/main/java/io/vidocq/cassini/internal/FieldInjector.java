@@ -133,7 +133,11 @@ public final class FieldInjector {
                 match.pathParams(), match.method() == null ? null : match.method().path());
         if (type == HttpHeaders.class) return new CassiniHttpHeaders(request);
         if (type == jakarta.ws.rs.core.Request.class) return new CassiniRequest(request);
-        if (type == SecurityContext.class) return new CassiniSecurityContext(request);
+        if (type == SecurityContext.class) {
+            Object filterSc = request.getAttribute(
+                    io.vidocq.cassini.internal.filter.CassiniRequestContext.ATTR_SECURITY_CONTEXT);
+            return filterSc != null ? filterSc : new CassiniSecurityContext(request);
+        }
         if (type == jakarta.ws.rs.ext.Providers.class) return ParamExtractor.currentProviders();
         if (type == jakarta.ws.rs.core.Application.class) return new jakarta.ws.rs.core.Application();
         if (type == jakarta.ws.rs.container.ResourceInfo.class) {
