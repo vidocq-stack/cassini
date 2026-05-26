@@ -116,6 +116,5 @@ logs/
 # ============================================================
 # Claude Code / tooling local
 # ============================================================
-.claude/settings.local.json
-.claude/worktrees/
+.claude/
 tasks/
