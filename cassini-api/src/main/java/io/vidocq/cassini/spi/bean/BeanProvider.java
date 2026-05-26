@@ -37,6 +37,30 @@ public interface BeanProvider {
     Set<Class<?>> getResourceClasses();
 
     /**
+     * Retourne l'instance <em>contextuelle</em> sous-jacente à {@code bean}.
+     *
+     * <p>Pour un bean normal-scoped (ex. {@code @RequestScoped}), {@link #getBean(Class)}
+     * renvoie un <em>client proxy</em> qui délègue paresseusement à l'instance contextuelle.
+     * L'injection {@code @Context} de Cassini écrit par réflexion dans les champs de l'objet
+     * qu'on lui passe : si c'est le proxy, le champ injecté n'est jamais vu par le corps de la
+     * méthode (qui s'exécute sur l'instance contextuelle derrière le proxy). Cassini appelle
+     * donc cette méthode pour obtenir l'instance contextuelle <em>réelle</em> sur laquelle
+     * injecter les champs {@code @Context} ; l'invocation de la méthode resource reste faite
+     * via le proxy (qui résout la même instance contextuelle dans le scope actif).</p>
+     *
+     * <p>Contrat : l'instance retournée DOIT être celle vers laquelle {@code bean} (le proxy)
+     * délègue dans le scope courant. Implémentation par défaut : retourne {@code bean} tel quel
+     * (cas sans proxy — instanciation directe ou pseudo-scopes type {@code @Dependent}).</p>
+     *
+     * @param type la classe resource/provider demandée à {@link #getBean(Class)}
+     * @param bean l'objet renvoyé par {@link #getBean(Class)} (potentiellement un proxy)
+     * @return l'instance contextuelle réelle, ou {@code bean} si non applicable
+     */
+    default Object contextualInstance(Class<?> type, Object bean) {
+        return bean;
+    }
+
+    /**
      * SPI ServiceLoader — implémentations enregistrées via
      * {@code provides BeanProvider.Factory with ...} dans {@code module-info}.
      */

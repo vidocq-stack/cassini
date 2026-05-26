@@ -25,7 +25,12 @@ public record FilterEntry<T>(
     public static final int DEFAULT_PRIORITY = 5000;
 
     public static <T> FilterEntry<T> of(T instance) {
-        Class<?> cls = instance.getClass();
+        // §6 : un filtre fourni par un BeanProvider CDI est un client proxy (ex.
+        // JwtAuthenticationFilter_ClientProxy extends JwtAuthenticationFilter). @Provider /
+        // @PreMatching / @Priority / @NameBinding ne sont pas @Inherited, donc on remonte la
+        // hiérarchie jusqu'à la classe @Provider (cf. CassiniStackBuilderImpl.jaxrsAnnotatedClass)
+        // pour les lire — sinon @PreMatching est lu false et le filtre est classé post-matching.
+        Class<?> cls = providerClass(instance.getClass());
         int prio = DEFAULT_PRIORITY;
         Priority p = cls.getAnnotation(Priority.class);
         if (p != null) prio = p.value();
@@ -36,11 +41,27 @@ public record FilterEntry<T>(
 
     /** §6.5.5 : crée une entrée bornée à une méthode cible (DynamicFeature). */
     public static <T> FilterEntry<T> dynamicFor(T instance, java.lang.reflect.Method target) {
-        Class<?> cls = instance.getClass();
+        Class<?> cls = providerClass(instance.getClass());
         int prio = DEFAULT_PRIORITY;
         Priority p = cls.getAnnotation(Priority.class);
         if (p != null) prio = p.value();
         return new FilterEntry<>(instance, cls, prio, false, Set.of(), target);
+    }
+
+    /**
+     * Remonte la hiérarchie jusqu'à la classe portant {@code @Provider} (la classe réelle du
+     * filtre derrière un éventuel client proxy CDI). Repli sur la classe d'origine si aucune
+     * superclasse n'est annotée {@code @Provider} (ex. filtre enregistré programmatiquement).
+     */
+    private static Class<?> providerClass(Class<?> c) {
+        Class<?> cur = c;
+        while (cur != null && cur != Object.class) {
+            if (cur.isAnnotationPresent(jakarta.ws.rs.ext.Provider.class)) {
+                return cur;
+            }
+            cur = cur.getSuperclass();
+        }
+        return c;
     }
 
     /** Vrai si le filtre s'applique à la méthode cible (name-bindings + dynamic target). */

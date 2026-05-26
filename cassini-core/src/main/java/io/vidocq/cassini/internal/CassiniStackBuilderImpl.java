@@ -116,6 +116,11 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
         }
 
         var routes = ResourceScanner.discover(pathClasses.toArray(Class<?>[]::new));
+        // §6.5.5 : exécuter les DynamicFeature sur chaque resource method — elles enregistrent
+        // leurs filtres/interceptors bornés à la méthode (ex. RolesAllowedDynamicFeature →
+        // @RolesAllowed/@DenyAll/@PermitAll). Sans cet appel, les features étaient collectées mais
+        // jamais appliquées : l'autorisation n'était pas câblée.
+        filters.applyDynamicFeatures(routes);
         var router = new UriRouter(routes);
 
         final Map<Class<?>, Object> singletons = Map.copyOf(resourceSingletons);
@@ -143,6 +148,9 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
 
         var invoker = new Invoker(resolver, bodies, mappers);
         invoker.setFilters(filters);
+        // §9 : permet à l'Invoker de déproxifier un bean CDI (instance contextuelle réelle)
+        // pour l'injection @Context dans les ressources @RequestScoped (cf. BeanProvider).
+        invoker.setBeanProvider(bp);
 
         var adapter = new DefaultCassiniHttpAdapter(router, invoker);
         return new CassiniStackImpl(adapter);
