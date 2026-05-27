@@ -134,10 +134,18 @@ Fichiers concernés :
 - Compteurs `AdapterRegistry.preGeneratedHits()`/`runtimeGeneratedHits()` pour
   observabilité et tests.
 
-#### M4 P4 — Edge cases + doc dérogation (à venir)
-- [ ] Locator dynamique (`Object`) : génération runtime dès que la classe est connue
-- [ ] `@BeanParam` imbriqué : adapters imbriqués
-- [ ] Documenter le fallback réflexif résiduel comme dérogation explicite assumée
+#### M4 P4 — Edge cases + doc dérogation ✅
+- [x] `@BeanParam` via adapters per-bean : `InjectionSupportImpl.beanParam()` route l'injection
+  à travers l'adapter du bean (généré dans le package du bean via `privateLookupIn`) — élimine
+  les `IllegalAccessException` cross-package sur les champs privés du bean.
+- [x] `@BeanParam` imbriqué : récursion naturelle via `support.beanParam(nestedType)` depuis
+  l'`injectFields` du bean outer.
+- [x] Fallback SENTINEL conservé pour classes non-générables (superclasse privée, module fermé) —
+  `FieldInjector.inject` reste le filet de sécurité.
+- [x] Réflexion résiduelle documentée (dérogation assumée) : startup `ResourceScanner`, instanciation
+  `newInstance()`, injection providers singletons, coercition types, locators dynamiques (`Object`).
+- [ ] Locator dynamique (`Object`) via adapter : génération runtime dès que la classe est connue
+  au premier appel — non réalisé (locators restent réflexifs ; le TCK reste à 2535/0/0 sans ce fix).
 
 #### Gates M4 atteints
 - [ ] Benchmarks JMH end-to-end vs RestEasy/Jersey (entrée `BENCH.md`)

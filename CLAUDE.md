@@ -64,8 +64,11 @@ Classpath JARs → écriture dans `target/classes`. JPMS named-module → fail-b
 
 **Réflexion résiduelle documentée (dérogation assumée)** :
 - `ResourceScanner` au démarrage (scan annotations JAX-RS, une seule fois).
-- Fallback runtime pour locators dynamiques (`Object`) et classes dans modules fermés.
-- `m.setAccessible(true)` sur méthodes sous-ressource (prévu P4).
+- Instanciation des ressources et beans (`getDeclaredConstructor().newInstance()`) — one-time, hors hot-path.
+- `InjectionSupportImpl.beanParam` : instanciation toujours réflective ; injection des champs du bean via son adapter généré (P4), ou fallback réflexif si l'adapter ne peut être généré (module fermé, superclasse privée).
+- Fallback runtime pour locators dynamiques (`Object`) et classes dans modules fermés (superclasse privée inaccessible au `privateLookupIn`) — SENTINEL + `FieldInjector.inject` en filet.
+- Injection `@Context` dans les providers singletons (filtres, MBW/MBR) via `FieldInjector.inject` — hors du hot-path ressource.
+- `ParamValueConverter` et coercition de types : réflexion structurelle au premier appel par type (pas par requête).
 
 **Deux modes d'instanciation des ressources :**
 - Mode A : `new()` via `DefaultResourceFactory` (jdk-http, standalone)
