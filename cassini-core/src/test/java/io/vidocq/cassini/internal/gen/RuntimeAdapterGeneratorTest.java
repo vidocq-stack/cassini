@@ -18,6 +18,9 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// Additional imports for P1b invoke tests
+// (already covered by existing imports above)
+
 /**
  * P1a TDD: verifies the RuntimeAdapterGenerator and the updated AdapterRegistry.
  *
@@ -74,6 +77,31 @@ class RuntimeAdapterGeneratorTest {
     static class FieldlessResource {
         public String nonInjectable;
         public static String staticField;
+    }
+
+    // ---- P1b invoke fixtures ----
+
+    /** Resource with a simple method: takes a @QueryParam int + @Context String-like arg. */
+    static class InvokeResource {
+        /** Returns arg0 + arg1. */
+        public int add(int a, int b) { return a + b; }
+
+        /** Returns the argument string uppercased. */
+        public String echo(String s) { return s == null ? null : s.toUpperCase(); }
+
+        /** Void method — side effect captured via field. */
+        public String lastVoidArg;
+        public void sideEffect(String arg) { this.lastVoidArg = arg; }
+
+        /** Returns a double primitive. */
+        public double square(double x) { return x * x; }
+    }
+
+    /** Resource with a body/entity parameter (now eligible in P1b). */
+    static class BodyParamResource {
+        public String process(String body, int count) {
+            return body.repeat(count);
+        }
     }
 
     // ---- Fake InjectionSupport ----
@@ -151,6 +179,8 @@ class RuntimeAdapterGeneratorTest {
         AdapterRegistry.deregister(ListParamResource.class);
         AdapterRegistry.deregister(BeanParamResource.class);
         AdapterRegistry.deregister(FieldlessResource.class);
+        AdapterRegistry.deregister(InvokeResource.class);
+        AdapterRegistry.deregister(BodyParamResource.class);
     }
 
     @Test
@@ -271,15 +301,90 @@ class RuntimeAdapterGeneratorTest {
         assertSame(first.get(), second.get(), "both lookups should return the same cached adapter instance");
     }
 
+    // ---- P1b invoke tests ----
+
     @Test
-    void invokeThrowsUnsupportedOperationException() throws Exception {
-        Class<?> adapterClass = RuntimeAdapterGenerator.generate(PrivateContextResource.class);
+    void invokeIntMethodReturnsBoxedResult() throws Throwable {
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(InvokeResource.class);
         ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
 
-        var support = new FakeSupport(null, null, 0, null, null);
+        // Find the methodId for add(int,int)
+        var methodIds = RuntimeAdapterGenerator.collectMethods(InvokeResource.class);
+        java.lang.reflect.Method addMethod = InvokeResource.class.getMethod("add", int.class, int.class);
+        int mid = methodIds.get(addMethod);
+
+        InvokeResource target = new InvokeResource();
+        Object result = adapter.invoke(mid, target, new Object[]{3, 4});
+        assertEquals(7, result, "direct invoke of add(3,4) must return 7");
+    }
+
+    @Test
+    void invokeStringMethodReturnValue() throws Throwable {
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(InvokeResource.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
+        var methodIds = RuntimeAdapterGenerator.collectMethods(InvokeResource.class);
+        java.lang.reflect.Method echoMethod = InvokeResource.class.getMethod("echo", String.class);
+        int mid = methodIds.get(echoMethod);
+
+        InvokeResource target = new InvokeResource();
+        Object result = adapter.invoke(mid, target, new Object[]{"hello"});
+        assertEquals("HELLO", result, "direct invoke of echo must uppercase the argument");
+    }
+
+    @Test
+    void invokeVoidMethodReturnsNull() throws Throwable {
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(InvokeResource.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
+        var methodIds = RuntimeAdapterGenerator.collectMethods(InvokeResource.class);
+        java.lang.reflect.Method sideEffectMethod = InvokeResource.class.getMethod("sideEffect", String.class);
+        int mid = methodIds.get(sideEffectMethod);
+
+        InvokeResource target = new InvokeResource();
+        Object result = adapter.invoke(mid, target, new Object[]{"hello"});
+        assertNull(result, "void method must return null");
+        assertEquals("hello", target.lastVoidArg, "void method side effect must execute");
+    }
+
+    @Test
+    void invokeDoublePrimitiveReturnIsBoxed() throws Throwable {
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(InvokeResource.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
+        var methodIds = RuntimeAdapterGenerator.collectMethods(InvokeResource.class);
+        java.lang.reflect.Method squareMethod = InvokeResource.class.getMethod("square", double.class);
+        int mid = methodIds.get(squareMethod);
+
+        InvokeResource target = new InvokeResource();
+        Object result = adapter.invoke(mid, target, new Object[]{3.0});
+        assertEquals(9.0, (Double) result, 1e-9, "square(3.0) must return 9.0 boxed as Double");
+    }
+
+    @Test
+    void invokeBodyParamMethodEligible() throws Throwable {
+        // P1b: body param methods are now eligible (args are pre-resolved)
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(BodyParamResource.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
+        var methodIds = RuntimeAdapterGenerator.collectMethods(BodyParamResource.class);
+        java.lang.reflect.Method processMethod = BodyParamResource.class.getMethod("process", String.class, int.class);
+        int mid = methodIds.get(processMethod);
+        assertTrue(mid >= 0, "body param method must be eligible and have a methodId");
+
+        BodyParamResource target = new BodyParamResource();
+        Object result = adapter.invoke(mid, target, new Object[]{"ab", 3});
+        assertEquals("ababab", result, "process(\"ab\", 3) must return \"ababab\"");
+    }
+
+    @Test
+    void invokeUnknownMethodIdThrowsUnsupportedOperation() throws Throwable {
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(InvokeResource.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
         assertThrows(UnsupportedOperationException.class,
-                () -> adapter.invoke(0, new PrivateContextResource(), support),
-                "invoke() must throw UnsupportedOperationException (P1b not yet implemented)");
+                () -> adapter.invoke(9999, new InvokeResource(), new Object[0]),
+                "unknown methodId must throw UnsupportedOperationException");
     }
 
     @Test

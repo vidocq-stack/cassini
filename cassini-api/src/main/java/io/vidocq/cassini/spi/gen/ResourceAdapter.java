@@ -30,19 +30,21 @@ public interface ResourceAdapter {
 
     /**
      * Invokes the resource method identified by {@code methodId} on {@code target},
-     * using {@code support} to resolve method parameters.
+     * using the pre-resolved argument array {@code args}.
      *
-     * <p><b>P0 note:</b> this method is declared for interface completeness but is not
-     * called in P0 — method invocation still goes through {@code route.javaMethod().invoke()}.
-     * P1 will implement direct invocation here, eliminating {@code Method.invoke} from the
-     * hot path. {@code methodId} maps a stable per-class integer index to a specific
-     * resource method; the index assignment is determined by the generator.</p>
+     * <p><b>P1b design:</b> argument resolution (ParamExtractor, readEntity, @Suspended,
+     * SseEventSink) is performed by the Invoker BEFORE this call, producing an {@code Object[]}
+     * that exactly matches the method's parameter list. The adapter merely performs the typed
+     * direct call — no reflection, no InjectionSupport needed here.</p>
+     *
+     * <p>{@code methodId} maps a stable per-class integer index to a specific resource method;
+     * the mapping is determined by the generator via {@code AdapterRegistry.methodId()}.</p>
      *
      * @param methodId a stable index identifying the resource method within this adapter's class
-     * @param target   the resource instance
-     * @param support  the per-request {@link InjectionSupport} façade
-     * @return the return value of the invoked method (may be {@code null} for void)
-     * @throws Exception if the resource method throws
+     * @param target   the resource instance (may be a CDI proxy — virtual dispatch handles it)
+     * @param args     the pre-resolved argument array, in the same order as the method parameters
+     * @return the return value of the invoked method (boxed for primitives; {@code null} for void)
+     * @throws Throwable if the resource method throws (propagated raw, without wrapping)
      */
-    Object invoke(int methodId, Object target, InjectionSupport support) throws Exception;
+    Object invoke(int methodId, Object target, Object[] args) throws Throwable;
 }

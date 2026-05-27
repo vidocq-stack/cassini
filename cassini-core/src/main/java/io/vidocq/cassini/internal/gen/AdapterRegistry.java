@@ -2,6 +2,8 @@ package io.vidocq.cassini.internal.gen;
 
 import io.vidocq.cassini.spi.gen.ResourceAdapter;
 
+import java.lang.reflect.Method;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -43,8 +45,7 @@ public final class AdapterRegistry {
             throw new UnsupportedOperationException("SENTINEL — reflective fallback required");
         }
         @Override
-        public Object invoke(int methodId, Object target,
-                             io.vidocq.cassini.spi.gen.InjectionSupport support) {
+        public Object invoke(int methodId, Object target, Object[] args) {
             throw new UnsupportedOperationException("SENTINEL");
         }
         @Override public String toString() { return "AdapterRegistry.SENTINEL"; }
@@ -52,6 +53,13 @@ public final class AdapterRegistry {
 
     /** Per-class cache: real adapter or SENTINEL for failed generation. */
     private static final ConcurrentHashMap<Class<?>, ResourceAdapter> CACHE =
+            new ConcurrentHashMap<>();
+
+    /**
+     * Per-class method-id map: maps (beanClass → (method → methodId)).
+     * Populated by {@link RuntimeAdapterGenerator#collectMethods} at generation time.
+     */
+    private static final ConcurrentHashMap<Class<?>, Map<Method, Integer>> METHOD_IDS =
             new ConcurrentHashMap<>();
 
     private AdapterRegistry() {}
@@ -100,6 +108,22 @@ public final class AdapterRegistry {
     }
 
     /**
+     * Returns the stable methodId for the given resource method within the adapter for
+     * {@code beanClass}, or {@code -1} if the method was not assigned an id (e.g. the
+     * adapter was generated before this method was discovered, or generation failed).
+     *
+     * @param beanClass  the resource bean class (NOT the CDI proxy class)
+     * @param method     the resource method
+     * @return the method id, or -1 if not found
+     */
+    public static int methodId(Class<?> beanClass, Method method) {
+        Map<Method, Integer> ids = METHOD_IDS.get(beanClass);
+        if (ids == null) return -1;
+        Integer id = ids.get(method);
+        return id == null ? -1 : id;
+    }
+
+    /**
      * Registers an adapter for the given class.
      * Package-visible: intended for unit tests (seam testing) and the P1 runtime generator.
      *
@@ -111,10 +135,19 @@ public final class AdapterRegistry {
     }
 
     /**
+     * Registers the method-id map for a resource class.
+     * Called by {@link RuntimeAdapterGenerator} after generation.
+     */
+    static void registerMethodIds(Class<?> beanClass, Map<Method, Integer> ids) {
+        METHOD_IDS.put(beanClass, ids);
+    }
+
+    /**
      * Removes the cached adapter for the given class (including SENTINEL entries).
      * Package-visible: used by unit tests to reset state between tests.
      */
     static void deregister(Class<?> beanClass) {
         CACHE.remove(beanClass);
+        METHOD_IDS.remove(beanClass);
     }
 }
