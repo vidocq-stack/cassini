@@ -18,10 +18,14 @@ import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.security.Principal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.PathSegment;
 import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.core.UriInfo;
 
@@ -368,5 +372,190 @@ class CassiniResourceProcessorTest {
                 throw new RuntimeException(t);
             }
         });
+    }
+
+    // -------------------------------------------------------------------------
+    // M6c: inline @*Param field coercion — generated source must coerce typed
+    // values via support.rawValues(...), falling back to support.param(...) only
+    // for non-inlinable shapes (PathSegment, non-public types). This is the real
+    // M6c oracle: the official TCK exercises the RUNTIME generator (its resources
+    // are not compiled with cassini-processor), so APT parity is proven here.
+    // -------------------------------------------------------------------------
+
+    /** InjectionSupport whose rawValues comes from a name→list map; param returns a per-name marker. */
+    static class MapSupport implements InjectionSupport {
+        final Map<String, List<String>> raw;
+        final Map<String, Object> paramMarkers;
+        MapSupport(Map<String, List<String>> raw, Map<String, Object> paramMarkers) {
+            this.raw = raw;
+            this.paramMarkers = paramMarkers;
+        }
+        @Override public <T> T context(Class<T> type) { return null; }
+        @SuppressWarnings("unchecked")
+        @Override public Object param(ParamKind kind, String name, boolean encoded,
+                                      String defaultValue, Class<?> rawType, Class<?> elementType) {
+            return paramMarkers.get(name);
+        }
+        @Override public Object beanParam(Class<?> type) { return null; }
+        @Override public Object suspendedAsyncResponse() { return null; }
+        @Override public List<String> rawValues(ParamKind kind, String name, boolean encoded) {
+            return raw.getOrDefault(name, List.of());
+        }
+        @Override public WebApplicationException coercionError(ParamKind kind, String name, RuntimeException cause) {
+            // Throw a marker instead of building a Response: the cassini-processor test classpath
+            // has no RuntimeDelegate, so Response.status(...).build() would fail. The real 404/400
+            // mapping lives in cassini-core's InjectionSupportImpl (M6b, TCK-validated). Here we only
+            // assert the generated inline path caught the failure and called coercionError correctly.
+            throw new CoercionInvoked(kind, name, cause);
+        }
+    }
+
+    /** Marker thrown by {@link MapSupport#coercionError} to assert the inline coercion call. */
+    static final class CoercionInvoked extends RuntimeException {
+        final ParamKind kind;
+        final transient RuntimeException coercionCause;
+        CoercionInvoked(ParamKind kind, String name, RuntimeException cause) {
+            super(name);
+            this.kind = kind;
+            this.coercionCause = cause;
+        }
+    }
+
+    private static final String COERCE_RESOURCE = """
+            package io.vidocq.cassini.test.apt;
+
+            import jakarta.ws.rs.GET;
+            import jakarta.ws.rs.Path;
+            import jakarta.ws.rs.PathParam;
+            import jakarta.ws.rs.QueryParam;
+            import jakarta.ws.rs.DefaultValue;
+            import jakarta.ws.rs.core.PathSegment;
+            import java.util.List;
+
+            @Path("/coerce")
+            public class CoerceResource {
+
+                @QueryParam("i")  public int i;                 // INT
+                @QueryParam("bx") public Integer bx;            // INT (wrapper)
+                @QueryParam("b")  public boolean flag;          // BOOLEAN
+                @QueryParam("e")  public Color color;           // ENUM_WITH_FROM_STRING
+                @QueryParam("ep") public Plain plain;           // ENUM_PLAIN
+                @QueryParam("vo") public Money money;           // VALUE_OF
+                @QueryParam("fs") public Ticket ticket;         // FROM_STRING
+                @QueryParam("sc") public Wrapped wrapped;       // STRING_CTOR
+                @QueryParam("li") public List<Integer> ints;    // COLLECTION_INLINE
+                @QueryParam("ls") public List<String> strs;     // COLLECTION_STRING
+                @QueryParam("d")  @DefaultValue("42") public int withDefault;
+                @PathParam("seg") public PathSegment seg;       // FALLBACK (PathSegment)
+
+                @GET public String get() { return "x"; }
+
+                public enum Color {
+                    RED, GREEN;
+                    public static Color fromString(String s) { return valueOf(s.toUpperCase()); }
+                }
+                public enum Plain { A, B }
+                public static class Money {
+                    final int cents;
+                    Money(int c) { this.cents = c; }
+                    public static Money valueOf(String s) { return new Money(Integer.parseInt(s)); }
+                    @Override public String toString() { return "" + cents; }
+                }
+                public static class Ticket {
+                    final String id;
+                    Ticket(String i) { this.id = i; }
+                    public static Ticket fromString(String s) { return new Ticket(s); }
+                    @Override public String toString() { return id; }
+                }
+                public static class Wrapped {
+                    public final String v;
+                    public Wrapped(String s) { this.v = s; }
+                    @Override public String toString() { return v; }
+                }
+            }
+            """;
+
+    @Test
+    void inlineCoercionProducesTypedValuesAndFallsBackForPathSegment() throws Throwable {
+        File src = writeSource("io/vidocq/cassini/test/apt/CoerceResource.java", COERCE_RESOURCE);
+        File outDir = tempDir.resolve("out-coerce").toFile();
+        outDir.mkdirs();
+
+        URLClassLoader loader = compileWithProcessor(outDir, src);
+
+        Class<?> adapterClass = loader.loadClass(
+                "io.vidocq.cassini.test.apt.CoerceResource$$CassiniAdapter");
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+        Class<?> rc = loader.loadClass("io.vidocq.cassini.test.apt.CoerceResource");
+        Object resource = rc.getDeclaredConstructor().newInstance();
+
+        Map<String, List<String>> raw = new HashMap<>();
+        raw.put("i", List.of("7"));
+        raw.put("bx", List.of("9"));
+        raw.put("b", List.of("true"));
+        raw.put("e", List.of("green"));
+        raw.put("ep", List.of("A"));
+        raw.put("vo", List.of("100"));
+        raw.put("fs", List.of("t-1"));
+        raw.put("sc", List.of("wrap"));
+        raw.put("li", List.of("1", "2", "3"));
+        raw.put("ls", List.of("a", "b"));
+        // "d" intentionally absent → @DefaultValue("42")
+
+        // FALLBACK field "seg" routes through support.param — return a marker PathSegment.
+        PathSegment marker = new PathSegment() {
+            @Override public String getPath() { return "MARKER"; }
+            @Override public jakarta.ws.rs.core.MultivaluedMap<String, String> getMatrixParameters() { return null; }
+        };
+        Map<String, Object> markers = new HashMap<>();
+        markers.put("seg", marker);
+
+        adapter.injectFields(resource, new MapSupport(raw, markers), true);
+
+        assertEquals(7, fld(rc, resource, "i"), "@QueryParam int coerced");
+        assertEquals(9, fld(rc, resource, "bx"), "@QueryParam Integer coerced");
+        assertEquals(true, fld(rc, resource, "flag"), "@QueryParam boolean coerced");
+        assertEquals("GREEN", String.valueOf(fld(rc, resource, "color")), "enum fromString");
+        assertEquals("A", String.valueOf(fld(rc, resource, "plain")), "enum plain Enum.valueOf");
+        assertEquals("100", String.valueOf(fld(rc, resource, "money")), "static valueOf(String)");
+        assertEquals("t-1", String.valueOf(fld(rc, resource, "ticket")), "static fromString(String)");
+        assertEquals("wrap", String.valueOf(fld(rc, resource, "wrapped")), "String constructor");
+        assertEquals(List.of(1, 2, 3), fld(rc, resource, "ints"), "List<Integer> coerced inline");
+        assertEquals(List.of("a", "b"), fld(rc, resource, "strs"), "List<String> pass-through");
+        assertEquals(42, fld(rc, resource, "withDefault"), "@DefaultValue applied on empty");
+        assertSame(marker, fld(rc, resource, "seg"), "PathSegment falls back to support.param");
+    }
+
+    @Test
+    void inlineCoercionFailureMapsToWebApplicationException() throws Throwable {
+        File src = writeSource("io/vidocq/cassini/test/apt/CoerceResource.java", COERCE_RESOURCE);
+        File outDir = tempDir.resolve("out-coerce-err").toFile();
+        outDir.mkdirs();
+
+        URLClassLoader loader = compileWithProcessor(outDir, src);
+        Class<?> adapterClass = loader.loadClass(
+                "io.vidocq.cassini.test.apt.CoerceResource$$CassiniAdapter");
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+        Class<?> rc = loader.loadClass("io.vidocq.cassini.test.apt.CoerceResource");
+        Object resource = rc.getDeclaredConstructor().newInstance();
+
+        Map<String, List<String>> raw = new HashMap<>();
+        raw.put("i", List.of("not-a-number")); // @QueryParam int → NumberFormatException → coercionError
+
+        CoercionInvoked invoked = assertThrows(CoercionInvoked.class,
+                () -> adapter.injectFields(resource, new MapSupport(raw, Map.of()), true));
+        // The generated inline path caught the conversion failure and delegated to coercionError
+        // with the right kind + name; status selection (404 for QUERY) is cassini-core's job.
+        assertEquals(ParamKind.QUERY, invoked.kind, "coercionError called with the param's kind");
+        assertEquals("i", invoked.getMessage(), "coercionError called with the param's name");
+        assertTrue(invoked.coercionCause instanceof NumberFormatException,
+                "underlying cause is the NumberFormatException from Integer.parseInt");
+    }
+
+    /** Reads a (possibly private) field value from the compiled resource instance. */
+    private static Object fld(Class<?> rc, Object instance, String name) throws Exception {
+        java.lang.reflect.Field f = rc.getDeclaredField(name);
+        f.setAccessible(true);
+        return f.get(instance);
     }
 }
