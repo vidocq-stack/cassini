@@ -135,6 +135,39 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <!-- Wire cassini-processor on the annotation-processor path.
+                     This generates compile-time $$CassiniAdapter for @Path and @Provider
+                     classes in this module. AdapterRegistry.lookup uses Class.forName
+                     (APT path) before the runtime Class-File generator — AOT-safe.
+                     Note: annotationProcessorPaths is deprecated in compiler 4.x but
+                     still functional; the type=processor alternative causes a javac ICE
+                     with JPMS named-module processors on Java 25. -->
+                <configuration>
+                    <release>25</release>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>io.vidocq.cassini</groupId>
+                            <artifactId>cassini-processor</artifactId>
+                            <version>${cassini.version}</version>
+                        </path>
+                        <path>
+                            <groupId>io.vidocq.cassini</groupId>
+                            <artifactId>cassini-api</artifactId>
+                            <version>${cassini.version}</version>
+                        </path>
+                        <path>
+                            <groupId>jakarta.ws.rs</groupId>
+                            <artifactId>jakarta.ws.rs-api</artifactId>
+                            <version>4.0.0</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+        </plugins>
     </build>
 
     <profiles>

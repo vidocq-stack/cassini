@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.1.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.1.0 http://maven.apache.org/xsd/maven-4.1.0.xsd">
+    <modelVersion>4.1.0</modelVersion>
+
+    <parent>
+        <groupId>io.vidocq.cassini</groupId>
+        <artifactId>cassini-parent</artifactId>
+    </parent>
+
+    <artifactId>cassini-processor</artifactId>
+    <name>Cassini :: APT Processor</name>
+    <description>Annotation processor generating $$CassiniAdapter sources at compile time for AOT-compatibility (GraalVM / Leyden CDS). Requires only cassini-api + java.compiler.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-api</artifactId>
+        </dependency>
+        <!-- jakarta.ws.rs-api is already transitive via cassini-api, but declared explicitly
+             so the processor can reference @Path/@Provider/@Context etc. at compile time. -->
+        <dependency>
+            <groupId>jakarta.ws.rs</groupId>
+            <artifactId>jakarta.ws.rs-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <!-- Disable annotation processing during the processor's own compilation
+                         to avoid circular bootstrap issues. -->
+                    <proc>none</proc>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

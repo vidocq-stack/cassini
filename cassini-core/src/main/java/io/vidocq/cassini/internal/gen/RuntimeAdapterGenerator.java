@@ -340,22 +340,52 @@ public final class RuntimeAdapterGenerator {
      * not declared on {@code Object}. All such methods are eligible because args are pre-resolved
      * by the Invoker.
      *
+     * <p><b>Canonical ordering (P2 contract):</b> methods are sorted by
+     * {@code (declaringClassName, methodName, jvmDescriptor)} so that the APT processor
+     * (which uses {@code javax.lang.model}) and this runtime path (which uses reflection)
+     * assign identical methodIds across JVM runs and across build/runtime JVMs.</p>
+     *
      * @param resourceClass the JAX-RS resource class
-     * @return ordered map of Method → methodId (0-based, insertion order)
+     * @return ordered map of Method → methodId (0-based, canonical insertion order)
      */
-    static Map<Method, Integer> collectMethods(Class<?> resourceClass) {
-        Map<Method, Integer> result = new LinkedHashMap<>();
-        int id = 0;
-        // getMethods() returns all public methods including inherited ones, but we want a
-        // deterministic order: class hierarchy top-down is sufficient; getMethods() is stable
-        // within a JVM run for the same class.
+    public static Map<Method, Integer> collectMethods(Class<?> resourceClass) {
+        List<Method> eligible = new ArrayList<>();
         for (Method m : resourceClass.getMethods()) {
             if (m.getDeclaringClass() == Object.class) continue;
             if (Modifier.isStatic(m.getModifiers())) continue;
             if (m.isBridge() || m.isSynthetic()) continue;
+            eligible.add(m);
+        }
+        // Canonical sort: (declaringClassName, methodName, JVM descriptor) — lexicographic.
+        // The JVM descriptor is built from parameter types in declared order, giving a unique
+        // key per overload. This ordering is stable across JVMs and identical to what the APT
+        // processor computes from javax.lang.model.
+        eligible.sort((a, b) -> {
+            int cmp = a.getDeclaringClass().getName().compareTo(b.getDeclaringClass().getName());
+            if (cmp != 0) return cmp;
+            cmp = a.getName().compareTo(b.getName());
+            if (cmp != 0) return cmp;
+            return jvmDescriptor(a).compareTo(jvmDescriptor(b));
+        });
+        Map<Method, Integer> result = new LinkedHashMap<>();
+        int id = 0;
+        for (Method m : eligible) {
             result.put(m, id++);
         }
         return result;
+    }
+
+    /**
+     * Returns the JVM method descriptor for the given method (parameter types only, no return).
+     * Used as a tiebreaker in the canonical method ordering.
+     */
+    static String jvmDescriptor(Method m) {
+        StringBuilder sb = new StringBuilder("(");
+        for (Class<?> pt : m.getParameterTypes()) {
+            sb.append(classDescOf(pt).descriptorString());
+        }
+        sb.append(")");
+        return sb.toString();
     }
 
     /**
