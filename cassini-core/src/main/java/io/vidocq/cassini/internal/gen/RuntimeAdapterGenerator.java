@@ -992,7 +992,10 @@ public final class RuntimeAdapterGenerator {
                 // Unbox: checkcast to wrapper then invoke xxxValue()
                 emitUnbox(cob, pt);
             } else {
-                cob.checkcast(ClassDesc.of(pt.getName()));
+                // Use classDescOf (not ClassDesc.of(getName())) so array param types are handled:
+                // an array's Class.getName() is the JVM descriptor form ("[Ljava...;", "[B"), which
+                // ClassDesc.of rejects ("Invalid class name"). classDescOf goes via describeConstable.
+                cob.checkcast(classDescOf(pt));
             }
         }
 

@@ -153,6 +153,21 @@ class RuntimeAdapterGeneratorTest {
         }
     }
 
+    /**
+     * Resource whose methods have array-typed parameters/return — reproduces the M6d bug where
+     * the runtime generator built the arg checkcast with {@code ClassDesc.of(pt.getName())}: an
+     * array's {@code Class.getName()} is the JVM descriptor form ({@code [Ljava...;}, {@code [B}),
+     * which {@code ClassDesc.of} rejects, so adapter generation crashed for any provider/method
+     * taking {@code Annotation[]} or {@code byte[]} (≈12 TCK provider classes fell back to
+     * reflection).
+     */
+    static class ArrayParamResource {
+        public int countAnnotations(java.lang.annotation.Annotation[] anns, byte[] data) {
+            return (anns == null ? 0 : anns.length) + (data == null ? 0 : data.length);
+        }
+        public byte[] echoBytes(byte[] in) { return in; }
+    }
+
     // ---- Fake InjectionSupport ----
 
     static class FakeSupport implements InjectionSupport {
@@ -383,6 +398,29 @@ class RuntimeAdapterGeneratorTest {
     }
 
     // ---- P1b invoke tests ----
+
+    @Test
+    void generatesAdapterForArrayTypedMethodParams() throws Throwable {
+        // Before the M6d fix, generate() threw IllegalArgumentException("Invalid class name: [L...")
+        // because array param checkcasts used ClassDesc.of(getName()) instead of classDescOf().
+        Class<?> adapterClass = assertDoesNotThrow(
+                () -> RuntimeAdapterGenerator.generate(ArrayParamResource.class));
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
+        var methodIds = RuntimeAdapterGenerator.collectMethods(ArrayParamResource.class);
+        java.lang.reflect.Method count = ArrayParamResource.class.getMethod(
+                "countAnnotations", java.lang.annotation.Annotation[].class, byte[].class);
+        java.lang.reflect.Method echo = ArrayParamResource.class.getMethod("echoBytes", byte[].class);
+
+        ArrayParamResource target = new ArrayParamResource();
+        byte[] data = {1, 2, 3};
+        Object n = adapter.invoke(methodIds.get(count), target,
+                new Object[]{new java.lang.annotation.Annotation[0], data});
+        assertEquals(3, n, "array params must pass through (0 annotations + 3 bytes)");
+
+        Object echoed = adapter.invoke(methodIds.get(echo), target, new Object[]{data});
+        assertSame(data, echoed, "byte[] return must be the same array instance");
+    }
 
     @Test
     void invokeIntMethodReturnsBoxedResult() throws Throwable {
