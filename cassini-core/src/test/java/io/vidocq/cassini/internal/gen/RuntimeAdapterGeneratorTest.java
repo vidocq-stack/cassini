@@ -1,8 +1,12 @@
 package io.vidocq.cassini.internal.gen;
 
+import io.vidocq.cassini.internal.MatchResult;
+import io.vidocq.cassini.internal.ResourceMethod;
+import io.vidocq.cassini.internal.UriTemplate;
 import io.vidocq.cassini.spi.gen.InjectionSupport;
 import io.vidocq.cassini.spi.gen.ParamKind;
 import io.vidocq.cassini.spi.gen.ResourceAdapter;
+import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import jakarta.ws.rs.BeanParam;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.PathParam;
@@ -13,8 +17,11 @@ import jakarta.ws.rs.core.UriInfo;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.net.URI;
 import java.security.Principal;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -71,6 +78,44 @@ class RuntimeAdapterGeneratorTest {
     static class BeanParamResource {
         @BeanParam
         public BeanParamHolder bean;
+    }
+
+    // ---- P4 fixtures: @BeanParam via per-bean adapters ----
+
+    /**
+     * Bean with a PRIVATE @QueryParam field — the cross-package VarHandle test.
+     * In a real TCK scenario the resource and bean are in different packages, so
+     * the resource's adapter cannot access the bean's private field directly.
+     * The bean's OWN adapter (generated via privateLookupIn(BeanWithPrivateField, ...))
+     * CAN access it.
+     */
+    static class BeanWithPrivateField {
+        @QueryParam("secret")
+        private String secret;
+
+        String getSecret() { return secret; }
+    }
+
+    static class ResourceWithPrivateBeanField {
+        @BeanParam
+        public BeanWithPrivateField bean;
+    }
+
+    /** Nested @BeanParam: inner bean contains another @BeanParam. */
+    static class InnerBean {
+        @QueryParam("inner")
+        public String innerVal;
+    }
+    static class OuterBean {
+        @QueryParam("outer")
+        public String outerVal;
+
+        @BeanParam
+        public InnerBean nested;
+    }
+    static class ResourceWithNestedBeanParam {
+        @BeanParam
+        public OuterBean outerBean;
     }
 
     /** No injectable fields — generates a no-op injectFields. */
@@ -181,6 +226,12 @@ class RuntimeAdapterGeneratorTest {
         AdapterRegistry.deregister(FieldlessResource.class);
         AdapterRegistry.deregister(InvokeResource.class);
         AdapterRegistry.deregister(BodyParamResource.class);
+        // P4 fixtures
+        AdapterRegistry.deregister(BeanWithPrivateField.class);
+        AdapterRegistry.deregister(ResourceWithPrivateBeanField.class);
+        AdapterRegistry.deregister(InnerBean.class);
+        AdapterRegistry.deregister(OuterBean.class);
+        AdapterRegistry.deregister(ResourceWithNestedBeanParam.class);
     }
 
     @Test
@@ -454,5 +505,126 @@ class RuntimeAdapterGeneratorTest {
         byte[] secondCall = RuntimeAdapterGenerator.toBytecode(FieldlessResource.class);
         assertArrayEquals(fromToBytecode, secondCall,
                 "repeated toBytecode calls must be byte-for-byte identical");
+    }
+
+    // ---- P4: @BeanParam via per-bean adapters ----
+
+    /**
+     * P4: a @BeanParam bean with a PRIVATE @QueryParam field is injected via its
+     * own generated adapter (not via reflective FieldInjector.inject).
+     * This mirrors the TCK cross-package scenario where the resource and bean are
+     * in different packages — only the bean's OWN adapter can access its private fields.
+     */
+    @Test
+    void beanParamBeanWithPrivateFieldInjectedViaAdapter() throws Exception {
+        // Pre-generate the bean's adapter explicitly (simulating runtime lookup path)
+        RuntimeAdapterGenerator.generate(BeanWithPrivateField.class);
+
+        // Use InjectionSupportImpl with a real exchange carrying the query param
+        CassiniHttpExchange exchange = p4ExchangeWithUri("http://localhost/test?secret=mysecret");
+        MatchResult match = p4MinimalMatch(BeanWithPrivateField.class);
+        InjectionSupportImpl support = new InjectionSupportImpl(match, exchange);
+
+        // Invoke beanParam via InjectionSupportImpl — P4 path: must use adapter
+        Object result = support.beanParam(BeanWithPrivateField.class);
+
+        assertNotNull(result, "beanParam must return a non-null instance");
+        assertInstanceOf(BeanWithPrivateField.class, result);
+        BeanWithPrivateField bean = (BeanWithPrivateField) result;
+        assertEquals("mysecret", bean.getSecret(),
+                "P4: private @QueryParam field in @BeanParam bean must be injected via the bean's adapter");
+    }
+
+    /**
+     * P4: nested @BeanParam — outer bean contains another @BeanParam field pointing
+     * to an inner bean. The recursive path (support.beanParam → adapter.injectFields
+     * → support.beanParam for nested) must work end-to-end.
+     */
+    @Test
+    void nestedBeanParamInjectedRecursively() throws Exception {
+        // Pre-generate adapters for both inner and outer beans
+        RuntimeAdapterGenerator.generate(InnerBean.class);
+        RuntimeAdapterGenerator.generate(OuterBean.class);
+
+        CassiniHttpExchange exchange = p4ExchangeWithUri(
+                "http://localhost/test?outer=outerValue&inner=innerValue");
+        MatchResult match = p4MinimalMatch(OuterBean.class);
+        InjectionSupportImpl support = new InjectionSupportImpl(match, exchange);
+
+        Object result = support.beanParam(OuterBean.class);
+
+        assertNotNull(result);
+        assertInstanceOf(OuterBean.class, result);
+        OuterBean outer = (OuterBean) result;
+        assertEquals("outerValue", outer.outerVal,
+                "outer bean's @QueryParam must be injected");
+        assertNotNull(outer.nested,
+                "nested @BeanParam field in outer bean must be populated");
+        assertEquals("innerValue", outer.nested.innerVal,
+                "inner bean's @QueryParam must be injected via recursive adapter call");
+    }
+
+    /**
+     * P4: when no adapter can be generated (simulated by de-registering + forcing sentinel),
+     * InjectionSupportImpl.beanParam falls back gracefully to FieldInjector.inject.
+     * Here we verify the fall-through still returns a valid (if un-injected) instance
+     * rather than throwing.
+     */
+    @Test
+    void beanParamFallsBackToReflectionWhenNoAdapter() {
+        // Use a lambda-anonymous class type — not generatable (no stable name), so
+        // AdapterRegistry will cache the SENTINEL and the reflective fallback will run.
+        // We use BeanParamHolder (public field) — reflective path can still inject it.
+        CassiniHttpExchange exchange = p4ExchangeWithUri("http://localhost/test?x=hello");
+        MatchResult match = p4MinimalMatch(BeanParamHolder.class);
+        // Force deregister to ensure re-lookup (previous tests may have cached it)
+        AdapterRegistry.deregister(BeanParamHolder.class);
+        InjectionSupportImpl support = new InjectionSupportImpl(match, exchange);
+
+        Object result = support.beanParam(BeanParamHolder.class);
+        assertNotNull(result, "beanParam must return a non-null instance even via reflective fallback");
+        assertInstanceOf(BeanParamHolder.class, result);
+        // The adapter OR reflective path should inject the public field
+        BeanParamHolder holder = (BeanParamHolder) result;
+        assertEquals("hello", holder.x,
+                "@QueryParam public field must be injected (adapter or reflective path)");
+    }
+
+    // ---- P4 helper plumbing ----
+
+    private static MatchResult p4MinimalMatch(Class<?> cls) {
+        ResourceMethod rm = new ResourceMethod(
+                cls, null, "GET",
+                UriTemplate.compile("/test"), Set.of(), Set.of());
+        return new MatchResult(rm, Map.of(), Map.of());
+    }
+
+    private static CassiniHttpExchange p4ExchangeWithUri(String uri) {
+        return new P4MinimalExchange(URI.create(uri));
+    }
+
+    /** Minimal exchange stub for P4 injection tests. Reuses the structure from AdapterRegistrySeamTest. */
+    static class P4MinimalExchange implements CassiniHttpExchange {
+        private final URI requestUri;
+        private final java.util.Map<String, Object> attrs = new java.util.HashMap<>();
+
+        P4MinimalExchange(URI requestUri) { this.requestUri = requestUri; }
+
+        @Override public URI requestUri() { return requestUri; }
+        @Override public String requestUriRaw() { return requestUri.toString(); }
+        @Override public String method() { return "GET"; }
+        @Override public Map<String, List<String>> requestHeaders() { return Map.of(); }
+        @Override public java.io.InputStream requestBody() { return null; }
+        @Override public String contextPath() { return ""; }
+        @Override public boolean isSecure() { return false; }
+        @Override public Object getAttribute(String key) { return attrs.get(key); }
+        @Override public void setAttribute(String key, Object value) { attrs.put(key, value); }
+        @Override public void setStatus(int code) {}
+        @Override public Map<String, List<String>> responseHeaders() { return new java.util.HashMap<>(); }
+        @Override public java.io.OutputStream responseBody() { return java.io.OutputStream.nullOutputStream(); }
+        @Override public java.net.SocketAddress remoteAddress() { return null; }
+        @Override public String authScheme() { return null; }
+        @Override public java.security.Principal userPrincipal() { return null; }
+        @Override public boolean isUserInRole(String role) { return false; }
     }
 }

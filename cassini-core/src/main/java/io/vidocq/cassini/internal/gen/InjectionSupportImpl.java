@@ -93,14 +93,27 @@ public final class InjectionSupportImpl implements InjectionSupport {
 
     @Override
     public Object beanParam(Class<?> type) {
+        Object instance;
         try {
-            Object instance = type.getDeclaredConstructor().newInstance();
-            FieldInjector.inject(instance, match, request);
-            return instance;
+            instance = type.getDeclaredConstructor().newInstance();
         } catch (ReflectiveOperationException e) {
             throw new WebApplicationException("Failed to instantiate @BeanParam "
                     + type.getName() + ": " + e.getMessage(), 500);
         }
+        // P4: route @BeanParam injection through the bean's own generated adapter so that
+        // private fields in the bean's package are accessible via its VarHandle constants
+        // (avoids cross-package IllegalAccessException when the resource and bean are in
+        // different packages — the root cause of ~10-15 TCK fallback classes).
+        // The bean's adapter is generated/looked-up in the bean's package, so
+        // MethodHandles.privateLookupIn(beanType, ...) succeeds without any 'opens'.
+        var adapter = AdapterRegistry.lookup(type);
+        if (adapter.isPresent()) {
+            adapter.get().injectFields(instance, this, true);
+        } else {
+            // Safety net: reflective fallback (closed named-module, or generation failed).
+            FieldInjector.inject(instance, match, request);
+        }
+        return instance;
     }
 
     @Override
