@@ -371,18 +371,24 @@ public final class Invoker {
         // §3.4.1 : sub-resource via dynamic locator → pas d'injection @*Param
         injectFields(instance.getClass(), instance, match, request, false);
         Object result;
-        try {
-            route.javaMethod().setAccessible(true);
-            result = route.javaMethod().invoke(instance, args);
-        } catch (InvocationTargetException ite) {
-            Throwable cause = ite.getCause();
-            if (cause instanceof WebApplicationException wae) {
-                return renderWebAppException(wae, route, chosen, null);
+        // P1b: use the bean class of the route (not the dynamic instance class) for adapter lookup
+        Class<?> beanClassForLookup = route.beanClass();
+        var adapterFinal = AdapterRegistry.lookup(beanClassForLookup);
+        int midFinal = adapterFinal.isPresent()
+                ? AdapterRegistry.methodId(beanClassForLookup, route.javaMethod()) : -1;
+        if (adapterFinal.isPresent() && midFinal >= 0) {
+            try {
+                result = adapterFinal.get().invoke(midFinal, instance, args);
+            } catch (Throwable t) {
+                return handleResourceThrowable(t, route, chosen, null);
             }
-            var mapped = exceptionMappers.map(cause);
-            if (mapped.isPresent()) return fromJaxRs(mapped.get(), route, chosen);
-            if (cause instanceof Exception ex) throw ex;
-            throw new RuntimeException(cause);
+        } else {
+            try {
+                route.javaMethod().setAccessible(true);
+                result = route.javaMethod().invoke(instance, args);
+            } catch (InvocationTargetException ite) {
+                return handleResourceThrowable(ite.getCause(), route, chosen, null);
+            }
         }
         if (result instanceof java.util.concurrent.CompletionStage<?> cs) {
             // TODO(M2h) : propager le stage non-bloquant jusqu'au transport
@@ -718,29 +724,34 @@ public final class Invoker {
                 break;
             }
         }
-        try {
-            result = route.javaMethod().invoke(target, args);
-        } catch (IllegalArgumentException iae) {
-            StringBuilder sb = new StringBuilder("Argument mismatch on ")
-                    .append(route.beanClass().getName()).append('.')
-                    .append(route.javaMethod().getName()).append("(): ");
-            Parameter[] ps = route.javaMethod().getParameters();
-            for (int i = 0; i < ps.length; i++) {
-                sb.append("\n  [").append(i).append("] param=").append(ps[i].getType().getSimpleName())
-                        .append(" arg=").append(args[i] == null ? "null" : args[i].getClass().getSimpleName());
+        // P1b: attempt direct typed dispatch via generated adapter; fall back to reflection.
+        {
+            var adapter = AdapterRegistry.lookup(route.beanClass());
+            int mid = adapter.isPresent()
+                    ? AdapterRegistry.methodId(route.beanClass(), route.javaMethod()) : -1;
+            if (adapter.isPresent() && mid >= 0) {
+                try {
+                    result = adapter.get().invoke(mid, target, args);
+                } catch (Throwable t) {
+                    return handleResourceThrowable(t, route, chosen, rctx);
+                }
+            } else {
+                try {
+                    result = route.javaMethod().invoke(target, args);
+                } catch (IllegalArgumentException iae) {
+                    StringBuilder sb = new StringBuilder("Argument mismatch on ")
+                            .append(route.beanClass().getName()).append('.')
+                            .append(route.javaMethod().getName()).append("(): ");
+                    Parameter[] ps = route.javaMethod().getParameters();
+                    for (int i = 0; i < ps.length; i++) {
+                        sb.append("\n  [").append(i).append("] param=").append(ps[i].getType().getSimpleName())
+                                .append(" arg=").append(args[i] == null ? "null" : args[i].getClass().getSimpleName());
+                    }
+                    throw new RuntimeException(sb.toString(), iae);
+                } catch (InvocationTargetException ite) {
+                    return handleResourceThrowable(ite.getCause(), route, chosen, rctx);
+                }
             }
-            throw new RuntimeException(sb.toString(), iae);
-        } catch (InvocationTargetException ite) {
-            Throwable cause = ite.getCause();
-            // §4.3.1 : WAE avant le mapper — renderWebAppException gère la logique
-            // "entité présente → pas de mapper, pas d'entité → mapper si disponible".
-            if (cause instanceof WebApplicationException wae) {
-                return renderWebAppException(wae, route, chosen, rctx);
-            }
-            var mapped = exceptionMappers.map(cause);
-            if (mapped.isPresent()) return runResponseFiltersAndWrite(rctx, mapped.get(), route, chosen);
-            if (cause instanceof Exception ex) throw ex;
-            throw new RuntimeException(cause);
         }
 
         // §8.2 : @Suspended AsyncResponse — bloquer le virtual thread jusqu'à resume().
@@ -1260,6 +1271,45 @@ public final class Invoker {
             if (spec > best) best = spec;
         }
         return best;
+    }
+
+    /**
+     * Shared handler for exceptions thrown by a resource method — whether via reflective
+     * {@code Method.invoke} ({@code ite.getCause()}) or via the direct adapter call.
+     *
+     * <p>Priority:</p>
+     * <ol>
+     *   <li>WAE → {@link #renderWebAppException}</li>
+     *   <li>ExceptionMapper present → {@link #runResponseFiltersAndWrite} (response filters run)</li>
+     *   <li>Exception subtype → rethrow as-is</li>
+     *   <li>Throwable → wrap in RuntimeException and rethrow</li>
+     * </ol>
+     *
+     * @param cause  the raw throwable (getCause() already extracted for ITE callers)
+     * @param route  the matched resource method
+     * @param chosen the negotiated media type
+     * @param rctx   the request context (may be null if post-matching filters not started)
+     * @return a response if the exception was mapped; otherwise never returns (throws)
+     * @throws Exception rethrown if not mapped
+     */
+    private CassiniHttpResponse handleResourceThrowable(Throwable cause,
+                                                        ResourceMethod route,
+                                                        MediaType chosen,
+                                                        CassiniRequestContext rctx) throws Exception {
+        if (cause instanceof WebApplicationException wae) {
+            return renderWebAppException(wae, route, chosen, rctx);
+        }
+        var mapped = exceptionMappers.map(cause);
+        if (mapped.isPresent()) {
+            // Run response filters if we have a request context (post-matching path),
+            // otherwise fall back to fromJaxRs (dynamic-locator final path has no rctx).
+            if (rctx != null && !filters.responseFilters().isEmpty()) {
+                return runResponseFiltersAndWrite(rctx, mapped.get(), route, chosen);
+            }
+            return fromJaxRs(mapped.get(), route, chosen);
+        }
+        if (cause instanceof Exception ex) throw ex;
+        throw new RuntimeException(cause);
     }
 
     /** §3.7.2 / §4.4 : rend une réponse pour une exception hors-scope de la

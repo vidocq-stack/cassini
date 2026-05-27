@@ -16,17 +16,22 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.CodeBuilder;
 import java.lang.classfile.Label;
+import java.lang.classfile.instruction.SwitchCase;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDescs;
 import java.lang.constant.MethodTypeDesc;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 /**
  * Generates {@link ResourceAdapter} implementations at runtime using the JDK 25 Class-File API.
  *
@@ -104,6 +109,8 @@ public final class RuntimeAdapterGenerator {
      */
     public static Class<?> generate(Class<?> resourceClass) throws Exception {
         List<FieldDesc> fields = collectFields(resourceClass);
+        // Collect methods for P1b direct invoke — keyed by stable insertion order
+        Map<Method, Integer> methodIds = collectMethods(resourceClass);
 
         String adapterName = adapterClassName(resourceClass);
         ClassDesc adapterCD  = ClassDesc.of(adapterName);
@@ -138,18 +145,8 @@ public final class RuntimeAdapterGenerator {
             // injectFields(Object, InjectionSupport, boolean)
             generateInjectFields(clb, adapterCD, fields);
 
-            // invoke(int, Object, InjectionSupport) — P1b: UnsupportedOperationException
-            clb.withMethodBody("invoke",
-                    MethodTypeDesc.of(CD_Object, CD_int, CD_Object, CD_InjectionSupport),
-                    ClassFile.ACC_PUBLIC,
-                    cob -> {
-                        cob.new_(CD_UnsupportedOp);
-                        cob.dup();
-                        cob.ldc("P1b: method invocation not yet generated");
-                        cob.invokespecial(CD_UnsupportedOp, ConstantDescs.INIT_NAME,
-                                MethodTypeDesc.of(CD_void, CD_String));
-                        cob.athrow();
-                    });
+            // invoke(int, Object, Object[]) — P1b: direct typed dispatch
+            generateInvoke(clb, resourceClass, resourceCD, methodIds);
         });
 
         // If the adapter class was already defined (e.g. from a previous call in the same JVM
@@ -195,6 +192,10 @@ public final class RuntimeAdapterGenerator {
             throw new Exception("VarHandle <clinit> failed for " + resourceClass.getName()
                     + " (module not open?): " + eiie.getCause(), eiie.getCause());
         }
+
+        // Register method-id map so AdapterRegistry.methodId() can resolve quickly.
+        AdapterRegistry.registerMethodIds(resourceClass, methodIds);
+
         return defined;
     }
 
@@ -329,6 +330,262 @@ public final class RuntimeAdapterGenerator {
 
                     cob.return_();
                 });
+    }
+
+    // ---- Method collection and invoke generation ----
+
+    /**
+     * Collects all eligible resource methods from the class hierarchy, assigning a stable
+     * integer methodId to each. Eligibility: public, non-static, non-bridge, non-synthetic,
+     * not declared on {@code Object}. All such methods are eligible because args are pre-resolved
+     * by the Invoker.
+     *
+     * <p><b>Canonical ordering (P2 contract):</b> methods are sorted by
+     * {@code (declaringClassName, methodName, jvmDescriptor)} so that the APT processor
+     * (which uses {@code javax.lang.model}) and this runtime path (which uses reflection)
+     * assign identical methodIds across JVM runs and across build/runtime JVMs.</p>
+     *
+     * @param resourceClass the JAX-RS resource class
+     * @return ordered map of Method → methodId (0-based, canonical insertion order)
+     */
+    public static Map<Method, Integer> collectMethods(Class<?> resourceClass) {
+        List<Method> eligible = new ArrayList<>();
+        for (Method m : resourceClass.getMethods()) {
+            if (m.getDeclaringClass() == Object.class) continue;
+            if (Modifier.isStatic(m.getModifiers())) continue;
+            if (m.isBridge() || m.isSynthetic()) continue;
+            eligible.add(m);
+        }
+        // Canonical sort: (declaringClassName, methodName, JVM descriptor) — lexicographic.
+        // The JVM descriptor is built from parameter types in declared order, giving a unique
+        // key per overload. This ordering is stable across JVMs and identical to what the APT
+        // processor computes from javax.lang.model.
+        eligible.sort((a, b) -> {
+            int cmp = a.getDeclaringClass().getName().compareTo(b.getDeclaringClass().getName());
+            if (cmp != 0) return cmp;
+            cmp = a.getName().compareTo(b.getName());
+            if (cmp != 0) return cmp;
+            return jvmDescriptor(a).compareTo(jvmDescriptor(b));
+        });
+        Map<Method, Integer> result = new LinkedHashMap<>();
+        int id = 0;
+        for (Method m : eligible) {
+            result.put(m, id++);
+        }
+        return result;
+    }
+
+    /**
+     * Returns the JVM method descriptor for the given method (parameter types only, no return).
+     * Used as a tiebreaker in the canonical method ordering.
+     */
+    static String jvmDescriptor(Method m) {
+        StringBuilder sb = new StringBuilder("(");
+        for (Class<?> pt : m.getParameterTypes()) {
+            sb.append(classDescOf(pt).descriptorString());
+        }
+        sb.append(")");
+        return sb.toString();
+    }
+
+    /**
+     * Generates the {@code invoke(int methodId, Object target, Object[] args)} method.
+     *
+     * <p>Shape:
+     * <pre>
+     * public Object invoke(int methodId, Object target, Object[] args) throws Throwable {
+     *     switch (methodId) {
+     *         case 0: return BOX(((Owner) target).method0(CAST(args[0],T0), ...));
+     *         ...
+     *         default: throw new UnsupportedOperationException("unknown methodId: " + methodId);
+     *     }
+     * }
+     * </pre>
+     * Each case: casts target, loads each arg from the array (checkcast for reference types,
+     * unboxing for primitives), calls invokevirtual / invokeinterface, boxes the return value
+     * (or pushes null for void), then returns.</p>
+     */
+    // ClassDesc for Object[] — "[Ljava/lang/Object;" in JVM descriptor notation.
+    private static final ClassDesc CD_ObjArr = ClassDesc.ofDescriptor("[Ljava/lang/Object;");
+
+    private static void generateInvoke(java.lang.classfile.ClassBuilder clb,
+                                       Class<?> resourceClass,
+                                       ClassDesc resourceCD,
+                                       Map<Method, Integer> methodIds) {
+
+        clb.withMethodBody("invoke",
+                MethodTypeDesc.of(CD_Object, CD_int, CD_Object, CD_ObjArr),
+                ClassFile.ACC_PUBLIC,
+                cob -> {
+                    // Slots: 0=this, 1=methodId(int), 2=target(Object), 3=args(Object[])
+                    if (methodIds.isEmpty()) {
+                        emitDefaultCase(cob);
+                        return;
+                    }
+
+                    // Build a tableswitch (IDs are 0..N-1 contiguous by collectMethods).
+                    int size = methodIds.size();
+                    Label defaultLabel = cob.newLabel();
+                    Label[] caseLabels = new Label[size];
+                    for (int i = 0; i < size; i++) caseLabels[i] = cob.newLabel();
+
+                    // Build the SwitchCase list for tableswitch
+                    List<SwitchCase> switchCases = new ArrayList<>(size);
+                    for (int i = 0; i < size; i++) switchCases.add(SwitchCase.of(i, caseLabels[i]));
+
+                    cob.iload(1); // methodId
+                    cob.tableswitch(0, size - 1, defaultLabel, switchCases);
+
+                    // Emit each case body after the switch instruction
+                    for (Map.Entry<Method, Integer> entry : methodIds.entrySet()) {
+                        Method m = entry.getKey();
+                        int mid = entry.getValue();
+                        cob.labelBinding(caseLabels[mid]);
+                        emitMethodCase(cob, resourceClass, resourceCD, m);
+                        // areturn is inside emitMethodCase
+                    }
+
+                    // default: throw UnsupportedOperationException
+                    cob.labelBinding(defaultLabel);
+                    emitDefaultCase(cob);
+                });
+    }
+
+    private static void emitDefaultCase(CodeBuilder cob) {
+        cob.new_(CD_UnsupportedOp);
+        cob.dup();
+        cob.ldc("P1b: unknown methodId");
+        cob.invokespecial(CD_UnsupportedOp, ConstantDescs.INIT_NAME,
+                MethodTypeDesc.of(CD_void, CD_String));
+        cob.athrow();
+    }
+
+    /**
+     * Emits bytecode for one switch case: cast target, load+cast each arg, call, box return,
+     * then {@code areturn}.
+     */
+    private static void emitMethodCase(CodeBuilder cob, Class<?> resourceClass,
+                                       ClassDesc resourceCD, Method m) {
+        // Cast target to the concrete resource class (or the declaring class if interface)
+        Class<?> ownerClass = m.getDeclaringClass();
+        ClassDesc ownerCD = ClassDesc.of(ownerClass.getName());
+
+        // Load target (slot 2) and checkcast to the owner
+        cob.aload(2);
+        cob.checkcast(ownerCD);
+
+        // Load each argument from the args array (slot 3)
+        Class<?>[] paramTypes = m.getParameterTypes();
+        for (int i = 0; i < paramTypes.length; i++) {
+            Class<?> pt = paramTypes[i];
+            cob.aload(3); // args array
+            cob.ldc(i);
+            cob.aaload(); // args[i] as Object
+            if (pt.isPrimitive()) {
+                // Unbox: checkcast to wrapper then invoke xxxValue()
+                emitUnbox(cob, pt);
+            } else {
+                cob.checkcast(ClassDesc.of(pt.getName()));
+            }
+        }
+
+        // Build the erased method descriptor
+        ClassDesc[] paramDescs = new ClassDesc[paramTypes.length];
+        for (int i = 0; i < paramTypes.length; i++) {
+            paramDescs[i] = classDescOf(paramTypes[i]);
+        }
+        Class<?> returnType = m.getReturnType();
+        ClassDesc returnDesc = classDescOf(returnType);
+        MethodTypeDesc mtd = MethodTypeDesc.of(returnDesc, paramDescs);
+
+        // Call: invokeinterface if declaring class is an interface, else invokevirtual
+        if (ownerClass.isInterface()) {
+            cob.invokeinterface(ownerCD, m.getName(), mtd);
+        } else {
+            cob.invokevirtual(ownerCD, m.getName(), mtd);
+        }
+
+        // Box the return value (or push null for void), then areturn
+        if (returnType == void.class) {
+            cob.aconst_null();
+        } else if (returnType.isPrimitive()) {
+            emitBox(cob, returnType);
+        }
+        // else: reference type is already on stack as Object (or subtype)
+
+        cob.areturn();
+    }
+
+    /**
+     * Emits bytecode to unbox the top-of-stack {@code Object} to the given primitive type.
+     * The object is expected to be the corresponding wrapper type at runtime.
+     */
+    private static void emitUnbox(CodeBuilder cob, Class<?> primitive) {
+        if (primitive == int.class) {
+            cob.checkcast(ClassDesc.of("java.lang.Integer"));
+            cob.invokevirtual(ClassDesc.of("java.lang.Integer"), "intValue",
+                    MethodTypeDesc.of(ConstantDescs.CD_int));
+        } else if (primitive == long.class) {
+            cob.checkcast(ClassDesc.of("java.lang.Long"));
+            cob.invokevirtual(ClassDesc.of("java.lang.Long"), "longValue",
+                    MethodTypeDesc.of(ConstantDescs.CD_long));
+        } else if (primitive == double.class) {
+            cob.checkcast(ClassDesc.of("java.lang.Double"));
+            cob.invokevirtual(ClassDesc.of("java.lang.Double"), "doubleValue",
+                    MethodTypeDesc.of(ConstantDescs.CD_double));
+        } else if (primitive == float.class) {
+            cob.checkcast(ClassDesc.of("java.lang.Float"));
+            cob.invokevirtual(ClassDesc.of("java.lang.Float"), "floatValue",
+                    MethodTypeDesc.of(ConstantDescs.CD_float));
+        } else if (primitive == boolean.class) {
+            cob.checkcast(ClassDesc.of("java.lang.Boolean"));
+            cob.invokevirtual(ClassDesc.of("java.lang.Boolean"), "booleanValue",
+                    MethodTypeDesc.of(ConstantDescs.CD_boolean));
+        } else if (primitive == short.class) {
+            cob.checkcast(ClassDesc.of("java.lang.Short"));
+            cob.invokevirtual(ClassDesc.of("java.lang.Short"), "shortValue",
+                    MethodTypeDesc.of(ConstantDescs.CD_short));
+        } else if (primitive == byte.class) {
+            cob.checkcast(ClassDesc.of("java.lang.Byte"));
+            cob.invokevirtual(ClassDesc.of("java.lang.Byte"), "byteValue",
+                    MethodTypeDesc.of(ConstantDescs.CD_byte));
+        } else if (primitive == char.class) {
+            cob.checkcast(ClassDesc.of("java.lang.Character"));
+            cob.invokevirtual(ClassDesc.of("java.lang.Character"), "charValue",
+                    MethodTypeDesc.of(ConstantDescs.CD_char));
+        }
+    }
+
+    /**
+     * Emits bytecode to box the top-of-stack primitive value to its wrapper type.
+     * Uses {@code valueOf} to leverage the JVM's integer cache.
+     */
+    private static void emitBox(CodeBuilder cob, Class<?> primitive) {
+        if (primitive == int.class) {
+            cob.invokestatic(ClassDesc.of("java.lang.Integer"), "valueOf",
+                    MethodTypeDesc.of(ClassDesc.of("java.lang.Integer"), ConstantDescs.CD_int));
+        } else if (primitive == long.class) {
+            cob.invokestatic(ClassDesc.of("java.lang.Long"), "valueOf",
+                    MethodTypeDesc.of(ClassDesc.of("java.lang.Long"), ConstantDescs.CD_long));
+        } else if (primitive == double.class) {
+            cob.invokestatic(ClassDesc.of("java.lang.Double"), "valueOf",
+                    MethodTypeDesc.of(ClassDesc.of("java.lang.Double"), ConstantDescs.CD_double));
+        } else if (primitive == float.class) {
+            cob.invokestatic(ClassDesc.of("java.lang.Float"), "valueOf",
+                    MethodTypeDesc.of(ClassDesc.of("java.lang.Float"), ConstantDescs.CD_float));
+        } else if (primitive == boolean.class) {
+            cob.invokestatic(ClassDesc.of("java.lang.Boolean"), "valueOf",
+                    MethodTypeDesc.of(ClassDesc.of("java.lang.Boolean"), ConstantDescs.CD_boolean));
+        } else if (primitive == short.class) {
+            cob.invokestatic(ClassDesc.of("java.lang.Short"), "valueOf",
+                    MethodTypeDesc.of(ClassDesc.of("java.lang.Short"), ConstantDescs.CD_short));
+        } else if (primitive == byte.class) {
+            cob.invokestatic(ClassDesc.of("java.lang.Byte"), "valueOf",
+                    MethodTypeDesc.of(ClassDesc.of("java.lang.Byte"), ConstantDescs.CD_byte));
+        } else if (primitive == char.class) {
+            cob.invokestatic(ClassDesc.of("java.lang.Character"), "valueOf",
+                    MethodTypeDesc.of(ClassDesc.of("java.lang.Character"), ConstantDescs.CD_char));
+        }
     }
 
     // ---- Field collection ----

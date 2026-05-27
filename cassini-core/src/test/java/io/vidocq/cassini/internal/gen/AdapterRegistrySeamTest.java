@@ -43,8 +43,8 @@ class AdapterRegistrySeamTest {
         }
 
         @Override
-        public Object invoke(int methodId, Object target, InjectionSupport support) {
-            throw new UnsupportedOperationException("P0: not implemented");
+        public Object invoke(int methodId, Object target, Object[] args) {
+            throw new UnsupportedOperationException("P1b: direct invoke not implemented in stub");
         }
     }
 

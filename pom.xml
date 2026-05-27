@@ -71,6 +71,7 @@
     <subprojects>
         <subproject>cassini-api</subproject>
         <subproject>cassini-core</subproject>
+        <subproject>cassini-processor</subproject>
         <subproject>cassini-cdi-vauban</subproject>
         <subproject>cassini-chappe</subproject>
         <subproject>cassini-jdk-http</subproject>
@@ -190,6 +191,11 @@
             <dependency>
                 <groupId>io.vidocq.cassini</groupId>
                 <artifactId>cassini-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.vidocq.cassini</groupId>
+                <artifactId>cassini-processor</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
