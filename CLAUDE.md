@@ -33,8 +33,10 @@ mvn test
 Cassini est une implémentation Jakarta RESTful Web Services 4.0 (Core Profile / SE-Bootstrap) **transport-agnostique**.
 
 ```
-cassini-api          ← SPI HTTP public (CassiniHttpExchange, CassiniHttpAdapter, ResourceFactory, BeanProvider)
-cassini-core         ← Implémentation JAX-RS (Invoker, ResourceScanner, MessageBodyRegistry, RuntimeDelegate)
+cassini-api          ← SPI HTTP public + SPI codegen stable (ResourceAdapter, InjectionSupport - spi.gen)
+cassini-core         ← Implémentation JAX-RS + RuntimeAdapterGenerator (Class-File API) + AdapterRegistry
+cassini-processor    ← APT (javax.annotation.processing) — génère CassiniAdapter à la compilation
+cassini-maven-plugin ← Maven plugin — pré-génère CassiniAdapter pour archives externes (dep JARs)
 cassini-cdi-vauban   ← Adapter CDI Vauban (BeanProvider + BCE @RequestScoped, optionnel)
 cassini-chappe       ← Adapter Chappe (transport de référence, utilisé pour le TCK)
 cassini-jdk-http     ← Adapter JDK pur (com.sun.net.httpserver, zéro dépendance externe)
@@ -42,6 +44,28 @@ cassini-tck          ← Runner Arquillian + harness officiel Jakarta REST 4.0
 ```
 
 **Flux d'une requête :** `CassiniHttpAdapter.dispatch()` → `Invoker` (core) → resource method → `CassiniHttpResponse` → transport.
+
+### Architecture codegen M4
+
+Trois niveaux de génération d'adapters (`<Class>$$CassiniAdapter`), du plus préféré au fallback :
+
+1. **APT compiler-time (`cassini-processor`)** — classes sources du build courant. AOT-safe.
+2. **Maven plugin build-time (`cassini-maven-plugin:generate`, `process-classes`)** — archives
+   externes (dep JARs). Appelle `RuntimeAdapterGenerator.toBytecode(cls)` et écrit les `.class`
+   sur disque. AOT-safe.
+3. **Générateur runtime (`RuntimeAdapterGenerator.generate`)** — fallback JVM-only. Non compatible AOT.
+
+`AdapterRegistry.lookup` essaie `Class.forName(<class>$$CassiniAdapter)` en premier (chemin
+APT/plugin), puis le générateur runtime, puis retourne le SENTINEL (fallback réflexif).
+
+**Règle JPMS named-module (plugin)** : les adapters vivent dans le package de la ressource.
+Classpath JARs → écriture dans `target/classes`. JPMS named-module → fail-build (option
+`repackageModularDependencies=true` pour repackager le JAR).
+
+**Réflexion résiduelle documentée (dérogation assumée)** :
+- `ResourceScanner` au démarrage (scan annotations JAX-RS, une seule fois).
+- Fallback runtime pour locators dynamiques (`Object`) et classes dans modules fermés.
+- `m.setAccessible(true)` sur méthodes sous-ressource (prévu P4).
 
 **Deux modes d'instanciation des ressources :**
 - Mode A : `new()` via `DefaultResourceFactory` (jdk-http, standalone)
@@ -67,11 +91,15 @@ cassini-tck          ← Runner Arquillian + harness officiel Jakarta REST 4.0
 - **M2h** — Async non-bloquant + virtual threads : `@Suspended AsyncResponse`, propagation `CompletionStage` jusqu'au transport, lifecycle callbacks. Les invariants async sont déjà préparés dans `cassini-core/internal/Async.java` et `CassiniAsyncContext` (SPI). Les tests `@Tag("async")` sont désactivés en attendant.
 - **M2i** — SSE streaming réel : refactoring `CassiniSseEventSink` pour push chunked au fil de l'eau (dépend de M2h).
 
-## Tests unitaires dans cassini-core
+## Tests unitaires
 
-```
-UriTemplateTest, UriRouterBestMatchTest, MediaTypesTest, FormDecoderTest, ParamValueConverterTest
-```
+**cassini-core** : `UriTemplateTest`, `UriRouterBestMatchTest`, `MediaTypesTest`, `FormDecoderTest`,
+`ParamValueConverterTest`, `RuntimeAdapterGeneratorTest` (inclut toBytecode P3),
+`AdapterRegistrySeamTest`.
+
+**cassini-processor** : `CassiniResourceProcessorTest`.
+
+**cassini-maven-plugin** : `GenerateAdaptersMojoTest` (toBytecode round-trip, JAR named-module detection).
 
 ## Challenges TCK documentés
 

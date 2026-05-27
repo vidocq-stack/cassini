@@ -98,25 +98,26 @@ public final class RuntimeAdapterGenerator {
     }
 
     /**
-     * Generates and defines a {@link ResourceAdapter} for the given resource class.
+     * Generates the adapter bytecode for the given resource class WITHOUT defining the class.
      *
-     * <p>Returns the generated {@code Class<?>} which implements {@link ResourceAdapter}.
-     * The caller (typically {@link AdapterRegistry}) instantiates it via its no-arg constructor.</p>
+     * <p>This is the low-level bytecode-only path used by the Maven plugin to write
+     * {@code <Class>$$CassiniAdapter.class} files to disk at build time. The returned bytes
+     * are identical to what {@link #generate(Class)} would produce — both delegate here —
+     * ensuring that plugin-pre-generated adapters and runtime-generated adapters are
+     * byte-for-byte equivalent.</p>
      *
      * @param resourceClass the JAX-RS resource class to generate an adapter for
-     * @return the generated adapter class
-     * @throws Exception if bytecode generation or class definition fails
+     * @return the raw {@code .class} bytecode of the adapter (not yet defined in any ClassLoader)
      */
-    public static Class<?> generate(Class<?> resourceClass) throws Exception {
+    public static byte[] toBytecode(Class<?> resourceClass) {
         List<FieldDesc> fields = collectFields(resourceClass);
-        // Collect methods for P1b direct invoke — keyed by stable insertion order
         Map<Method, Integer> methodIds = collectMethods(resourceClass);
 
         String adapterName = adapterClassName(resourceClass);
         ClassDesc adapterCD  = ClassDesc.of(adapterName);
         ClassDesc resourceCD = ClassDesc.of(resourceClass.getName());
 
-        byte[] bytecode = ClassFile.of().build(adapterCD, clb -> {
+        return ClassFile.of().build(adapterCD, clb -> {
             clb.withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER | ClassFile.ACC_FINAL);
             clb.withInterfaceSymbols(CD_ResourceAdapter);
 
@@ -148,6 +149,24 @@ public final class RuntimeAdapterGenerator {
             // invoke(int, Object, Object[]) — P1b: direct typed dispatch
             generateInvoke(clb, resourceClass, resourceCD, methodIds);
         });
+    }
+
+    /**
+     * Generates and defines a {@link ResourceAdapter} for the given resource class.
+     *
+     * <p>Returns the generated {@code Class<?>} which implements {@link ResourceAdapter}.
+     * The caller (typically {@link AdapterRegistry}) instantiates it via its no-arg constructor.</p>
+     *
+     * @param resourceClass the JAX-RS resource class to generate an adapter for
+     * @return the generated adapter class
+     * @throws Exception if bytecode generation or class definition fails
+     */
+    public static Class<?> generate(Class<?> resourceClass) throws Exception {
+        Map<Method, Integer> methodIds = collectMethods(resourceClass);
+
+        String adapterName = adapterClassName(resourceClass);
+
+        byte[] bytecode = toBytecode(resourceClass);
 
         // If the adapter class was already defined (e.g. from a previous call in the same JVM
         // run, or by a concurrent thread), reuse it rather than attempting a duplicate definition.

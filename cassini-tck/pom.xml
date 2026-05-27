@@ -175,6 +175,40 @@
             <id>tck-official</id>
             <build>
                 <plugins>
+                    <!--
+                        P3: cassini-maven-plugin:generate pre-generates $$CassiniAdapter
+                        bytecode for @Path/@Provider classes arriving in the TCK jar
+                        (jakarta-restful-ws-tck) — an external pre-compiled archive that
+                        the APT processor cannot reach. This closes AOT coverage:
+                        AdapterRegistry.lookup tries Class.forName first, so plugin-generated
+                        adapters are picked up without invoking the runtime Class-File generator.
+                    -->
+                    <plugin>
+                        <groupId>io.vidocq.cassini</groupId>
+                        <artifactId>cassini-maven-plugin</artifactId>
+                        <version>${cassini.version}</version>
+                        <executions>
+                            <execution>
+                                <id>generate-tck-adapters</id>
+                                <phase>process-test-classes</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                                <configuration>
+                                    <!-- Scan dependency JARs, specifically the TCK archive.
+                                         The TCK jar (jakarta-restful-ws-tck) is a plain classpath
+                                         jar (no module-info) so no repackaging is needed. -->
+                                    <scope>dependencies</scope>
+                                    <includeArtifacts>
+                                        <includeArtifact>jakarta.ws.rs:jakarta-restful-ws-tck</includeArtifact>
+                                    </includeArtifacts>
+                                    <!-- Write adapters to test-classes so they are on the
+                                         surefire test classpath alongside the TCK jar -->
+                                    <outputDirectory>${project.build.testOutputDirectory}</outputDirectory>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-resources-plugin</artifactId>
