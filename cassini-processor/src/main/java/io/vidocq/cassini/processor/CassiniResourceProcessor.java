@@ -584,13 +584,15 @@ public class CassiniResourceProcessor extends AbstractProcessor {
     private void emitFieldResolution(PrintWriter w, FieldModel f, String indent) {
         if (f.isContext) {
             w.println(indent + "Object _v = support.context(" + f.rawTypeLiteral + ");");
+            w.println(indent + "if (_v != null) " + f.varHandleField + ".set(target, _v);");
         } else if (f.isBeanParam) {
             w.println(indent + "Object _v = support.beanParam(" + f.rawTypeLiteral + ");");
-        } else {
-            // param(kind, name, encoded, defaultValue, rawType, elementType)
+            w.println(indent + "if (_v != null) " + f.varHandleField + ".set(target, _v);");
+        } else if (f.inlineStrategy == InlineStrategy.FALLBACK) {
+            // Reflective fallback: support.param(kind, name, encoded, defaultValue, rawType, elementType)
             w.println(indent + "Object _v = support.param(");
             w.println(indent + "        ParamKind." + f.paramKind + ",");
-            w.println(indent + "        \"" + f.paramAnnotationValue + "\",");
+            w.println(indent + "        \"" + escapeString(f.paramAnnotationValue) + "\",");
             w.println(indent + "        " + f.encoded + ",");
             if (f.defaultValue != null) {
                 w.println(indent + "        \"" + escapeString(f.defaultValue) + "\",");
@@ -599,8 +601,141 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             }
             w.println(indent + "        " + f.rawTypeLiteral + ",");
             w.println(indent + "        " + f.elementTypeLiteral + ");");
+            w.println(indent + "if (_v != null) " + f.varHandleField + ".set(target, _v);");
+        } else {
+            // M6c: inline typed coercion (mirrors RuntimeAdapterGenerator.emitInlineParam).
+            emitInlineParam(w, f, indent);
         }
+    }
+
+    /**
+     * Emits inline typed {@code @*Param} field coercion. Mirrors the semantics of
+     * {@code RuntimeAdapterGenerator.emitInlineParam}: obtain the raw {@code List<String>} from
+     * {@code support.rawValues}, apply {@code @DefaultValue} when empty, convert (scalar or
+     * collection), wrapping each conversion in {@code try/catch} so a {@code WebApplicationException}
+     * propagates and any other {@code RuntimeException} becomes {@code support.coercionError(...)}.
+     */
+    private void emitInlineParam(PrintWriter w, FieldModel f, String indent) {
+        String kindRef = "ParamKind." + f.paramKind;
+        String nameLit = "\"" + escapeString(f.paramAnnotationValue) + "\"";
+        boolean isCollection = f.inlineStrategy == InlineStrategy.COLLECTION_STRING
+                || f.inlineStrategy == InlineStrategy.COLLECTION_INLINE;
+
+        w.println(indent + "java.util.List<String> _raw = support.rawValues(" + kindRef + ", " + nameLit + ", " + f.encoded + ");");
+        w.println(indent + "Object _v;");
+        if (f.defaultValue != null) {
+            w.println(indent + "if (_raw.isEmpty()) { _raw = java.util.List.of(\"" + escapeString(f.defaultValue) + "\"); }");
+        }
+        w.println(indent + "if (_raw.isEmpty()) {");
+        w.println(indent + "    _v = " + emptyDefaultExpr(f) + ";");
+        w.println(indent + "} else {");
+        if (isCollection) {
+            emitCollectionConvert(w, f, indent + "    ");
+        } else {
+            emitScalarConvertBlock(w, f, indent + "    ");
+        }
+        w.println(indent + "}");
         w.println(indent + "if (_v != null) " + f.varHandleField + ".set(target, _v);");
+    }
+
+    /** Boxed primitive zero for primitive fields, {@code null} for reference fields (empty, no default). */
+    private String emptyDefaultExpr(FieldModel f) {
+        if (!f.rawIsPrimitive) return "null";
+        return switch (f.rawJavaTypeName) {
+            case "boolean" -> "Boolean.valueOf(false)";
+            case "byte"    -> "Byte.valueOf((byte) 0)";
+            case "short"   -> "Short.valueOf((short) 0)";
+            case "int"     -> "Integer.valueOf(0)";
+            case "long"    -> "Long.valueOf(0L)";
+            case "float"   -> "Float.valueOf(0f)";
+            case "double"  -> "Double.valueOf(0d)";
+            case "char"    -> "Character.valueOf('\\0')";
+            default        -> "null";
+        };
+    }
+
+    /** Scalar conversion: take {@code _raw.get(0)} and convert it, assigning to {@code _v}. */
+    private void emitScalarConvertBlock(PrintWriter w, FieldModel f, String indent) {
+        w.println(indent + "String _s = _raw.get(0);");
+        if (f.elementStrategy == InlineStrategy.STRING) {
+            w.println(indent + "_v = _s;");
+            return;
+        }
+        w.println(indent + "try {");
+        emitConvertStatement(w, f.elementStrategy, f.elementJavaTypeName, "_v", "_s", indent + "    ");
+        w.println(indent + "} catch (jakarta.ws.rs.WebApplicationException _w) {");
+        w.println(indent + "    throw _w;");
+        w.println(indent + "} catch (RuntimeException _e) {");
+        w.println(indent + "    throw support.coercionError(ParamKind." + f.paramKind + ", \""
+                + escapeString(f.paramAnnotationValue) + "\", _e);");
+        w.println(indent + "}");
+    }
+
+    /** Collection conversion: build the appropriate collection, converting each element inline. */
+    private void emitCollectionConvert(PrintWriter w, FieldModel f, String indent) {
+        String impl = switch (f.rawJavaTypeName) {
+            case "java.util.Set"       -> "java.util.LinkedHashSet";
+            case "java.util.SortedSet" -> "java.util.TreeSet";
+            default                    -> "java.util.ArrayList"; // List, Collection
+        };
+        String elem = f.elementJavaTypeName;
+        w.println(indent + impl + "<" + elem + "> _c = new " + impl + "<>();");
+        w.println(indent + "for (int _i = 0; _i < _raw.size(); _i++) {");
+        w.println(indent + "    String _s = _raw.get(_i);");
+        if (f.inlineStrategy == InlineStrategy.COLLECTION_STRING) {
+            w.println(indent + "    _c.add(_s);");
+        } else {
+            w.println(indent + "    " + elem + " _ev;");
+            w.println(indent + "    try {");
+            emitConvertStatement(w, f.elementStrategy, elem, "_ev", "_s", indent + "        ");
+            w.println(indent + "    } catch (jakarta.ws.rs.WebApplicationException _w) {");
+            w.println(indent + "        throw _w;");
+            w.println(indent + "    } catch (RuntimeException _e) {");
+            w.println(indent + "        throw support.coercionError(ParamKind." + f.paramKind + ", \""
+                    + escapeString(f.paramAnnotationValue) + "\", _e);");
+            w.println(indent + "    }");
+            w.println(indent + "    _c.add(_ev);");
+        }
+        w.println(indent + "}");
+        w.println(indent + "_v = _c;");
+    }
+
+    /**
+     * Emits a single conversion statement assigning the converted value of {@code srcVar} (a String)
+     * to {@code targetVar}. Mirrors {@code RuntimeAdapterGenerator.emitScalarConversion}.
+     * {@code typeName} is the scalar/element Java type name (e.g. {@code com.foo.Color}).
+     */
+    private void emitConvertStatement(PrintWriter w, InlineStrategy strategy, String typeName,
+                                      String targetVar, String srcVar, String indent) {
+        switch (strategy) {
+            case STRING  -> w.println(indent + targetVar + " = " + srcVar + ";");
+            case BOOLEAN -> w.println(indent + targetVar + " = Boolean.parseBoolean(" + srcVar + ");");
+            case BYTE    -> w.println(indent + targetVar + " = Byte.parseByte(" + srcVar + ");");
+            case SHORT   -> w.println(indent + targetVar + " = Short.parseShort(" + srcVar + ");");
+            case INT     -> w.println(indent + targetVar + " = Integer.parseInt(" + srcVar + ");");
+            case LONG    -> w.println(indent + targetVar + " = Long.parseLong(" + srcVar + ");");
+            case FLOAT   -> w.println(indent + targetVar + " = Float.parseFloat(" + srcVar + ");");
+            case DOUBLE  -> w.println(indent + targetVar + " = Double.parseDouble(" + srcVar + ");");
+            case CHAR -> {
+                w.println(indent + "if (" + srcVar + ".isEmpty()) throw new IllegalArgumentException(\"Empty value for char\");");
+                w.println(indent + targetVar + " = " + srcVar + ".charAt(0);");
+            }
+            case ENUM_WITH_FROM_STRING, FROM_STRING ->
+                    w.println(indent + targetVar + " = " + typeName + ".fromString(" + srcVar + ");");
+            case VALUE_OF ->
+                    w.println(indent + targetVar + " = " + typeName + ".valueOf(" + srcVar + ");");
+            case STRING_CTOR ->
+                    w.println(indent + targetVar + " = new " + typeName + "(" + srcVar + ");");
+            case ENUM_PLAIN -> {
+                // Enum.valueOf(Type.class, raw); on IllegalArgumentException → null (matches coerceSingle)
+                w.println(indent + "try {");
+                w.println(indent + "    " + targetVar + " = Enum.valueOf(" + typeName + ".class, " + srcVar + ");");
+                w.println(indent + "} catch (IllegalArgumentException _iae) {");
+                w.println(indent + "    " + targetVar + " = null;");
+                w.println(indent + "}");
+            }
+            default -> throw new IllegalStateException("Unexpected inline strategy: " + strategy);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -758,11 +893,13 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         // Check annotations
         if (hasAnnotation(ve, "jakarta.ws.rs.core.Context")) {
             return new FieldModel(vhName, declaringBinary, javaName, fieldTypeLiteral,
-                    true, false, null, null, false, null, rawTypeLiteral, elementTypeLiteral);
+                    true, false, null, null, false, null, rawTypeLiteral, elementTypeLiteral,
+                    InlineStrategy.FALLBACK, InlineStrategy.FALLBACK, null, null, false);
         }
         if (hasAnnotation(ve, "jakarta.ws.rs.BeanParam")) {
             return new FieldModel(vhName, declaringBinary, javaName, fieldTypeLiteral,
-                    false, true, null, null, false, null, rawTypeLiteral, elementTypeLiteral);
+                    false, true, null, null, false, null, rawTypeLiteral, elementTypeLiteral,
+                    InlineStrategy.FALLBACK, InlineStrategy.FALLBACK, null, null, false);
         }
 
         boolean encoded = hasAnnotation(ve, "jakarta.ws.rs.Encoded")
@@ -802,9 +939,19 @@ public class CassiniResourceProcessor extends AbstractProcessor {
 
         if (paramKind == null) return null; // not injectable
 
+        // M6c: resolve the inline coercion strategy for this @*Param field.
+        InlineStrategy inlineStrategy = resolveInlineStrategy(fType);
+        TypeMirror scalarMirror = isListLike(fType) ? collectionElementMirror(fType) : fType;
+        InlineStrategy elementStrategy = (scalarMirror != null)
+                ? resolveScalarStrategy(scalarMirror) : InlineStrategy.FALLBACK;
+        String rawJavaTypeName = javaTypeName(fType);
+        String elementJavaTypeName = (scalarMirror != null) ? javaTypeName(scalarMirror) : "java.lang.String";
+        boolean rawIsPrimitive = fType.getKind().isPrimitive();
+
         return new FieldModel(vhName, declaringBinary, javaName, fieldTypeLiteral,
                 false, false, paramKind, paramAnnotationValue, encoded, defaultValue,
-                rawTypeLiteral, elementTypeLiteral);
+                rawTypeLiteral, elementTypeLiteral,
+                inlineStrategy, elementStrategy, rawJavaTypeName, elementJavaTypeName, rawIsPrimitive);
     }
 
     // -------------------------------------------------------------------------
@@ -1010,6 +1157,142 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                 || "java.util.Collection".equals(name);
     }
 
+    // -------------------------------------------------------------------------
+    // M6c: inline coercion strategy resolution (javax.lang.model)
+    // Mirrors RuntimeAdapterGenerator.resolveInlineStrategy / resolveScalarStrategy.
+    // -------------------------------------------------------------------------
+
+    /** First type argument of a collection-typed mirror, or {@code null} for a raw collection. */
+    private TypeMirror collectionElementMirror(TypeMirror t) {
+        if (t.getKind() == TypeKind.DECLARED) {
+            DeclaredType dt = (DeclaredType) t;
+            if (!dt.getTypeArguments().isEmpty()) {
+                return dt.getTypeArguments().get(0);
+            }
+        }
+        return null;
+    }
+
+    /** Top-level strategy: FALLBACK, a scalar strategy, or COLLECTION_STRING / COLLECTION_INLINE. */
+    private InlineStrategy resolveInlineStrategy(TypeMirror fType) {
+        if (isListLike(fType)) {
+            TypeMirror elem = collectionElementMirror(fType);
+            if (elem == null) return InlineStrategy.FALLBACK; // raw collection
+            InlineStrategy es = resolveScalarStrategy(elem);
+            if (es == InlineStrategy.FALLBACK) return InlineStrategy.FALLBACK;
+            if (es == InlineStrategy.STRING) return InlineStrategy.COLLECTION_STRING;
+            return InlineStrategy.COLLECTION_INLINE;
+        }
+        return resolveScalarStrategy(fType);
+    }
+
+    /** Scalar (non-collection) strategy for a single value type. */
+    private InlineStrategy resolveScalarStrategy(TypeMirror type) {
+        switch (type.getKind()) {
+            case BOOLEAN: return InlineStrategy.BOOLEAN;
+            case BYTE:    return InlineStrategy.BYTE;
+            case SHORT:   return InlineStrategy.SHORT;
+            case INT:     return InlineStrategy.INT;
+            case LONG:    return InlineStrategy.LONG;
+            case FLOAT:   return InlineStrategy.FLOAT;
+            case DOUBLE:  return InlineStrategy.DOUBLE;
+            case CHAR:    return InlineStrategy.CHAR;
+            default: break;
+        }
+        if (type.getKind() != TypeKind.DECLARED) return InlineStrategy.FALLBACK;
+        TypeElement te = (TypeElement) ((DeclaredType) type).asElement();
+        String qn = te.getQualifiedName().toString();
+
+        // String / CharSequence pass-through
+        if ("java.lang.String".equals(qn) || "java.lang.CharSequence".equals(qn)) {
+            return InlineStrategy.STRING;
+        }
+        // Wrappers (parse like primitives)
+        switch (qn) {
+            case "java.lang.Boolean":   return InlineStrategy.BOOLEAN;
+            case "java.lang.Byte":      return InlineStrategy.BYTE;
+            case "java.lang.Short":     return InlineStrategy.SHORT;
+            case "java.lang.Integer":   return InlineStrategy.INT;
+            case "java.lang.Long":      return InlineStrategy.LONG;
+            case "java.lang.Float":     return InlineStrategy.FLOAT;
+            case "java.lang.Double":    return InlineStrategy.DOUBLE;
+            case "java.lang.Character": return InlineStrategy.CHAR;
+            default: break;
+        }
+        // PathSegment: fall back (complex parse — not worth inlining)
+        if ("jakarta.ws.rs.core.PathSegment".equals(qn) || isPathSegment(type)) {
+            return InlineStrategy.FALLBACK;
+        }
+        // Must be publicly referenceable from the generated adapter (and all enclosing types public).
+        if (!isPublicType(te)) return InlineStrategy.FALLBACK;
+
+        // Enum: prefer public static fromString(String), else Enum.valueOf
+        if (te.getKind() == ElementKind.ENUM) {
+            return hasPublicStaticStringMethod(te, "fromString")
+                    ? InlineStrategy.ENUM_WITH_FROM_STRING
+                    : InlineStrategy.ENUM_PLAIN;
+        }
+        if (hasPublicStaticStringMethod(te, "valueOf"))   return InlineStrategy.VALUE_OF;
+        if (hasPublicStaticStringMethod(te, "fromString")) return InlineStrategy.FROM_STRING;
+        if (hasPublicStringConstructor(te))                return InlineStrategy.STRING_CTOR;
+
+        return InlineStrategy.FALLBACK;
+    }
+
+    /** True if {@code type} is (a subtype of) {@code jakarta.ws.rs.core.PathSegment}. */
+    private boolean isPathSegment(TypeMirror type) {
+        TypeElement ps = elements.getTypeElement("jakarta.ws.rs.core.PathSegment");
+        if (ps == null) return false;
+        try {
+            return types.isAssignable(types.erasure(type), types.erasure(ps.asType()));
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** True when the type and all its enclosing types are {@code public}. */
+    private boolean isPublicType(TypeElement te) {
+        Element e = te;
+        while (e instanceof TypeElement t) {
+            if (!t.getModifiers().contains(Modifier.PUBLIC)) return false;
+            Element enc = t.getEnclosingElement();
+            if (enc instanceof TypeElement) { e = enc; } else { break; }
+        }
+        return true;
+    }
+
+    /** True if {@code te} declares a {@code public static <Type> name(String)} method. */
+    private boolean hasPublicStaticStringMethod(TypeElement te, String name) {
+        for (Element enc : te.getEnclosedElements()) {
+            if (enc.getKind() != ElementKind.METHOD) continue;
+            ExecutableElement m = (ExecutableElement) enc;
+            if (!m.getSimpleName().contentEquals(name)) continue;
+            Set<Modifier> mods = m.getModifiers();
+            if (!mods.contains(Modifier.STATIC) || !mods.contains(Modifier.PUBLIC)) continue;
+            if (m.getParameters().size() != 1) continue;
+            if (isStringType(m.getParameters().get(0).asType())) return true;
+        }
+        return false;
+    }
+
+    /** True if {@code te} declares a {@code public <Type>(String)} constructor. */
+    private boolean hasPublicStringConstructor(TypeElement te) {
+        for (Element enc : te.getEnclosedElements()) {
+            if (enc.getKind() != ElementKind.CONSTRUCTOR) continue;
+            ExecutableElement c = (ExecutableElement) enc;
+            if (!c.getModifiers().contains(Modifier.PUBLIC)) continue;
+            if (c.getParameters().size() != 1) continue;
+            if (isStringType(c.getParameters().get(0).asType())) return true;
+        }
+        return false;
+    }
+
+    private boolean isStringType(TypeMirror t) {
+        if (t.getKind() != TypeKind.DECLARED) return false;
+        return "java.lang.String".equals(
+                ((TypeElement) ((DeclaredType) t).asElement()).getQualifiedName().toString());
+    }
+
     private boolean isObjectType(TypeElement te) {
         return "java.lang.Object".equals(te.getQualifiedName().toString());
     }
@@ -1075,8 +1358,33 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             boolean encoded,
             String defaultValue,
             String rawTypeLiteral,
-            String elementTypeLiteral
+            String elementTypeLiteral,
+            // ---- M6c: inline coercion metadata (PARAM fields only) ----
+            InlineStrategy inlineStrategy,   // top-level: FALLBACK / scalar / COLLECTION_*
+            InlineStrategy elementStrategy,  // scalar strategy of the (element) type to convert
+            String rawJavaTypeName,          // e.g. "int", "java.util.List", "com.foo.Color"
+            String elementJavaTypeName,      // scalar/element java type name to reference in source
+            boolean rawIsPrimitive           // true when the field's declared type is a primitive
     ) {}
+
+    /**
+     * Inline conversion strategy for a {@code @*Param} field — mirrors
+     * {@code RuntimeAdapterGenerator.InlineStrategy} (M6b). {@code FALLBACK} means: emit the
+     * reflective {@code support.param(...)} call; every other value triggers inline typed
+     * conversion via {@code support.rawValues(...)} + {@code support.coercionError(...)}.
+     */
+    enum InlineStrategy {
+        FALLBACK,
+        STRING,           // String / CharSequence pass-through
+        BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, CHAR,  // primitives + wrappers
+        ENUM_WITH_FROM_STRING,  // enum with public static fromString(String)
+        ENUM_PLAIN,             // enum without fromString — use Enum.valueOf
+        VALUE_OF,               // public static valueOf(String)
+        FROM_STRING,            // public static fromString(String)
+        STRING_CTOR,            // public (String) constructor
+        COLLECTION_STRING,      // List/Set/SortedSet/Collection of String
+        COLLECTION_INLINE       // List/Set/SortedSet/Collection of an inlinable element type
+    }
 
     private record MethodModel(
             String declaringBinaryName,

@@ -68,7 +68,8 @@ Classpath JARs → écriture dans `target/classes`. JPMS named-module → fail-b
 - `InjectionSupportImpl.beanParam` : instanciation toujours réflective ; injection des champs du bean via son adapter généré (P4), ou fallback réflexif si l'adapter ne peut être généré (module fermé, superclasse privée).
 - Fallback runtime pour locators dynamiques (`Object`) et classes dans modules fermés (superclasse privée inaccessible au `privateLookupIn`) — SENTINEL + `FieldInjector.inject` en filet.
 - Injection `@Context` dans les providers singletons (filtres, MBW/MBR) via `FieldInjector.inject` — hors du hot-path ressource.
-- `ParamValueConverter` et coercition de types : réflexion structurelle au premier appel par type (pas par requête).
+- Coercition des champs `@*Param` : **générée inline** par les trois générateurs (runtime `RuntimeAdapterGenerator` = M6b, APT `cassini-processor` = M6c, plugin via `toBytecode`) pour String/CharSequence, primitifs+wrappers, enum (`fromString` ou `Enum.valueOf`), `valueOf`/`fromString`/ctor `(String)` publics, et collections `List`/`Set`/`SortedSet`/`Collection` de ces types. Fallback réflexif `support.param` (→ `ParamValueConverter`) seulement pour les formes non-inlinables : `PathSegment`, types/membres non-publics, collections brutes.
+- Coercition des **paramètres de méthode** : reste via `ParamExtractor` + `ParamValueConverter` (résolution `ParamConverterProvider`-aware au premier appel par type, pas par requête). **Volontairement non inlinée** — la précédence PCP est ce qui avait cassé 23 tests à la 1ʳᵉ tentative P1b.
 
 **Deux modes d'instanciation des ressources :**
 - Mode A : `new()` via `DefaultResourceFactory` (jdk-http, standalone)
