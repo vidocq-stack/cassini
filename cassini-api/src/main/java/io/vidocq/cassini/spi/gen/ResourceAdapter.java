@@ -47,4 +47,23 @@ public interface ResourceAdapter {
      * @throws Throwable if the resource method throws (propagated raw, without wrapping)
      */
     Object invoke(int methodId, Object target, Object[] args) throws Throwable;
+
+    /**
+     * Creates a fresh instance of the resource class via a direct {@code new} call (no reflection).
+     *
+     * <p><b>M6a design:</b> generated adapters override this when the resource class has a
+     * publicly accessible no-arg constructor visible from the adapter's package (same package
+     * as the resource, so package-private constructors are also accessible). When the class
+     * has NO no-arg constructor (constructor injection, only a {@code String} ctor, private
+     * nested class, etc.), the default implementation throws {@link UnsupportedOperationException}
+     * and callers fall back to the reflective path ({@code getDeclaredConstructor().newInstance()}).</p>
+     *
+     * @return a fresh, uninitialised instance of the resource class
+     * @throws UnsupportedOperationException if the resource class has no accessible no-arg
+     *         constructor (caller must fall back to reflection)
+     */
+    default Object newInstance() {
+        throw new UnsupportedOperationException(
+                "No generated newInstance() — no public/package no-arg constructor or generation skipped");
+    }
 }

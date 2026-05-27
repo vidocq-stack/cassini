@@ -9,8 +9,10 @@ import io.vidocq.cassini.spi.gen.ResourceAdapter;
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import jakarta.ws.rs.BeanParam;
 import jakarta.ws.rs.DefaultValue;
+import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.core.UriInfo;
@@ -204,6 +206,21 @@ class RuntimeAdapterGeneratorTest {
 
         @Override
         public Object suspendedAsyncResponse() { return null; }
+
+        @Override
+        public List<String> rawValues(ParamKind kind, String name, boolean encoded) {
+            // Delegate to param() logic to extract the raw string
+            Object v = param(kind, name, encoded, null, String.class, String.class);
+            if (v == null) return List.of();
+            if (v instanceof List<?> l) return l.stream().map(Object::toString).toList();
+            return List.of(v.toString());
+        }
+
+        @Override
+        public WebApplicationException coercionError(ParamKind kind, String name, RuntimeException cause) {
+            // Avoid Response.status() — no RuntimeDelegate in cassini-core unit tests.
+            return new WebApplicationException("Invalid value for param " + name + ": " + cause.getMessage(), cause);
+        }
     }
 
     // ---- Helper ----
@@ -237,6 +254,14 @@ class RuntimeAdapterGeneratorTest {
         // M5a fixtures
         AdapterRegistry.deregister(ProviderWithContextFields.class);
         AdapterRegistry.deregister(ProviderWithPrivateContextField.class);
+        // M6a fixtures
+        AdapterRegistry.deregister(PublicNoArgResource.class);
+        AdapterRegistry.deregister(PackageNoArgResource.class);
+        AdapterRegistry.deregister(CtorInjectionResource.class);
+        // M6b fixtures
+        AdapterRegistry.deregister(M6bResource.class);
+        AdapterRegistry.deregister(PathIntResource.class);
+        AdapterRegistry.deregister(HeaderIntResource.class);
     }
 
     @Test
@@ -718,6 +743,101 @@ class RuntimeAdapterGeneratorTest {
         public UriInfo getUriInfo() { return uriInfo; }
     }
 
+    // ---- M6a fixtures: newInstance() ----
+
+    /** Resource with a public no-arg constructor — adapter must generate newInstance(). */
+    static class PublicNoArgResource {
+        public PublicNoArgResource() {}
+        public String hello() { return "hello"; }
+    }
+
+    /** Resource with a package-private no-arg constructor — adapter must generate newInstance(). */
+    static class PackageNoArgResource {
+        PackageNoArgResource() {}
+    }
+
+    /** Resource with ONLY a String constructor — no no-arg ctor, adapter must NOT generate newInstance(). */
+    static class CtorInjectionResource {
+        final String value;
+        public CtorInjectionResource(String value) { this.value = value; }
+    }
+
+    // ---- M6a tests: newInstance() ----
+
+    @Test
+    void newInstanceWithPublicNoArgCtorReturnsFreshInstance() throws Exception {
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(PublicNoArgResource.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
+        Object instance1 = adapter.newInstance();
+        Object instance2 = adapter.newInstance();
+
+        assertNotNull(instance1, "newInstance() must return a non-null instance");
+        assertInstanceOf(PublicNoArgResource.class, instance1,
+                "newInstance() must return an instance of the resource class");
+        assertNotSame(instance1, instance2,
+                "newInstance() must return a fresh instance on each call (not a singleton)");
+    }
+
+    @Test
+    void newInstanceWithPackageNoArgCtorReturnsFreshInstance() throws Exception {
+        // Package-private ctor is accessible from the adapter (same package)
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(PackageNoArgResource.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
+        Object instance = adapter.newInstance();
+
+        assertNotNull(instance, "newInstance() must work for package-private no-arg ctor");
+        assertInstanceOf(PackageNoArgResource.class, instance);
+    }
+
+    @Test
+    void newInstanceWithoutNoArgCtorThrowsUnsupportedOperation() throws Exception {
+        // CtorInjectionResource has only String(String) ctor — no no-arg ctor
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(CtorInjectionResource.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
+        assertThrows(UnsupportedOperationException.class,
+                () -> adapter.newInstance(),
+                "newInstance() must throw UnsupportedOperationException when no no-arg ctor exists");
+    }
+
+    @Test
+    void hasAccessibleNoArgCtorDetectsPublicCtor() {
+        assertTrue(RuntimeAdapterGenerator.hasAccessibleNoArgCtor(PublicNoArgResource.class),
+                "public no-arg ctor should be detected");
+    }
+
+    @Test
+    void hasAccessibleNoArgCtorDetectsPackageCtor() {
+        assertTrue(RuntimeAdapterGenerator.hasAccessibleNoArgCtor(PackageNoArgResource.class),
+                "package-private no-arg ctor should be accessible from same-package adapter");
+    }
+
+    @Test
+    void hasAccessibleNoArgCtorReturnsFalseWhenOnlyArgedCtor() {
+        assertFalse(RuntimeAdapterGenerator.hasAccessibleNoArgCtor(CtorInjectionResource.class),
+                "class with only String-arg ctor should return false");
+    }
+
+    @Test
+    void beanParamUsesAdapterNewInstanceWhenAvailable() throws Exception {
+        // InjectionSupportImpl.beanParam should use adapter.newInstance() (M6a)
+        // when the adapter has a generated newInstance().
+        // We verify by calling beanParam and checking we get a valid instance.
+        RuntimeAdapterGenerator.generate(BeanParamHolder.class);
+
+        CassiniHttpExchange exchange = p4ExchangeWithUri("http://localhost/test?x=value");
+        MatchResult match = p4MinimalMatch(BeanParamHolder.class);
+        InjectionSupportImpl support = new InjectionSupportImpl(match, exchange);
+
+        Object result = support.beanParam(BeanParamHolder.class);
+        assertNotNull(result);
+        assertInstanceOf(BeanParamHolder.class, result);
+        BeanParamHolder holder = (BeanParamHolder) result;
+        assertEquals("value", holder.x, "M6a: @BeanParam bean created via newInstance() and fields injected");
+    }
+
     /** Minimal exchange stub for P4 injection tests. Reuses the structure from AdapterRegistrySeamTest. */
     static class P4MinimalExchange implements CassiniHttpExchange {
         private final URI requestUri;
@@ -741,5 +861,378 @@ class RuntimeAdapterGeneratorTest {
         @Override public String authScheme() { return null; }
         @Override public java.security.Principal userPrincipal() { return null; }
         @Override public boolean isUserInRole(String role) { return false; }
+    }
+
+    // ---- M6b fixtures: inline conversion types ----
+
+    /** Public enum without fromString — inline via Enum.valueOf. */
+    public enum Color { RED, GREEN, BLUE }
+
+    /** Public enum with a public static fromString method. */
+    public enum Status {
+        ACTIVE, INACTIVE;
+        public static Status fromString(String s) { return valueOf(s.toUpperCase()); }
+    }
+
+    /** Public class with valueOf(String) factory. */
+    public static class Score {
+        public final int value;
+        private Score(int v) { this.value = v; }
+        public static Score valueOf(String s) { return new Score(Integer.parseInt(s)); }
+    }
+
+    /** Public class with fromString(String) factory. */
+    public static class Tag {
+        public final String text;
+        private Tag(String t) { this.text = t; }
+        public static Tag fromString(String s) { return new Tag(s.trim()); }
+    }
+
+    /** Public class with a public (String) constructor. */
+    public static class Token {
+        public final String value;
+        public Token(String v) { this.value = v; }
+    }
+
+    /** Non-public type — must fall back to support.param(). */
+    static class PackagePrivateType {
+        public final String v;
+        public PackagePrivateType(String v) { this.v = v; }
+        public static PackagePrivateType valueOf(String s) { return new PackagePrivateType(s); }
+    }
+
+    /** Resource exercising M6b inline strategies. */
+    static class M6bResource {
+        @QueryParam("count")
+        public int count;
+
+        @QueryParam("countW")
+        public Integer countWrapper;
+
+        @PathParam("color")
+        public Color color;
+
+        @QueryParam("status")
+        public Status status;
+
+        @QueryParam("score")
+        public Score score;
+
+        @QueryParam("tag")
+        public Tag tag;
+
+        @HeaderParam("token")
+        public Token token;
+
+        @QueryParam("items")
+        public List<Integer> items;
+
+        @QueryParam("labels")
+        public Set<String> labels;
+
+        /** Uses a non-public type — must fall back to support.param(). */
+        @QueryParam("pkg")
+        public PackagePrivateType pkg;
+    }
+
+    // ---- A RawValues-capable FakeSupport for M6b inline-path tests ----
+
+    /**
+     * An InjectionSupport stub that returns controlled raw String lists from rawValues()
+     * and delegates coercionError() correctly. Used for M6b inline-path tests where
+     * the generated adapter calls rawValues() instead of param().
+     */
+    static class RawValuesSupport implements InjectionSupport {
+        /** Map of (kind.name + ":" + paramName) → list of raw values to return. */
+        private final Map<String, List<String>> rawMap;
+        /** Map of (kind.name + ":" + paramName) → pre-coerced object for param() fallback. */
+        private final Map<String, Object> paramMap;
+
+        RawValuesSupport(Map<String, List<String>> rawMap, Map<String, Object> paramMap) {
+            this.rawMap   = rawMap;
+            this.paramMap = paramMap;
+        }
+
+        @Override public <T> T context(Class<T> type) { return null; }
+        @Override public Object beanParam(Class<?> type) { return null; }
+        @Override public Object suspendedAsyncResponse() { return null; }
+
+        @Override
+        public List<String> rawValues(ParamKind kind, String name, boolean encoded) {
+            return rawMap.getOrDefault(kind.name() + ":" + name, List.of());
+        }
+
+        @Override
+        public Object param(ParamKind kind, String name, boolean encoded,
+                            String defaultValue, Class<?> rawType, Class<?> elementType) {
+            return paramMap.get(kind.name() + ":" + name);
+        }
+
+        @Override
+        public WebApplicationException coercionError(ParamKind kind, String name, RuntimeException cause) {
+            // Note: avoid Response.status() here — no RuntimeDelegate in cassini-core unit tests.
+            return new WebApplicationException("coercion: " + name + ": " + cause.getMessage(), cause);
+        }
+    }
+
+    // ---- M6b helper ----
+
+    /** Generates adapter for M6bResource and returns a fresh adapter instance. */
+    private ResourceAdapter m6bAdapter() throws Exception {
+        Class<?> ac = RuntimeAdapterGenerator.generate(M6bResource.class);
+        return (ResourceAdapter) ac.getDeclaredConstructor().newInstance();
+    }
+
+    // ---- M6b tests ----
+
+    @Test
+    void m6b_intFieldInlined() throws Exception {
+        ResourceAdapter adapter = m6bAdapter();
+        RawValuesSupport support = new RawValuesSupport(
+                Map.of("QUERY:count", List.of("42")), Map.of());
+
+        M6bResource target = new M6bResource();
+        adapter.injectFields(target, support, true);
+        assertEquals(42, target.count, "M6b: int @QueryParam must be inline-converted from raw String");
+    }
+
+    @Test
+    void m6b_intFieldDefaultValueWhenAbsent() throws Exception {
+        // count has no @DefaultValue — absent raw → default for int = 0
+        ResourceAdapter adapter = m6bAdapter();
+        RawValuesSupport support = new RawValuesSupport(Map.of(), Map.of());
+
+        M6bResource target = new M6bResource();
+        adapter.injectFields(target, support, true);
+        assertEquals(0, target.count, "M6b: absent int @QueryParam with no @DefaultValue must yield 0");
+    }
+
+    @Test
+    void m6b_integerWrapperFieldInlined() throws Exception {
+        ResourceAdapter adapter = m6bAdapter();
+        RawValuesSupport support = new RawValuesSupport(
+                Map.of("QUERY:countW", List.of("99")), Map.of());
+
+        M6bResource target = new M6bResource();
+        adapter.injectFields(target, support, true);
+        assertEquals(Integer.valueOf(99), target.countWrapper,
+                "M6b: Integer wrapper @QueryParam must be inline-converted");
+    }
+
+    @Test
+    void m6b_enumPlainFieldInlined() throws Exception {
+        ResourceAdapter adapter = m6bAdapter();
+        RawValuesSupport support = new RawValuesSupport(
+                Map.of("PATH:color", List.of("GREEN")), Map.of());
+
+        M6bResource target = new M6bResource();
+        adapter.injectFields(target, support, true);
+        assertEquals(Color.GREEN, target.color, "M6b: enum (plain Enum.valueOf) must be inline-converted");
+    }
+
+    @Test
+    void m6b_enumPlainUnknownValueYieldsNull() throws Exception {
+        // ENUM_PLAIN: IAE from Enum.valueOf → null (matches coerceSingle behavior)
+        ResourceAdapter adapter = m6bAdapter();
+        RawValuesSupport support = new RawValuesSupport(
+                Map.of("PATH:color", List.of("PURPLE")), Map.of());
+
+        M6bResource target = new M6bResource();
+        adapter.injectFields(target, support, true);
+        assertNull(target.color,
+                "M6b: unknown enum value with ENUM_PLAIN strategy must yield null (not throw)");
+    }
+
+    @Test
+    void m6b_enumWithFromStringFieldInlined() throws Exception {
+        ResourceAdapter adapter = m6bAdapter();
+        RawValuesSupport support = new RawValuesSupport(
+                Map.of("QUERY:status", List.of("active")), Map.of());
+
+        M6bResource target = new M6bResource();
+        adapter.injectFields(target, support, true);
+        assertEquals(Status.ACTIVE, target.status,
+                "M6b: enum with fromString must delegate to fromString");
+    }
+
+    @Test
+    void m6b_valueOfTypeFieldInlined() throws Exception {
+        ResourceAdapter adapter = m6bAdapter();
+        RawValuesSupport support = new RawValuesSupport(
+                Map.of("QUERY:score", List.of("77")), Map.of());
+
+        M6bResource target = new M6bResource();
+        adapter.injectFields(target, support, true);
+        assertNotNull(target.score);
+        assertEquals(77, target.score.value,
+                "M6b: type with valueOf(String) must be inline-converted");
+    }
+
+    @Test
+    void m6b_fromStringTypeFieldInlined() throws Exception {
+        ResourceAdapter adapter = m6bAdapter();
+        RawValuesSupport support = new RawValuesSupport(
+                Map.of("QUERY:tag", List.of("  hello  ")), Map.of());
+
+        M6bResource target = new M6bResource();
+        adapter.injectFields(target, support, true);
+        assertNotNull(target.tag);
+        assertEquals("hello", target.tag.text,
+                "M6b: type with fromString(String) must be inline-converted");
+    }
+
+    @Test
+    void m6b_stringCtorTypeFieldInlined() throws Exception {
+        ResourceAdapter adapter = m6bAdapter();
+        RawValuesSupport support = new RawValuesSupport(
+                Map.of("HEADER:token", List.of("tok123")), Map.of());
+
+        M6bResource target = new M6bResource();
+        adapter.injectFields(target, support, true);
+        assertNotNull(target.token);
+        assertEquals("tok123", target.token.value,
+                "M6b: type with (String) constructor must be inline-converted");
+    }
+
+    @Test
+    void m6b_listOfIntegerFieldInlined() throws Exception {
+        ResourceAdapter adapter = m6bAdapter();
+        RawValuesSupport support = new RawValuesSupport(
+                Map.of("QUERY:items", List.of("1", "2", "3")), Map.of());
+
+        M6bResource target = new M6bResource();
+        adapter.injectFields(target, support, true);
+        assertNotNull(target.items);
+        assertEquals(List.of(1, 2, 3), target.items,
+                "M6b: List<Integer> @QueryParam must be inline-converted");
+    }
+
+    @Test
+    void m6b_setOfStringFieldInlined() throws Exception {
+        ResourceAdapter adapter = m6bAdapter();
+        RawValuesSupport support = new RawValuesSupport(
+                Map.of("QUERY:labels", List.of("a", "b", "c")), Map.of());
+
+        M6bResource target = new M6bResource();
+        adapter.injectFields(target, support, true);
+        assertNotNull(target.labels);
+        assertEquals(Set.of("a", "b", "c"), target.labels,
+                "M6b: Set<String> @QueryParam must be inline-converted");
+    }
+
+    @Test
+    void m6b_conversionFailureOnPathParamCallsCoercionError() throws Exception {
+        // int @PathParam — parseInt failure → coercionError(PATH, ...) must be called.
+        // We verify via a tracking stub that records which ParamKind was passed to coercionError.
+        // The PATH kind signals 404 in a full runtime context (JAX-RS §3.2).
+        // Note: we cannot assert WebApplicationException type here because
+        // WebApplicationException constructors require RuntimeDelegate (not present in unit tests).
+        // The HTTP status mapping is verified by the REST TCK.
+        Class<?> ac = RuntimeAdapterGenerator.generate(PathIntResource.class);
+        ResourceAdapter pathAdapter = (ResourceAdapter) ac.getDeclaredConstructor().newInstance();
+
+        ParamKind[] capturedKind = new ParamKind[1];
+        InjectionSupport trackingSupport = new RawValuesSupport(
+                Map.of("PATH:id", List.of("notAnInt")), Map.of()) {
+            @Override
+            public WebApplicationException coercionError(ParamKind kind, String name, RuntimeException cause) {
+                capturedKind[0] = kind;
+                throw cause; // rethrow original to propagate something
+            }
+        };
+
+        PathIntResource target = new PathIntResource();
+        assertThrows(RuntimeException.class,
+                () -> pathAdapter.injectFields(target, trackingSupport, true),
+                "M6b: int @PathParam conversion failure must propagate an exception");
+        assertEquals(ParamKind.PATH, capturedKind[0],
+                "M6b: coercionError must be called with PATH kind (signals 404 in full runtime)");
+    }
+
+    @Test
+    void m6b_conversionFailureOnHeaderParamCallsCoercionError() throws Exception {
+        // int @HeaderParam — parseInt failure → coercionError(HEADER, ...) must be called.
+        // HEADER kind signals 400.
+        Class<?> ac = RuntimeAdapterGenerator.generate(HeaderIntResource.class);
+        ResourceAdapter headerAdapter = (ResourceAdapter) ac.getDeclaredConstructor().newInstance();
+
+        ParamKind[] capturedKind = new ParamKind[1];
+        InjectionSupport trackingSupport = new RawValuesSupport(
+                Map.of("HEADER:x-count", List.of("NaN")), Map.of()) {
+            @Override
+            public WebApplicationException coercionError(ParamKind kind, String name, RuntimeException cause) {
+                capturedKind[0] = kind;
+                throw cause; // rethrow original to propagate something
+            }
+        };
+
+        HeaderIntResource target = new HeaderIntResource();
+        assertThrows(RuntimeException.class,
+                () -> headerAdapter.injectFields(target, trackingSupport, true),
+                "M6b: int @HeaderParam conversion failure must propagate an exception");
+        assertEquals(ParamKind.HEADER, capturedKind[0],
+                "M6b: coercionError must be called with HEADER kind (signals 400 in full runtime)");
+    }
+
+    @Test
+    void m6b_nonPublicTypeFallsBackToSupportParam() throws Exception {
+        // PackagePrivateType has valueOf(String) but the class itself is package-private
+        // → resolveScalarStrategy must return FALLBACK → support.param() is called.
+        // Verify that resolveScalarStrategy returns FALLBACK
+        var fieldDesc = RuntimeAdapterGenerator.collectFields(M6bResource.class).stream()
+                .filter(f -> f.javaFieldName().equals("pkg"))
+                .findFirst().orElseThrow();
+
+        RuntimeAdapterGenerator.InlineStrategy strategy = RuntimeAdapterGenerator.resolveInlineStrategy(fieldDesc);
+        assertEquals(RuntimeAdapterGenerator.InlineStrategy.FALLBACK, strategy,
+                "M6b: non-public type must resolve to FALLBACK strategy");
+
+        // Also verify that at runtime the adapter calls support.param() and gets the value
+        ResourceAdapter adapter = m6bAdapter();
+        PackagePrivateType expected = new PackagePrivateType("test");
+        RawValuesSupport support = new RawValuesSupport(
+                Map.of(),
+                Map.of("QUERY:pkg", expected));
+
+        M6bResource target = new M6bResource();
+        adapter.injectFields(target, support, true);
+        assertSame(expected, target.pkg,
+                "M6b: FALLBACK strategy must delegate to support.param() and inject the result");
+    }
+
+    @Test
+    void m6b_resolveInlineStrategyForKnownTypes() {
+        // White-box: verify strategy resolution for the M6b types
+        var fields = RuntimeAdapterGenerator.collectFields(M6bResource.class);
+
+        var countF  = fields.stream().filter(f -> f.javaFieldName().equals("count")).findFirst().orElseThrow();
+        var colorF  = fields.stream().filter(f -> f.javaFieldName().equals("color")).findFirst().orElseThrow();
+        var statusF = fields.stream().filter(f -> f.javaFieldName().equals("status")).findFirst().orElseThrow();
+        var scoreF  = fields.stream().filter(f -> f.javaFieldName().equals("score")).findFirst().orElseThrow();
+        var tagF    = fields.stream().filter(f -> f.javaFieldName().equals("tag")).findFirst().orElseThrow();
+        var tokenF  = fields.stream().filter(f -> f.javaFieldName().equals("token")).findFirst().orElseThrow();
+        var itemsF  = fields.stream().filter(f -> f.javaFieldName().equals("items")).findFirst().orElseThrow();
+        var labelsF = fields.stream().filter(f -> f.javaFieldName().equals("labels")).findFirst().orElseThrow();
+
+        assertEquals(RuntimeAdapterGenerator.InlineStrategy.INT,                    RuntimeAdapterGenerator.resolveInlineStrategy(countF));
+        assertEquals(RuntimeAdapterGenerator.InlineStrategy.ENUM_PLAIN,             RuntimeAdapterGenerator.resolveInlineStrategy(colorF));
+        assertEquals(RuntimeAdapterGenerator.InlineStrategy.ENUM_WITH_FROM_STRING,  RuntimeAdapterGenerator.resolveInlineStrategy(statusF));
+        assertEquals(RuntimeAdapterGenerator.InlineStrategy.VALUE_OF,               RuntimeAdapterGenerator.resolveInlineStrategy(scoreF));
+        assertEquals(RuntimeAdapterGenerator.InlineStrategy.FROM_STRING,            RuntimeAdapterGenerator.resolveInlineStrategy(tagF));
+        assertEquals(RuntimeAdapterGenerator.InlineStrategy.STRING_CTOR,            RuntimeAdapterGenerator.resolveInlineStrategy(tokenF));
+        assertEquals(RuntimeAdapterGenerator.InlineStrategy.COLLECTION_INLINE,      RuntimeAdapterGenerator.resolveInlineStrategy(itemsF));
+        assertEquals(RuntimeAdapterGenerator.InlineStrategy.COLLECTION_STRING,      RuntimeAdapterGenerator.resolveInlineStrategy(labelsF));
+    }
+
+    // ---- M6b additional fixtures ----
+
+    static class PathIntResource {
+        @PathParam("id")
+        public int id;
+    }
+
+    static class HeaderIntResource {
+        @HeaderParam("x-count")
+        public int count;
     }
 }

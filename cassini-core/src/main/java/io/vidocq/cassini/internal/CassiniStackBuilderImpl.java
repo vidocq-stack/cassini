@@ -1,6 +1,7 @@
 package io.vidocq.cassini.internal;
 
 import io.vidocq.cassini.internal.filter.FilterRegistry;
+import io.vidocq.cassini.internal.gen.AdapterRegistry;
 import io.vidocq.cassini.spi.bean.BeanProvider;
 import io.vidocq.cassini.spi.http.CassiniStack;
 import io.vidocq.cassini.spi.resource.ResourceFactory;
@@ -139,6 +140,15 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
             }
             if (factory != null) {
                 return factory.create(cls);
+            }
+            // M6a: prefer generated adapter newInstance() over reflection
+            var adapterM6a = AdapterRegistry.lookup(cls);
+            if (adapterM6a.isPresent()) {
+                try {
+                    return adapterM6a.get().newInstance();
+                } catch (UnsupportedOperationException ignored) {
+                    // no no-arg ctor — fall through to reflective path
+                }
             }
             try { return cls.getDeclaredConstructor().newInstance(); }
             catch (ReflectiveOperationException e) {

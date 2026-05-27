@@ -209,13 +209,10 @@ public final class Invoker {
                         route, MediaType.WILDCARD_TYPE, null);
             }
             if (intermediate instanceof Class<?> cls) {
-                try { intermediate = cls.getDeclaredConstructor().newInstance(); }
-                catch (ReflectiveOperationException e) {
-                    return renderWebAppException(
-                            new WebApplicationException(
-                                    "Cannot instantiate sub-resource " + cls.getName() + ": " + e.getMessage(), 500),
-                            route, MediaType.WILDCARD_TYPE, null);
-                }
+                // M6a: prefer generated adapter newInstance() over reflection
+                Object created = instantiateSubResourceClass(cls, route, MediaType.WILDCARD_TYPE, null);
+                if (created instanceof CassiniHttpResponse) return (CassiniHttpResponse) created;
+                intermediate = created;
             }
             injectFields(intermediate.getClass(), intermediate, match, request, false);
             matched.add(0, intermediate);
@@ -308,13 +305,10 @@ public final class Invoker {
                         route, MediaType.WILDCARD_TYPE, null);
             }
             if (intermediate instanceof Class<?> cls) {
-                try { intermediate = cls.getDeclaredConstructor().newInstance(); }
-                catch (ReflectiveOperationException e) {
-                    return renderWebAppException(
-                            new WebApplicationException(
-                                    "Cannot instantiate sub-resource " + cls.getName() + ": " + e.getMessage(), 500),
-                            route, MediaType.WILDCARD_TYPE, null);
-                }
+                // M6a: prefer generated adapter newInstance() over reflection
+                Object created = instantiateSubResourceClass(cls, route, MediaType.WILDCARD_TYPE, null);
+                if (created instanceof CassiniHttpResponse) return (CassiniHttpResponse) created;
+                intermediate = created;
             }
             injectFields(intermediate.getClass(), intermediate, match, request, false);
             matchedSoFar.add(0, intermediate);
@@ -673,15 +667,11 @@ public final class Invoker {
                     }
                     // §3.4.2 : un locator peut retourner Class<T> — runtime
                     // instancie la classe via constructor no-arg.
+                    // M6a: prefer generated adapter newInstance() over reflection
                     if (intermediate instanceof Class<?> cls) {
-                        try { intermediate = cls.getDeclaredConstructor().newInstance(); }
-                        catch (ReflectiveOperationException e) {
-                            return renderWebAppException(
-                                    new WebApplicationException(
-                                            "Cannot instantiate sub-resource " + cls.getName() + ": " + e.getMessage(),
-                                            500),
-                                    route, chosen, rctx);
-                        }
+                        Object created = instantiateSubResourceClass(cls, route, chosen, rctx);
+                        if (created instanceof CassiniHttpResponse) return (CassiniHttpResponse) created;
+                        intermediate = created;
                     }
                     injectFields(intermediate.getClass(), intermediate, match, request, false);
                     matched.add(0, intermediate);
@@ -1402,5 +1392,33 @@ public final class Invoker {
                 .header("Content-Type", "text/plain;charset=utf-8")
                 .body(msg.getBytes(java.nio.charset.StandardCharsets.UTF_8))
                 .build();
+    }
+
+    /**
+     * M6a: instantiates a sub-resource class returned by a sub-resource locator.
+     * Prefers the generated adapter's {@code newInstance()} over reflection.
+     * Returns the new instance, or a {@link CassiniHttpResponse} error if instantiation fails.
+     *
+     * @param rctx may be {@code null} (in dynamic-locator paths that run before post-matching filters)
+     */
+    private Object instantiateSubResourceClass(Class<?> cls, ResourceMethod route,
+                                                MediaType chosen, CassiniRequestContext rctx) throws IOException {
+        // M6a: try generated adapter newInstance() first
+        var adapter = AdapterRegistry.lookup(cls);
+        if (adapter.isPresent()) {
+            try {
+                return adapter.get().newInstance();
+            } catch (UnsupportedOperationException ignored) {
+                // no no-arg ctor — fall through to reflective path
+            }
+        }
+        try {
+            return cls.getDeclaredConstructor().newInstance();
+        } catch (ReflectiveOperationException e) {
+            return renderWebAppException(
+                    new WebApplicationException(
+                            "Cannot instantiate sub-resource " + cls.getName() + ": " + e.getMessage(), 500),
+                    route, chosen, rctx);
+        }
     }
 }
