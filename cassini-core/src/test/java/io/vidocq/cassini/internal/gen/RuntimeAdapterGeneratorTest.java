@@ -14,6 +14,8 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.core.UriInfo;
+import jakarta.ws.rs.ext.Provider;
+import jakarta.ws.rs.ext.Providers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -232,6 +234,9 @@ class RuntimeAdapterGeneratorTest {
         AdapterRegistry.deregister(InnerBean.class);
         AdapterRegistry.deregister(OuterBean.class);
         AdapterRegistry.deregister(ResourceWithNestedBeanParam.class);
+        // M5a fixtures
+        AdapterRegistry.deregister(ProviderWithContextFields.class);
+        AdapterRegistry.deregister(ProviderWithPrivateContextField.class);
     }
 
     @Test
@@ -601,6 +606,116 @@ class RuntimeAdapterGeneratorTest {
 
     private static CassiniHttpExchange p4ExchangeWithUri(String uri) {
         return new P4MinimalExchange(URI.create(uri));
+    }
+
+    // ---- M5a tests: @Provider @Context injection via generated adapter ----
+
+    /**
+     * M5a: AdapterRegistry.lookup on a @Provider class returns an adapter whose
+     * injectFields(provider, support, false) populates public @Context fields.
+     * The injectParams=false contract is critical — providers have no @PathParam/etc.
+     */
+    @Test
+    void providerContextFieldsInjectedViaAdapter() {
+        var adapterOpt = AdapterRegistry.lookup(ProviderWithContextFields.class);
+        assertTrue(adapterOpt.isPresent(),
+                "AdapterRegistry must return an adapter for a @Provider class with @Context fields");
+
+        ProviderWithContextFields provider = new ProviderWithContextFields();
+        assertNull(provider.getUriInfo(), "UriInfo must be null before injection");
+
+        // Use a FakeSupport that returns stub UriInfo
+        UriInfo stubUriInfo = new jakarta.ws.rs.core.UriInfo() {
+            @Override public URI getBaseUri() { return URI.create("http://host/"); }
+            @Override public URI getRequestUri() { return URI.create("http://host/test"); }
+            @Override public jakarta.ws.rs.core.UriBuilder getBaseUriBuilder() { return null; }
+            @Override public jakarta.ws.rs.core.UriBuilder getRequestUriBuilder() { return null; }
+            @Override public jakarta.ws.rs.core.UriBuilder getAbsolutePathBuilder() { return null; }
+            @Override public URI getAbsolutePath() { return URI.create("http://host/test"); }
+            @Override public String getPath() { return "/test"; }
+            @Override public String getPath(boolean decode) { return "/test"; }
+            @Override public java.util.List<jakarta.ws.rs.core.PathSegment> getPathSegments() { return List.of(); }
+            @Override public java.util.List<jakarta.ws.rs.core.PathSegment> getPathSegments(boolean decode) { return List.of(); }
+            @Override public jakarta.ws.rs.core.MultivaluedMap<String, String> getPathParameters() { return new jakarta.ws.rs.core.MultivaluedHashMap<>(); }
+            @Override public jakarta.ws.rs.core.MultivaluedMap<String, String> getPathParameters(boolean decode) { return new jakarta.ws.rs.core.MultivaluedHashMap<>(); }
+            @Override public jakarta.ws.rs.core.MultivaluedMap<String, String> getQueryParameters() { return new jakarta.ws.rs.core.MultivaluedHashMap<>(); }
+            @Override public jakarta.ws.rs.core.MultivaluedMap<String, String> getQueryParameters(boolean decode) { return new jakarta.ws.rs.core.MultivaluedHashMap<>(); }
+            @Override public java.util.List<String> getMatchedURIs() { return List.of(); }
+            @Override public java.util.List<String> getMatchedURIs(boolean decode) { return List.of(); }
+            @Override public java.util.List<Object> getMatchedResources() { return List.of(); }
+            @Override public URI resolve(URI uri) { return uri; }
+            @Override public URI relativize(URI uri) { return uri; }
+            @Override public String getMatchedResourceTemplate() { return null; }
+        };
+
+        var support = new FakeSupport(null, null, 0, null, null) {
+            @SuppressWarnings("unchecked")
+            @Override
+            public <T> T context(Class<T> type) {
+                if (type == UriInfo.class) return (T) stubUriInfo;
+                return null;
+            }
+        };
+
+        adapterOpt.get().injectFields(provider, support, false);
+
+        assertSame(stubUriInfo, provider.getUriInfo(),
+                "M5a: @Context UriInfo field in @Provider must be injected via generated adapter");
+    }
+
+    /**
+     * M5a: a @Provider with a PRIVATE @Context field is injected via the adapter's VarHandle.
+     * This mirrors the existing private-resource test but for a @Provider class.
+     */
+    @Test
+    void providerPrivateContextFieldInjectedViaVarHandle() throws Exception {
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(ProviderWithPrivateContextField.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
+        // Reuse a real InjectionSupportImpl backed by a minimal exchange so that
+        // FieldInjector.resolveContext(UriInfo) returns a non-null CassiniUriInfo.
+        CassiniHttpExchange exchange = p4ExchangeWithUri("http://localhost/test");
+        MatchResult match = p4MinimalMatch(ProviderWithPrivateContextField.class);
+        InjectionSupportImpl support = new InjectionSupportImpl(match, exchange);
+
+        ProviderWithPrivateContextField provider = new ProviderWithPrivateContextField();
+        assertNull(provider.getUriInfo(), "field should be null before injection");
+
+        // injectParams=false: only @Context fields injected (correct contract for providers)
+        adapter.injectFields(provider, support, false);
+
+        assertNotNull(provider.getUriInfo(),
+                "M5a: private @Context UriInfo in @Provider must be injected via VarHandle");
+    }
+
+    // ---- M5a fixtures: @Provider classes with @Context fields ----
+
+    /**
+     * A @Provider with a public @Context UriInfo field and a @Context Providers field.
+     * Models a ContainerRequestFilter / MessageBodyWriter / etc. that inject @Context.
+     */
+    @Provider
+    static class ProviderWithContextFields {
+        @Context
+        public UriInfo uriInfo;
+
+        @Context
+        public Providers providers;
+
+        public UriInfo getUriInfo() { return uriInfo; }
+        public Providers getProviders() { return providers; }
+    }
+
+    /**
+     * A @Provider with a PRIVATE @Context UriInfo field — tests VarHandle access
+     * for private fields in provider classes (same mechanism as resource classes).
+     */
+    @Provider
+    static class ProviderWithPrivateContextField {
+        @Context
+        private UriInfo uriInfo;
+
+        public UriInfo getUriInfo() { return uriInfo; }
     }
 
     /** Minimal exchange stub for P4 injection tests. Reuses the structure from AdapterRegistrySeamTest. */

@@ -955,7 +955,12 @@ public final class Invoker {
 
     /** §9.2 : injecte les @Context fields d'un provider singleton avant
      *  l'appel à readFrom/writeTo en utilisant le match et la requête courants
-     *  (capturés via ThreadLocal sur la requête en cours). */
+     *  (capturés via ThreadLocal sur la requête en cours).
+     *
+     *  <p>M5a: routes injection through the generated adapter when available,
+     *  keeping the reflective {@link FieldInjector} as a safety-net fallback.
+     *  {@code injectParams=false} — providers carry only {@code @Context} fields,
+     *  never {@code @PathParam}/{@code @QueryParam}/etc.</p> */
     private void injectProviderContexts(Object provider, CassiniHttpExchange requestOpt) {
         // Skip les classes builtin internes (pas de @Context dedans, optimisation).
         Class<?> cls = provider.getClass();
@@ -963,7 +968,17 @@ public final class Invoker {
         CassiniHttpExchange req = requestOpt != null ? requestOpt : CURRENT_REQUEST.get();
         MatchResult match = CURRENT_MATCH.get();
         if (req == null || match == null) return;
-        try { FieldInjector.inject(provider, match, req); } catch (RuntimeException ignored) {}
+        // M5a: prefer generated adapter (VarHandle, no per-request reflection); fall back
+        // to FieldInjector when the adapter cannot be generated (private cross-package field,
+        // module closure, etc.).
+        var adapter = AdapterRegistry.lookup(cls);
+        try {
+            if (adapter.isPresent()) {
+                adapter.get().injectFields(provider, new InjectionSupportImpl(match, req), false);
+            } else {
+                FieldInjector.inject(provider, match, req);
+            }
+        } catch (RuntimeException ignored) {}
     }
 
     /**
