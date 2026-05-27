@@ -102,10 +102,48 @@ Fichiers concernés :
 - Extension `vidocq-runtime-cassini-rest-extension` chargée via ServiceLoader
 - Cf. [vidocq runtime ROADMAP](../vidocq/ROADMAP.md)
 
-### M4 — Performance & footprint (TBD)
-- [ ] Benchmarks JMH end-to-end vs RestEasy/Jersey
+### M4 — Performance & footprint (en cours)
+
+#### M4 P0+P1a — Façade InjectionSupport + adapters runtime (Class-File API) ✅
+- `InjectionSupport` SPI façade dans `cassini-api/spi/gen`
+- `ResourceAdapter` SPI interface
+- `AdapterRegistry` registre dual-path + fallback réflexif
+- `RuntimeAdapterGenerator` (Class-File API JEP 484) — génère des adapters à la volée,
+  VarHandle constants pour champs privés, supprime `Method.invoke` et le scan
+  par requête — gain principal sur le hot-path.
+
+#### M4 P1b — Direct method dispatch (direct invocation) ✅
+- `invoke(int methodId, Object target, Object[] args)` — switch/tableswitch direct,
+  plus de `Method.invoke` sur le hot-path.
+
+#### M4 P2 — APT processor (`cassini-processor`) ✅
+- `CassiniResourceProcessor` génère les adapters à la compilation pour les classes
+  sources du build courant ; `AdapterRegistry` préfère l'adapter APT (AOT-ready).
+
+#### M4 P3 — Maven plugin (`cassini-maven-plugin`) ✅
+- `cassini-maven-plugin:generate` (phase `process-classes`) pré-génère les
+  `$$CassiniAdapter` pour les classes arrivant comme `.class` pré-compilés dans
+  des archives externes (JARs de dépendances : TCK jar, legacy).
+- Scopes : `project` (défaut) et `dependencies` (configurable includeArtifacts/excludeArtifacts).
+- Règle JPMS named-module : fail-build avec message actionnable si un JAR JPMS nommé
+  contient des ressources `@Path`/`@Provider` (option `repackageModularDependencies=true`
+  pour repackager le JAR avec les adapters tissés).
+- Wired dans `cassini-tck` pour les classes du TCK jar — ferme la couverture AOT.
+- `RuntimeAdapterGenerator.toBytecode(Class<?>) → byte[]` extraite (bytecode-only,
+  sans `defineClass`) — même logique que le chemin runtime, adapters identiques.
+- Compteurs `AdapterRegistry.preGeneratedHits()`/`runtimeGeneratedHits()` pour
+  observabilité et tests.
+
+#### M4 P4 — Edge cases + doc dérogation (à venir)
+- [ ] Locator dynamique (`Object`) : génération runtime dès que la classe est connue
+- [ ] `@BeanParam` imbriqué : adapters imbriqués
+- [ ] Documenter le fallback réflexif résiduel comme dérogation explicite assumée
+
+#### Gates M4 atteints
+- [ ] Benchmarks JMH end-to-end vs RestEasy/Jersey (entrée `BENCH.md`)
 - [ ] Réduction allocation hot path (réutilisation contextes)
-- [ ] AOT GraalVM native-image (prérequis : zéro réflexion runtime à valider)
+- [x] AOT GraalVM native-image : couverture assurée par APT + plugin ; runtime generator
+      reste fallback JVM seulement
 
 ## Backlog technique
 

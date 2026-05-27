@@ -55,6 +55,26 @@ public final class AdapterRegistry {
     private static final ConcurrentHashMap<Class<?>, ResourceAdapter> CACHE =
             new ConcurrentHashMap<>();
 
+    /** Counter: number of adapters resolved via the APT/plugin pre-generated path (Class.forName). */
+    private static final java.util.concurrent.atomic.AtomicInteger PRE_GENERATED_HITS =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /** Counter: number of adapters resolved via the runtime Class-File generator. */
+    private static final java.util.concurrent.atomic.AtomicInteger RUNTIME_GENERATED_HITS =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /** Returns the number of adapters resolved via the pre-generated (APT/plugin) path. */
+    public static int preGeneratedHits() { return PRE_GENERATED_HITS.get(); }
+
+    /** Returns the number of adapters resolved via the runtime Class-File generator. */
+    public static int runtimeGeneratedHits() { return RUNTIME_GENERATED_HITS.get(); }
+
+    /** Resets both counters — intended for testing. */
+    public static void resetCounters() {
+        PRE_GENERATED_HITS.set(0);
+        RUNTIME_GENERATED_HITS.set(0);
+    }
+
     /**
      * Per-class method-id map: maps (beanClass → (method → methodId)).
      * Populated by {@link RuntimeAdapterGenerator#collectMethods} at generation time.
@@ -78,17 +98,20 @@ public final class AdapterRegistry {
             return cached == SENTINEL ? Optional.empty() : Optional.of(cached);
         }
 
-        // 1. Try APT-generated class (P2 path; Class.forName fails silently here in P1)
+        // 1. Try APT/plugin pre-generated class (Class.forName succeeds when the adapter
+        //    was written to disk by the APT processor or the cassini-maven-plugin).
         String aptName = beanClass.getName() + RuntimeAdapterGenerator.ADAPTER_SUFFIX;
         try {
             Class<?> aptClass = Class.forName(aptName, false, beanClass.getClassLoader());
             ResourceAdapter adapter = (ResourceAdapter) aptClass.getDeclaredConstructor().newInstance();
             ResourceAdapter existing = CACHE.putIfAbsent(beanClass, adapter);
+            PRE_GENERATED_HITS.incrementAndGet();
+            LOG.fine("Pre-generated adapter used for " + beanClass.getName());
             return Optional.of(existing != null ? existing : adapter);
         } catch (ClassNotFoundException ignored) {
-            // expected in P1: no APT-generated adapter yet
+            // No pre-generated adapter; fall through to runtime generator.
         } catch (Exception e) {
-            LOG.log(Level.WARNING, "APT adapter found but failed to instantiate for "
+            LOG.log(Level.WARNING, "Pre-generated adapter found but failed to instantiate for "
                     + beanClass.getName() + ": " + e.getMessage(), e);
             // fall through to runtime generation
         }
@@ -98,6 +121,8 @@ public final class AdapterRegistry {
             Class<?> adapterClass = RuntimeAdapterGenerator.generate(beanClass);
             ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
             ResourceAdapter existing = CACHE.putIfAbsent(beanClass, adapter);
+            RUNTIME_GENERATED_HITS.incrementAndGet();
+            LOG.fine("Runtime-generated adapter used for " + beanClass.getName());
             return Optional.of(existing != null ? existing : adapter);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Runtime adapter generation failed for "
