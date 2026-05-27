@@ -13,6 +13,7 @@ module io.vidocq.cassini.core {
 
     requires static java.net.http;
     requires java.xml;
+    requires java.logging;
 
     exports io.vidocq.cassini.internal
             to io.vidocq.cassini.tck,

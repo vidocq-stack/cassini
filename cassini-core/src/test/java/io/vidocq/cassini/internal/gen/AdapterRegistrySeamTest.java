@@ -54,19 +54,22 @@ class AdapterRegistrySeamTest {
     }
 
     @Test
-    void lookupReturnsEmptyByDefault() {
-        assertTrue(AdapterRegistry.lookup(FakeResource.class).isEmpty(),
-                "P0: AdapterRegistry must return empty for unregistered class");
+    void lookupGeneratesAdapterForKnownClass() {
+        // P1a: AdapterRegistry generates an adapter for FakeResource (no injectable fields → no-op adapter)
+        var result = AdapterRegistry.lookup(FakeResource.class);
+        assertTrue(result.isPresent(),
+                "P1a: AdapterRegistry must generate an adapter for a generatable class");
     }
 
     @Test
-    void registeredAdapterIsFound() {
+    void registeredAdapterTakesPrecedenceOverGenerated() {
+        // Explicitly registered adapter wins over the generated one (cache-first lookup)
         var adapter = new CountingAdapter();
         AdapterRegistry.register(FakeResource.class, adapter);
 
         var result = AdapterRegistry.lookup(FakeResource.class);
-        assertTrue(result.isPresent(), "adapter should be found after registration");
-        assertSame(adapter, result.get());
+        assertTrue(result.isPresent(), "registered adapter should be found");
+        assertSame(adapter, result.get(), "explicitly registered adapter must take precedence");
     }
 
     @Test
@@ -100,13 +103,16 @@ class AdapterRegistrySeamTest {
     }
 
     @Test
-    void deregisteredAdapterReturnsEmpty() {
+    void deregisteredAdapterRetriesGeneration() {
+        // After deregister, the next lookup will re-generate (or re-load the existing adapter class).
         var adapter = new CountingAdapter();
         AdapterRegistry.register(FakeResource.class, adapter);
         AdapterRegistry.deregister(FakeResource.class);
 
-        assertTrue(AdapterRegistry.lookup(FakeResource.class).isEmpty(),
-                "after deregister lookup must be empty again");
+        // P1a: lookup re-generates (the previously defined class will be reused via Class.forName)
+        var result = AdapterRegistry.lookup(FakeResource.class);
+        assertTrue(result.isPresent(),
+                "after deregister, lookup should re-generate a new adapter");
     }
 
     @Test
