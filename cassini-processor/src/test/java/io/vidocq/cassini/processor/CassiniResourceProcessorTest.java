@@ -182,6 +182,20 @@ class CassiniResourceProcessorTest {
 
         @Override
         public Object suspendedAsyncResponse() { return null; }
+
+        @Override
+        public java.util.List<String> rawValues(ParamKind kind, String name, boolean encoded) {
+            Object v = param(kind, name, encoded, null, String.class, String.class);
+            if (v == null) return java.util.List.of();
+            return java.util.List.of(v.toString());
+        }
+
+        @Override
+        public jakarta.ws.rs.WebApplicationException coercionError(ParamKind kind, String name, RuntimeException cause) {
+            boolean notFound = kind == ParamKind.PATH || kind == ParamKind.QUERY || kind == ParamKind.MATRIX;
+            return new jakarta.ws.rs.WebApplicationException("coercion: " + name + ": " + cause.getMessage(),
+                    cause, jakarta.ws.rs.core.Response.status(notFound ? 404 : 400).build());
+        }
     }
 
     private static SecurityContext fakeSc() {

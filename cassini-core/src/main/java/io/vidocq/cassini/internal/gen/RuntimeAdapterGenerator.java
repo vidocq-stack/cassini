@@ -23,6 +23,7 @@ import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDescs;
 import java.lang.constant.MethodTypeDesc;
 import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -84,6 +85,22 @@ public final class RuntimeAdapterGenerator {
     private static final ClassDesc CD_MethodHandles    = ClassDesc.of("java.lang.invoke.MethodHandles");
     private static final ClassDesc CD_Lookup           = ClassDesc.of("java.lang.invoke.MethodHandles$Lookup");
     private static final ClassDesc CD_VarHandle        = ClassDesc.of("java.lang.invoke.VarHandle");
+
+    // M6b: ClassDescs for inline conversion
+    private static final ClassDesc CD_List             = ClassDesc.of("java.util.List");
+    private static final ClassDesc CD_ArrayList        = ClassDesc.of("java.util.ArrayList");
+    private static final ClassDesc CD_LinkedHashSet    = ClassDesc.of("java.util.LinkedHashSet");
+    private static final ClassDesc CD_TreeSet          = ClassDesc.of("java.util.TreeSet");
+    private static final ClassDesc CD_WebAppException  = ClassDesc.of("jakarta.ws.rs.WebApplicationException");
+
+    private static final ClassDesc CD_Integer     = ClassDesc.of("java.lang.Integer");
+    private static final ClassDesc CD_Long_w      = ClassDesc.of("java.lang.Long");
+    private static final ClassDesc CD_Double_w    = ClassDesc.of("java.lang.Double");
+    private static final ClassDesc CD_Float_w     = ClassDesc.of("java.lang.Float");
+    private static final ClassDesc CD_Boolean_w   = ClassDesc.of("java.lang.Boolean");
+    private static final ClassDesc CD_Short_w     = ClassDesc.of("java.lang.Short");
+    private static final ClassDesc CD_Byte_w      = ClassDesc.of("java.lang.Byte");
+    private static final ClassDesc CD_Character_w = ClassDesc.of("java.lang.Character");
 
     private RuntimeAdapterGenerator() {}
 
@@ -321,21 +338,28 @@ public final class RuntimeAdapterGenerator {
                                     MethodTypeDesc.of(CD_Object, CD_Class));
 
                         } else {
-                            // support.param(ParamKind, name, encoded, defaultValue, rawType, elementType)
-                            cob.getstatic(CD_ParamKind, fd.paramKind().name(), CD_ParamKind);
-                            cob.ldc(fd.paramAnnotationValue()); // name from annotation
-                            if (fd.encoded()) { cob.iconst_1(); } else { cob.iconst_0(); }
-                            if (fd.defaultValue() != null) {
-                                cob.ldc(fd.defaultValue());
+                            // M6b: decide inline strategy at generation time
+                            InlineStrategy strategy = resolveInlineStrategy(fd);
+                            if (strategy == InlineStrategy.FALLBACK) {
+                                // fall back to support.param(ParamKind, name, encoded, defaultValue, rawType, elementType)
+                                emitSupportParam(cob, fd);
                             } else {
-                                cob.aconst_null();
+                                // emit inline typed conversion
+                                emitInlineParam(cob, fd, strategy, afterField);
+                                // value is on stack — store to slot 4
+                                cob.astore(4);
+                                // if (value == null) skip assignment
+                                cob.aload(4);
+                                cob.ifnull(afterField);
+                                // VarHandle.set(target, value)
+                                cob.getstatic(adapterCD, fd.varHandleField(), CD_VarHandle);
+                                cob.aload(1); // target
+                                cob.aload(4); // value
+                                cob.invokevirtual(CD_VarHandle, "set",
+                                        MethodTypeDesc.of(CD_void, CD_Object, CD_Object));
+                                cob.labelBinding(afterField);
+                                continue; // skip the common tail below
                             }
-                            cob.ldc(classDescOf(fd.rawType()));
-                            cob.ldc(classDescOf(fd.elementType())); // same as rawType if not a collection
-                            cob.invokeinterface(CD_InjectionSupport, "param",
-                                    MethodTypeDesc.of(CD_Object,
-                                            CD_ParamKind, CD_String, CD_boolean, CD_String,
-                                            CD_Class, CD_Class));
                         }
 
                         // value is on stack — store to slot 4
@@ -357,6 +381,462 @@ public final class RuntimeAdapterGenerator {
 
                     cob.return_();
                 });
+    }
+
+    // ---- M6b: inline strategy resolution ----
+
+    /**
+     * The inline conversion strategy for a PARAM field.
+     * FALLBACK means: emit support.param(...) (reflective path).
+     * All other values trigger inline typed conversion.
+     */
+    enum InlineStrategy {
+        FALLBACK,
+        STRING,           // String / CharSequence pass-through
+        BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, CHAR,  // primitives + wrappers
+        ENUM_WITH_FROM_STRING,  // enum with public static fromString(String)
+        ENUM_PLAIN,             // enum without fromString — use Enum.valueOf
+        VALUE_OF,               // public static valueOf(String)
+        FROM_STRING,            // public static fromString(String)
+        STRING_CTOR,            // public (String) constructor
+        COLLECTION_STRING,      // List/Set/SortedSet/Collection of String
+        COLLECTION_INLINE       // List/Set/SortedSet/Collection of an inlinable element type
+    }
+
+    /**
+     * Decides the inline strategy for a PARAM field at generation time.
+     * Returns FALLBACK for any type/shape we cannot safely replicate.
+     *
+     * <p>Accessibility rule: we only inline when the conversion target is reachable
+     * from the generated adapter (same package as resource class). Specifically:
+     * <ul>
+     *   <li>For {@code valueOf}/{@code fromString} we require: method is {@code public} and
+     *       the declaring class is {@code public}.</li>
+     *   <li>For String constructor we require: ctor is {@code public} and declaring class is
+     *       {@code public}.</li>
+     *   <li>Primitives/wrappers are always inlineable.</li>
+     *   <li>{@code PathSegment} — fall back (complex parse, not worth inlining).</li>
+     * </ul>
+     * </p>
+     */
+    public static InlineStrategy resolveInlineStrategy(FieldDesc fd) {
+        // DIAGNOSTIC: temporarily disable all inline conversions to verify TCK baseline
+        // return InlineStrategy.FALLBACK;
+        Class<?> raw = fd.rawType();
+
+        // Collections: delegate to element type strategy
+        if (ParamValueConverter.isListLike(raw)) {
+            Class<?> elem = fd.elementType();
+            InlineStrategy elemStrategy = resolveScalarStrategy(elem);
+            if (elemStrategy == InlineStrategy.FALLBACK) return InlineStrategy.FALLBACK;
+            if (elemStrategy == InlineStrategy.STRING) return InlineStrategy.COLLECTION_STRING;
+            return InlineStrategy.COLLECTION_INLINE;
+        }
+
+        return resolveScalarStrategy(raw);
+    }
+
+    /**
+     * Resolves the inline strategy for a scalar (non-collection) element type.
+     */
+    private static InlineStrategy resolveScalarStrategy(Class<?> type) {
+        if (type == String.class || type == CharSequence.class) return InlineStrategy.STRING;
+
+        // PathSegment: fall back (complex)
+        if (jakarta.ws.rs.core.PathSegment.class.isAssignableFrom(type)) return InlineStrategy.FALLBACK;
+
+        // Primitives and wrappers
+        if (type == boolean.class || type == Boolean.class)   return InlineStrategy.BOOLEAN;
+        if (type == byte.class    || type == Byte.class)      return InlineStrategy.BYTE;
+        if (type == short.class   || type == Short.class)     return InlineStrategy.SHORT;
+        if (type == int.class     || type == Integer.class)   return InlineStrategy.INT;
+        if (type == long.class    || type == Long.class)      return InlineStrategy.LONG;
+        if (type == float.class   || type == Float.class)     return InlineStrategy.FLOAT;
+        if (type == double.class  || type == Double.class)    return InlineStrategy.DOUBLE;
+        if (type == char.class    || type == Character.class) return InlineStrategy.CHAR;
+
+        // The type must be public for us to emit a direct invokestatic / invokespecial
+        if (!Modifier.isPublic(type.getModifiers())) return InlineStrategy.FALLBACK;
+
+        // Enum: check for fromString first (mirroring ParamValueConverter order)
+        if (type.isEnum()) {
+            try {
+                Method fs = type.getDeclaredMethod("fromString", String.class);
+                if (Modifier.isStatic(fs.getModifiers()) && Modifier.isPublic(fs.getModifiers())) {
+                    return InlineStrategy.ENUM_WITH_FROM_STRING;
+                }
+            } catch (NoSuchMethodException ignored) {}
+            return InlineStrategy.ENUM_PLAIN;
+        }
+
+        // valueOf(String) — public static
+        try {
+            Method valueOf = type.getDeclaredMethod("valueOf", String.class);
+            if (Modifier.isStatic(valueOf.getModifiers()) && Modifier.isPublic(valueOf.getModifiers())) {
+                return InlineStrategy.VALUE_OF;
+            }
+        } catch (NoSuchMethodException ignored) {}
+
+        // fromString(String) — public static
+        try {
+            Method fromString = type.getDeclaredMethod("fromString", String.class);
+            if (Modifier.isStatic(fromString.getModifiers()) && Modifier.isPublic(fromString.getModifiers())) {
+                return InlineStrategy.FROM_STRING;
+            }
+        } catch (NoSuchMethodException ignored) {}
+
+        // (String) constructor — public
+        try {
+            Constructor<?> c = type.getDeclaredConstructor(String.class);
+            if (Modifier.isPublic(c.getModifiers())) {
+                return InlineStrategy.STRING_CTOR;
+            }
+        } catch (NoSuchMethodException ignored) {}
+
+        // Can't safely inline
+        return InlineStrategy.FALLBACK;
+    }
+
+    /**
+     * Emits {@code support.param(...)} call — the reflective fallback path.
+     * Stack effect: support is already loaded at slot 2 (aload 2 was done by caller).
+     * After this call, the result Object is on the stack.
+     */
+    private static void emitSupportParam(CodeBuilder cob, FieldDesc fd) {
+        cob.getstatic(CD_ParamKind, fd.paramKind().name(), CD_ParamKind);
+        cob.ldc(fd.paramAnnotationValue());
+        if (fd.encoded()) { cob.iconst_1(); } else { cob.iconst_0(); }
+        if (fd.defaultValue() != null) {
+            cob.ldc(fd.defaultValue());
+        } else {
+            cob.aconst_null();
+        }
+        cob.ldc(classDescOf(fd.rawType()));
+        cob.ldc(classDescOf(fd.elementType()));
+        cob.invokeinterface(CD_InjectionSupport, "param",
+                MethodTypeDesc.of(CD_Object,
+                        CD_ParamKind, CD_String, CD_boolean, CD_String,
+                        CD_Class, CD_Class));
+    }
+
+    /**
+     * Emits inline typed conversion bytecode for a PARAM field.
+     *
+     * <p>Slot allocations: 5=effective List&lt;String&gt;, 6=raw String (scalar), 7+=temporaries.
+     * On entry: support is on stack (caller did aload(2)).
+     * On exit: the converted value (Object, boxed for primitives) is on the stack.
+     *
+     * <p>Slot 5 always holds a {@code List&lt;String&gt;}: the raw list from the request, or
+     * a {@code List.of(defaultValue)} when the raw list is empty and a default is present.</p>
+     */
+    private static void emitInlineParam(CodeBuilder cob, FieldDesc fd, InlineStrategy strategy, Label afterField) {
+        // support is on stack; call rawValues → List<String>
+        cob.getstatic(CD_ParamKind, fd.paramKind().name(), CD_ParamKind);
+        cob.ldc(fd.paramAnnotationValue());
+        if (fd.encoded()) { cob.iconst_1(); } else { cob.iconst_0(); }
+        cob.invokeinterface(CD_InjectionSupport, "rawValues",
+                MethodTypeDesc.of(CD_List, CD_ParamKind, CD_String, CD_boolean));
+        cob.astore(5); // slot 5 = rawList
+
+        cob.aload(5);
+        cob.invokeinterface(CD_List, "isEmpty", MethodTypeDesc.of(ConstantDescs.CD_boolean));
+        Label notEmpty   = cob.newLabel();
+        Label afterEmpty = cob.newLabel();
+        cob.ifeq(notEmpty); // if not empty → jump to notEmpty
+
+        // Empty branch: rawList is empty
+        if (fd.defaultValue() != null) {
+            // slot 5 = List.of(defaultValue)
+            cob.ldc(fd.defaultValue());
+            cob.invokestatic(CD_List, "of", MethodTypeDesc.of(CD_List, CD_Object), true);
+            cob.astore(5);
+            cob.goto_(notEmpty);
+        } else {
+            // No default: push primitive zero or null for the field type
+            emitPrimitiveDefaultOrNull(cob, fd.rawType(), strategy);
+            cob.goto_(afterEmpty);
+        }
+
+        cob.labelBinding(notEmpty);
+        // Slot 5 is a non-empty List<String>; convert it to the target type
+        emitConvertFromList(cob, fd, strategy, afterField);
+
+        cob.labelBinding(afterEmpty);
+        // value is on stack
+    }
+
+    /**
+     * Pushes {@code defaultForType} onto the stack.
+     * Primitives → boxed zero/false. References (wrappers, collections, String) → null.
+     */
+    private static void emitPrimitiveDefaultOrNull(CodeBuilder cob, Class<?> rawType, InlineStrategy strategy) {
+        if (rawType == boolean.class) { cob.iconst_0(); emitBox(cob, boolean.class); return; }
+        if (rawType == byte.class)    { cob.iconst_0(); emitBox(cob, byte.class);    return; }
+        if (rawType == short.class)   { cob.iconst_0(); emitBox(cob, short.class);   return; }
+        if (rawType == int.class)     { cob.iconst_0(); emitBox(cob, int.class);     return; }
+        if (rawType == long.class)    { cob.lconst_0(); emitBox(cob, long.class);    return; }
+        if (rawType == float.class)   { cob.fconst_0(); emitBox(cob, float.class);   return; }
+        if (rawType == double.class)  { cob.dconst_0(); emitBox(cob, double.class);  return; }
+        if (rawType == char.class)    { cob.iconst_0(); emitBox(cob, char.class);    return; }
+        cob.aconst_null(); // reference types (wrappers, collections, String, enums, etc.)
+    }
+
+    /**
+     * Emits conversion of slot 5 (a non-empty {@code List&lt;String&gt;}) to the target type.
+     * Stack after: the converted value (Object, boxed for primitives).
+     */
+    private static void emitConvertFromList(CodeBuilder cob, FieldDesc fd,
+                                             InlineStrategy strategy, Label afterField) {
+        if (strategy == InlineStrategy.COLLECTION_STRING || strategy == InlineStrategy.COLLECTION_INLINE) {
+            emitCollectionConversion(cob, fd, strategy, afterField);
+            return;
+        }
+
+        // Scalar: get first element of slot 5 → slot 6
+        cob.aload(5);
+        cob.ldc(0);
+        cob.invokeinterface(CD_List, "get", MethodTypeDesc.of(CD_Object, ConstantDescs.CD_int));
+        cob.checkcast(CD_String);
+        cob.astore(6); // slot 6 = raw String
+
+        ClassDesc typeCD = classDescOf(fd.elementType());
+
+        // try { convert } catch (WAE) { throw } catch (RE) { throw coercionError }
+        //
+        // IMPORTANT: register outer exceptionCatch entries AFTER emitting (and thus registering)
+        // any inner catches from emitScalarConversion (e.g. ENUM_PLAIN's IAE handler).
+        // The JVM exception table is searched in registration order — inner catches must be
+        // listed FIRST so they take priority over the outer RuntimeException catch.
+        Label tryStart = cob.newBoundLabel();
+        Label tryEnd   = cob.newLabel();
+        Label catchWAE = cob.newLabel();
+        Label catchRE  = cob.newLabel();
+        Label afterTry = cob.newLabel();
+
+        // Emit the conversion code — this may register inner exception handlers (e.g. ENUM_PLAIN IAE).
+        // Those inner registrations happen BEFORE the outer ones below, giving them table priority.
+        cob.aload(6);
+        emitScalarConversion(cob, fd.elementType(), strategy, typeCD);
+
+        // Register outer catches AFTER inner ones so inner handlers take priority.
+        cob.exceptionCatch(tryStart, tryEnd, catchWAE, CD_WebAppException);
+        cob.exceptionCatch(tryStart, tryEnd, catchRE, ClassDesc.of("java.lang.RuntimeException"));
+
+        cob.goto_(afterTry);
+
+        cob.labelBinding(tryEnd);
+        cob.labelBinding(catchWAE);
+        cob.athrow();
+
+        cob.labelBinding(catchRE);
+        cob.astore(7); // save exception
+        cob.aload(2); // support
+        cob.getstatic(CD_ParamKind, fd.paramKind().name(), CD_ParamKind);
+        cob.ldc(fd.paramAnnotationValue());
+        cob.aload(7);
+        cob.invokeinterface(CD_InjectionSupport, "coercionError",
+                MethodTypeDesc.of(CD_WebAppException, CD_ParamKind, CD_String,
+                        ClassDesc.of("java.lang.RuntimeException")));
+        cob.athrow();
+
+        cob.labelBinding(afterTry);
+        // converted value on stack
+    }
+
+    /**
+     * Emits scalar conversion from a String (on stack) to the target type.
+     * Stack before: String. Stack after: Object (boxed for primitives).
+     */
+    private static void emitScalarConversion(CodeBuilder cob, Class<?> type,
+                                              InlineStrategy strategy, ClassDesc typeCD) {
+        switch (strategy) {
+            case STRING -> { /* pass-through */ }
+            case BOOLEAN -> {
+                cob.invokestatic(CD_Boolean_w, "parseBoolean",
+                        MethodTypeDesc.of(ConstantDescs.CD_boolean, CD_String));
+                emitBox(cob, boolean.class);
+            }
+            case BYTE -> {
+                cob.invokestatic(CD_Byte_w, "parseByte",
+                        MethodTypeDesc.of(ConstantDescs.CD_byte, CD_String));
+                emitBox(cob, byte.class);
+            }
+            case SHORT -> {
+                cob.invokestatic(CD_Short_w, "parseShort",
+                        MethodTypeDesc.of(ConstantDescs.CD_short, CD_String));
+                emitBox(cob, short.class);
+            }
+            case INT -> {
+                cob.invokestatic(CD_Integer, "parseInt",
+                        MethodTypeDesc.of(ConstantDescs.CD_int, CD_String));
+                emitBox(cob, int.class);
+            }
+            case LONG -> {
+                cob.invokestatic(CD_Long_w, "parseLong",
+                        MethodTypeDesc.of(ConstantDescs.CD_long, CD_String));
+                emitBox(cob, long.class);
+            }
+            case FLOAT -> {
+                cob.invokestatic(CD_Float_w, "parseFloat",
+                        MethodTypeDesc.of(ConstantDescs.CD_float, CD_String));
+                emitBox(cob, float.class);
+            }
+            case DOUBLE -> {
+                cob.invokestatic(CD_Double_w, "parseDouble",
+                        MethodTypeDesc.of(ConstantDescs.CD_double, CD_String));
+                emitBox(cob, double.class);
+            }
+            case CHAR -> {
+                // dup String; check isEmpty; if empty → pop dup + throw IAE; else charAt(0) + box
+                cob.dup();
+                cob.invokevirtual(CD_String, "isEmpty", MethodTypeDesc.of(ConstantDescs.CD_boolean));
+                Label charNotEmpty = cob.newLabel();
+                cob.ifeq(charNotEmpty);
+                cob.pop(); // discard the dup'd string
+                cob.new_(ClassDesc.of("java.lang.IllegalArgumentException"));
+                cob.dup();
+                cob.ldc("Empty value for char");
+                cob.invokespecial(ClassDesc.of("java.lang.IllegalArgumentException"),
+                        ConstantDescs.INIT_NAME, MethodTypeDesc.of(CD_void, CD_String));
+                cob.athrow();
+                cob.labelBinding(charNotEmpty);
+                // stack: original String (dup was consumed by invokevirtual isEmpty result)
+                cob.iconst_0();
+                cob.invokevirtual(CD_String, "charAt",
+                        MethodTypeDesc.of(ConstantDescs.CD_char, ConstantDescs.CD_int));
+                emitBox(cob, char.class);
+            }
+            case ENUM_WITH_FROM_STRING -> {
+                cob.invokestatic(typeCD, "fromString", MethodTypeDesc.of(typeCD, CD_String));
+            }
+            case ENUM_PLAIN -> {
+                // Enum.valueOf(Type.class, raw); on IAE → null (matches coerceSingle)
+                // Need: save raw in slot 8, push Class, reload raw for Enum.valueOf(Class, String)
+                Label iaeStart = cob.newBoundLabel();
+                Label iaeEnd   = cob.newLabel();
+                Label iaeCatch = cob.newLabel();
+                Label iaeAfter = cob.newLabel();
+                cob.exceptionCatch(iaeStart, iaeEnd, iaeCatch,
+                        ClassDesc.of("java.lang.IllegalArgumentException"));
+                cob.astore(8); // save raw String
+                cob.ldc(typeCD);
+                cob.aload(8);
+                cob.invokestatic(ClassDesc.of("java.lang.Enum"), "valueOf",
+                        MethodTypeDesc.of(ClassDesc.of("java.lang.Enum"),
+                                ClassDesc.of("java.lang.Class"), CD_String));
+                cob.goto_(iaeAfter);
+                cob.labelBinding(iaeEnd);
+                cob.labelBinding(iaeCatch);
+                cob.pop(); // discard IAE
+                cob.aconst_null();
+                cob.labelBinding(iaeAfter);
+            }
+            case VALUE_OF -> {
+                cob.invokestatic(typeCD, "valueOf", MethodTypeDesc.of(typeCD, CD_String));
+            }
+            case FROM_STRING -> {
+                cob.invokestatic(typeCD, "fromString", MethodTypeDesc.of(typeCD, CD_String));
+            }
+            case STRING_CTOR -> {
+                cob.astore(8);
+                cob.new_(typeCD);
+                cob.dup();
+                cob.aload(8);
+                cob.invokespecial(typeCD, ConstantDescs.INIT_NAME, MethodTypeDesc.of(CD_void, CD_String));
+            }
+            default -> throw new IllegalStateException("Unexpected strategy: " + strategy);
+        }
+    }
+
+    /**
+     * Emits collection conversion from slot 5 (List&lt;String&gt;) to the target collection type.
+     * Builds ArrayList/LinkedHashSet/TreeSet, converting each element inline.
+     * Stack after: the collection Object.
+     */
+    private static void emitCollectionConversion(CodeBuilder cob, FieldDesc fd,
+                                                  InlineStrategy collStrategy, Label afterField) {
+        Class<?> raw = fd.rawType();
+        Class<?> elem = fd.elementType();
+        ClassDesc elemCD = classDescOf(elem);
+        InlineStrategy elemStrategy = resolveScalarStrategy(elem);
+
+        ClassDesc collImplCD = raw == java.util.Set.class ? CD_LinkedHashSet
+                : raw == java.util.SortedSet.class ? CD_TreeSet
+                : CD_ArrayList;
+
+        // result = new Impl() — slot 7
+        cob.new_(collImplCD);
+        cob.dup();
+        cob.invokespecial(collImplCD, ConstantDescs.INIT_NAME, MethodTypeDesc.of(CD_void));
+        cob.astore(7);
+
+        // size in slot 8, index in slot 9
+        cob.aload(5);
+        cob.invokeinterface(CD_List, "size", MethodTypeDesc.of(ConstantDescs.CD_int));
+        cob.istore(8);
+        cob.iconst_0();
+        cob.istore(9);
+
+        Label loopCheck = cob.newBoundLabel();
+        Label loopBody  = cob.newLabel();
+        Label loopEnd   = cob.newLabel();
+
+        cob.iload(9);
+        cob.iload(8);
+        cob.if_icmplt(loopBody);
+        cob.goto_(loopEnd);
+
+        cob.labelBinding(loopBody);
+        cob.aload(5);
+        cob.iload(9);
+        cob.invokeinterface(CD_List, "get", MethodTypeDesc.of(CD_Object, ConstantDescs.CD_int));
+        cob.checkcast(CD_String);
+        // Stack: elem_str
+
+        if (elemStrategy != InlineStrategy.STRING) {
+            cob.astore(10);
+            Label eTryStart = cob.newBoundLabel();
+            Label eTryEnd   = cob.newLabel();
+            Label eCatchWAE = cob.newLabel();
+            Label eCatchRE  = cob.newLabel();
+            Label eAfterTry = cob.newLabel();
+            // Emit inner conversion FIRST so any inner catches (e.g. ENUM_PLAIN IAE) are
+            // registered before the outer RE catch — preserving inner-catch priority.
+            cob.aload(10);
+            emitScalarConversion(cob, elem, elemStrategy, elemCD);
+            cob.exceptionCatch(eTryStart, eTryEnd, eCatchWAE, CD_WebAppException);
+            cob.exceptionCatch(eTryStart, eTryEnd, eCatchRE, ClassDesc.of("java.lang.RuntimeException"));
+            cob.goto_(eAfterTry);
+            cob.labelBinding(eTryEnd);
+            cob.labelBinding(eCatchWAE);
+            cob.athrow();
+            cob.labelBinding(eCatchRE);
+            cob.astore(11);
+            cob.aload(2); // support
+            cob.getstatic(CD_ParamKind, fd.paramKind().name(), CD_ParamKind);
+            cob.ldc(fd.paramAnnotationValue());
+            cob.aload(11);
+            cob.invokeinterface(CD_InjectionSupport, "coercionError",
+                    MethodTypeDesc.of(CD_WebAppException, CD_ParamKind, CD_String,
+                            ClassDesc.of("java.lang.RuntimeException")));
+            cob.athrow();
+            cob.labelBinding(eAfterTry);
+        }
+        // Stack: converted elem. Load result coll and swap for add(elem).
+        // stack: ..., converted_elem
+        // aload(7): ..., converted_elem, result_coll
+        // swap:     ..., result_coll, converted_elem  → TOS=converted_elem, objectref=result_coll ✓
+        cob.aload(7);
+        cob.swap();
+        cob.invokeinterface(ClassDesc.of("java.util.Collection"), "add",
+                MethodTypeDesc.of(ConstantDescs.CD_boolean, CD_Object));
+        cob.pop();
+
+        cob.iinc(9, 1);
+        cob.goto_(loopCheck);
+
+        cob.labelBinding(loopEnd);
+        cob.aload(7); // push result collection
     }
 
     // ---- Method collection and invoke generation ----

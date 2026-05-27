@@ -1,5 +1,7 @@
 package io.vidocq.cassini.spi.gen;
 
+import java.util.List;
+
 /**
  * Stable façade exposed to generated resource adapters for resolving
  * {@code @Context} values and JAX-RS parameter values with coercion.
@@ -57,4 +59,40 @@ public interface InjectionSupport {
      * Used by generated code for {@code @Suspended AsyncResponse} parameters.
      */
     Object suspendedAsyncResponse();
+
+    // ---- M6b: inline-conversion façade methods ----
+
+    /**
+     * Returns the raw (un-coerced) string values for the given parameter from the request source.
+     *
+     * <p>This is the low-level counterpart to {@link #param}: it performs source extraction
+     * (path, query, header, cookie, matrix, form) and encoding handling, but applies
+     * <em>no</em> type coercion. Generated adapters use this to obtain the raw {@code List<String>}
+     * before performing inline typed conversion.</p>
+     *
+     * <p>The returned list may be empty when the parameter is absent from the request.
+     * The caller is responsible for {@code @DefaultValue} handling.</p>
+     *
+     * @param kind    the annotation kind
+     * @param name    the parameter name
+     * @param encoded true if {@code @Encoded} is present
+     * @return the raw values from the request source (never {@code null}, may be empty)
+     */
+    List<String> rawValues(ParamKind kind, String name, boolean encoded);
+
+    /**
+     * Wraps a coercion failure into a correctly-statused {@link jakarta.ws.rs.WebApplicationException}.
+     *
+     * <p>JAX-RS §3.2: conversion failure for {@code @PathParam}, {@code @QueryParam},
+     * and {@code @MatrixParam} must produce a 404; all other param kinds produce a 400.
+     * Generated inline conversion code should catch {@link RuntimeException} (but let
+     * {@link jakarta.ws.rs.WebApplicationException} propagate unchanged) and delegate
+     * status selection here rather than duplicating the logic.</p>
+     *
+     * @param kind  the annotation kind (determines 404 vs 400)
+     * @param name  the parameter name (for the error message)
+     * @param cause the original conversion exception
+     * @return a {@link jakarta.ws.rs.WebApplicationException} with the correct status
+     */
+    jakarta.ws.rs.WebApplicationException coercionError(ParamKind kind, String name, RuntimeException cause);
 }

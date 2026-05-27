@@ -137,6 +137,21 @@ public final class InjectionSupportImpl implements InjectionSupport {
                 io.vidocq.cassini.internal.CassiniAsyncResponseImpl.ATTR_KEY);
     }
 
+    // ---- M6b: inline-conversion façade methods ----
+
+    @Override
+    public List<String> rawValues(ParamKind kind, String name, boolean encoded) {
+        return sourceValues(kind, name, encoded);
+    }
+
+    @Override
+    public WebApplicationException coercionError(ParamKind kind, String name, RuntimeException cause) {
+        boolean notFound = kind == ParamKind.PATH || kind == ParamKind.QUERY || kind == ParamKind.MATRIX;
+        return new WebApplicationException("Invalid value for param "
+                + name + ": " + cause.getMessage(), cause,
+                jakarta.ws.rs.core.Response.status(notFound ? 404 : 400).build());
+    }
+
     private static String decodePath(String s) {
         if (s == null || s.indexOf('%') < 0) return s;
         try {
