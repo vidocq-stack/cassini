@@ -106,20 +106,42 @@ sequenceDiagram
               ├─ cassini-jdk-http ──→ requires cassini-api + cassini-core
               │     provides RuntimeDelegate with JdkHttpRuntimeDelegate
               │
-              └─ cassini-cdi-vauban ──→ requires cassini-api + io.vidocq.vauban.core
-                    provides BeanProvider.Factory with VaubanBeanProviderFactory
+              ├─ cassini-client ──→ requires cassini-api + cassini-core + java.net.http
+              │     provides ClientBuilder + RuntimeDelegate, uses Feature (VT-based)
+              │
+              ├─ cassini-cdi-vauban ──→ requires cassini-api + io.vidocq.vauban.core
+              │     provides BeanProvider.Factory + BuildCompatibleExtension
+              │
+              └─ cassini-processor ──→ APT, provides javax.annotation.processing.Processor
+                    cassini-maven-plugin (no module-info) — build-time codegen for dep JARs
 ----
 
 == Static resource codegen
 
-Rather than scanning the classpath and generating reflection-based invokers per dispatch, Cassini favours **compile-time generation**:
+Rather than reflecting on every dispatch, Cassini generates two artefacts per resource class, both resolved by name (`Class.forName`) at startup — never a classpath annotation scan:
 
-. **APT** (Annotation Processor Tool) reads `@Path`, `@Provider`, and `@GET/@POST/...` methods at `process-classes`.
-. **Class-File API (JEP 484)** emits, for each resource class, a static descriptor: `(method, uri-template, params, return-type)`.
-. At startup, `ResourceScanner` loads these descriptors without inspecting `Method.getAnnotations()` at runtime.
-. The `MessageBodyRegistry` is fed via `META-INF/services/jakarta.ws.rs.ext.MessageBodyReader` (and `Writer`) — no jar scanning.
+* `<ResourceClass>$$CassiniAdapter` — a `ResourceAdapter` (SPI `cassini-api`, package `io.vidocq.cassini.spi.gen`) that performs **direct method invocation** (no `Method.invoke`), **field injection** of `@Context` / `@*Param`, and **inline `@*Param` coercion**: String/CharSequence, primitives + wrappers, enums (`fromString` or `Enum.valueOf`), public `valueOf`/`fromString`/`(String)`-ctor types, and `List`/`Set`/`SortedSet`/`Collection` of those.
+* `<ResourceClass>$$CassiniRoutes` — a `RouteProvider` exposing the route table as string/class literals (`RouteDescriptor`). `RouteRegistry` converts each to a `ResourceMethod` via a targeted `getDeclaredMethod(...)` plus `UriTemplate.compile(...)` — no annotation scan. Classes carrying sub-resource locators set `hasLocators()` and fall back to `ResourceScanner` for the whole class.
 
-Benefits: cold start <50 ms, **AOT**-compatible (GraalVM `native-image`, Leyden CDS), predictable.
+=== Three generation tiers
+
+Adapters come from one of three generators, most-preferred first (`AdapterRegistry.lookup`):
+
+. **APT — compile time** (`cassini-processor`): emits `+$$CassiniAdapter+` / `+$$CassiniRoutes+` *source* via `Filer` for every `@Path` / `@Provider` of the current build. Plain Java, no bytecode manipulation, AOT-safe.
+. **Maven plugin — build time** (`cassini-maven-plugin:generate`, bound to `process-classes`): pre-generates adapters for **external archives** (dependency JARs) by calling `RuntimeAdapterGenerator.toBytecode(cls)` and writing the `.class` files to `target/classes`. AOT-safe.
+. **Runtime generator** (`RuntimeAdapterGenerator.generate`, Class-File API / JEP 484): JVM-only fallback when neither of the above produced an adapter.
+
+`AdapterRegistry.lookup` tries `Class.forName(<class>$$CassiniAdapter)` first (APT/plugin output), then the runtime generator, then caches a `SENTINEL` so the request falls through to the reflective `FieldInjector` filet without retrying.
+
+=== Documented residual reflection
+
+Codegen does not erase reflection entirely; the remainder is one-time or structurally irreducible, never on the hot path:
+
+* `ResourceScanner` runs once at startup, only for classes without a generated `$$CassiniRoutes` (i.e. those with locators).
+* Resource / bean instantiation (`getDeclaredConstructor().newInstance()`) — one-time per scope; M6a prefers a generated `newInstance()` factory when an accessible no-arg constructor exists.
+* The `FieldInjector` filet applies only when codegen *cannot*: a closed application module (no `opens` → `privateLookupIn` fails), or a field whose **type** is a package-private class from another package than the resource (a Java language rule, not a bug).
+
+Benefits: cold start under ~50 ms, **AOT**-compatible (GraalVM `native-image`, Leyden CDS), and predictable.
 
 == Champollion integration (JSON)
 
@@ -152,6 +174,16 @@ provides io.vidocq.cassini.spi.bean.BeanProvider.Factory
 Cassini discovers Vauban via `ServiceLoader`, walks the `BeanManager` at stack construction, and stores `@Path` / `@Provider` classes. For every dispatch, `resolve()` calls `container.select()` — the CDI scope (`@RequestScoped`, `@ApplicationScoped`, ...) is honoured.
 
 The `CassiniScopeExtension` (Vauban Build Compatible Extension) adds `@RequestScoped` to `@Path` classes lacking an explicit scope — automatic alignment with the semantics filters and interceptors expect.
+
+== JAX-RS Client (`cassini-client`)
+
+`cassini-client` is a standalone implementation of the Jakarta REST 4.0 **Client API** with no external dependency: it builds on the JDK `java.net.http.HttpClient` running on virtual threads. It exposes no public package — the whole surface is consumed through `jakarta.ws.rs.client.*` and discovered via `ServiceLoader`:
+
+* `provides jakarta.ws.rs.client.ClientBuilder with CassiniClientBuilder` — `ClientBuilder.newClient()` returns a Cassini client whenever `cassini-client` is on the path.
+* `provides jakarta.ws.rs.ext.RuntimeDelegate with CassiniClientRuntimeDelegate` — makes the module self-contained for `UriBuilder.fromUri(...)`; all transports point to the same `CassiniRuntimeDelegate`, so there is no runtime divergence when several are present.
+* `uses jakarta.ws.rs.core.Feature` — third-party `Feature`s (MicroProfile Telemetry instrumentation, auth, logging…) registered via `ServiceLoader` are auto-applied by `CassiniClientBuilder.build()` on a `FeatureContext` adapter.
+
+It reuses `MessageBodyRegistry`, `CassiniResponse`, `CassiniUriBuilder` and `CassiniRuntimeDelegate` from `cassini-core` — request/response (de)serialization is shared with the server side. `ClientRequestFilter` / `ClientResponseFilter` are `@Priority`-ordered; `AsyncContextPropagator` carries the async invocation onto a virtual thread.
 
 == Virtual threads and async
 

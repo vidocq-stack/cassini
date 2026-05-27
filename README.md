@@ -108,10 +108,13 @@ sequenceDiagram
 | Module | Rôle | Dépendances clés |
 |--------|------|------------------|
 | `cassini-api` | SPI public : `CassiniHttpExchange`, `CassiniHttpAdapter`, `ResourceFactory`, `BeanProvider` | `jakarta.ws.rs-api` uniquement |
-| `cassini-core` | Moteur complet : routing, params, MBR/MBW, filtres, SSE | `cassini-api`, Yasson, Jakarta JSON-B |
+| `cassini-core` | Moteur complet : routing, table de routes, params, MBR/MBW, filtres, SSE, codegen (`RuntimeAdapterGenerator`, `AdapterRegistry`) | `cassini-api`, `champollion-jsonp`, `champollion-jsonb` (JSON-B) |
+| `cassini-client` | Client JAX-RS 4.0 : `ClientBuilder` zéro-dép sur `java.net.http` + virtual threads | `cassini-api`, `cassini-core`, `java.net.http` |
 | `cassini-cdi-vauban` | Adapter Vauban CDI : `VaubanBeanProvider` (SPI BeanProvider), BCE `@RequestScoped` auto | `cassini-api`, CDI 4.1, `io.vidocq.vauban.core` |
 | `cassini-chappe` | Adapter Chappe + `ChappeRuntimeDelegate` (SE-Bootstrap) | `cassini-core`, `io.vidocq.chappe` |
 | `cassini-jdk-http` | Adapter `com.sun.net.httpserver.HttpServer` (JDK pur) | `cassini-core` |
+| `cassini-processor` | Processeur APT : génère `$$CassiniAdapter` / `$$CassiniRoutes` à la compilation (AOT-safe) | `java.compiler`, `cassini-api` |
+| `cassini-maven-plugin` | Plugin Maven (`generate`, `process-classes`) : pré-génère les adapters des JARs de dépendances | — build-time |
 | `cassini-tck` | Runner TCK officiel Jakarta REST 4.0 (Arquillian) | — hors reactor |
 
 ---
@@ -399,6 +402,34 @@ public class UserResource {   // @RequestScoped implicite via BCE
     // ...
 }
 ```
+
+---
+
+## Client JAX-RS — `cassini-client`
+
+`cassini-client` fournit un `jakarta.ws.rs.client.ClientBuilder` zéro-dépendance bâti sur `java.net.http.HttpClient` + virtual threads, découvert via `ServiceLoader`. Il réutilise le `MessageBodyRegistry` de `cassini-core` : la (dé)sérialisation JSON-B est mutualisée avec le côté serveur.
+
+```xml
+<dependency>
+    <groupId>io.vidocq.cassini</groupId>
+    <artifactId>cassini-client</artifactId>
+    <version>${cassini.version}</version>
+</dependency>
+```
+
+```java
+import jakarta.ws.rs.client.Client;
+import jakarta.ws.rs.client.ClientBuilder;
+
+try (Client client = ClientBuilder.newClient()) {   // résolu via ServiceLoader
+    User u = client.target("https://api.example.com")
+        .path("/users/{id}").resolveTemplate("id", 42)
+        .request(MediaType.APPLICATION_JSON)
+        .get(User.class);
+}
+```
+
+Supporte les `ClientRequestFilter` / `ClientResponseFilter` (ordonnés par `@Priority`), l'invocation async sur virtual thread (`.async().get()`) et les `Feature` auto-enregistrées via `ServiceLoader` (ex. instrumentation MicroProfile Telemetry, sans `.register()` explicite).
 
 ---
 

@@ -11,10 +11,13 @@ Factual reference: published Maven artefacts, exported JPMS modules, supported J
 | Artefact | Role
 
 | `io.vidocq.cassini:cassini-api:0.1.0-SNAPSHOT`
-| Public SPI (`CassiniHttpExchange`, `CassiniHttpAdapter`, `CassiniStack`, `BeanProvider`, `ResourceFactory`).
+| Public SPI: HTTP/transport (`CassiniHttpExchange`, `CassiniHttpAdapter`, `CassiniStack`), `BeanProvider`, `ResourceFactory`, and the codegen SPI (`ResourceAdapter`, `RouteProvider`, `RouteDescriptor`, `InjectionSupport`).
 
 | `io.vidocq.cassini:cassini-core:0.1.0-SNAPSHOT`
-| JAX-RS engine (Invoker, ResourceScanner, MessageBodyRegistry, filters, providers, SSE, multipart).
+| JAX-RS engine (Invoker, ResourceScanner, RouteRegistry, MessageBodyRegistry, filters, providers, SSE, multipart) + the adapter generators (`RuntimeAdapterGenerator`, `AdapterRegistry`).
+
+| `io.vidocq.cassini:cassini-client:0.1.0-SNAPSHOT`
+| JAX-RS Client 4.0 — zero-dependency `ClientBuilder` on `java.net.http` + virtual threads. Reuses `MessageBodyRegistry` from `cassini-core`.
 
 | `io.vidocq.cassini:cassini-cdi-vauban:0.1.0-SNAPSHOT`
 | `BeanProvider` adapter that resolves resources through xref:vauban::index.adoc[Vauban] (BCE `CassiniScopeExtension` included).
@@ -24,6 +27,12 @@ Factual reference: published Maven artefacts, exported JPMS modules, supported J
 
 | `io.vidocq.cassini:cassini-jdk-http:0.1.0-SNAPSHOT`
 | Pure JDK transport — `com.sun.net.httpserver.HttpServer`, no external dependency.
+
+| `io.vidocq.cassini:cassini-processor:0.1.0-SNAPSHOT`
+| APT annotation processor — generates `+$$CassiniAdapter+` / `+$$CassiniRoutes+` *sources* at compile time. AOT-safe.
+
+| `io.vidocq.cassini:cassini-maven-plugin:0.1.0-SNAPSHOT`
+| Maven plugin (`generate` goal, bound to `process-classes`) — pre-generates adapters for external dependency archives.
 
 | `io.vidocq.cassini:cassini-examples-*`
 | Examples: `cassini-examples-chappe` (standard SE-Bootstrap), `cassini-examples-jdkhttp` (direct CassiniStack), `cassini-examples-vauban` (CDI + SE-Bootstrap).
@@ -44,15 +53,16 @@ a|
 exports io.vidocq.cassini.spi.http;
 exports io.vidocq.cassini.spi.resource;
 exports io.vidocq.cassini.spi.bean;
+exports io.vidocq.cassini.spi.gen;
 uses io.vidocq.cassini.spi.http.CassiniStack.BuilderFactory;
 uses io.vidocq.cassini.spi.bean.BeanProvider.Factory;
 ----
 
 | `io.vidocq.cassini.core`
 a|
-No public export. `internal.*` is opened only to modules
-`cassini.tck`, `cassini.cdi`, `cassini.chappe`, `cassini.jdkhttp`,
-`runtime.ext.rest.cassini`, `cassini.examples.vauban`.
+No public export. `internal.*` is qualified-exported / opened only to
+`cassini.tck`, `cassini.client`, `cassini.maven.plugin`,
+`cassini.chappe`, `cassini.jdkhttp`.
 [source]
 ----
 provides io.vidocq.cassini.spi.http.CassiniStack.BuilderFactory
@@ -77,13 +87,36 @@ provides jakarta.ws.rs.ext.RuntimeDelegate
     with io.vidocq.cassini.jdkhttp.JdkHttpRuntimeDelegate;
 ----
 
-| `io.vidocq.cassini.cdi`
+| `io.vidocq.cassini.cdi.vauban`
 a|
 [source]
 ----
-exports io.vidocq.cassini.cdi;
-provides io.vidocq.cassini.spi.resource.ResourceFactory
-    with io.vidocq.cassini.cdi.CdiResourceFactory;
+exports io.vidocq.cassini.cdi.vauban;
+provides io.vidocq.cassini.spi.bean.BeanProvider.Factory
+    with ...VaubanBeanProviderFactory;
+provides ...build.compatible.spi.BuildCompatibleExtension
+    with ...CassiniScopeExtension;
+----
+
+| `io.vidocq.cassini.client`
+a|
+[source]
+----
+requires io.vidocq.cassini.core, java.net.http;
+provides jakarta.ws.rs.client.ClientBuilder
+    with ...CassiniClientBuilder;
+provides jakarta.ws.rs.ext.RuntimeDelegate
+    with ...CassiniClientRuntimeDelegate;
+uses jakarta.ws.rs.core.Feature;
+----
+
+| `io.vidocq.cassini.processor`
+a|
+[source]
+----
+exports io.vidocq.cassini.processor;
+provides javax.annotation.processing.Processor
+    with ...CassiniResourceProcessor;
 ----
 |===
 
@@ -111,6 +144,8 @@ CDI (with `cassini-cdi-vauban`): `@ApplicationScoped`, `@RequestScoped`, `@Singl
 `Sse`, `SseEventSink`, `SseBroadcaster`,
 `AsyncResponse`, `CompletionCallback`, `ConnectionCallback`,
 `EntityPart`, `EntityPart.Builder` (multipart §3.5.4).
+
+Client side (`cassini-client`): `Client`, `ClientBuilder`, `WebTarget`, `Invocation`, `Invocation.Builder`, `AsyncInvoker`, `ClientRequestContext`, `ClientResponseContext`, `ClientRequestFilter`, `ClientResponseFilter`.
 
 == Configuration
 

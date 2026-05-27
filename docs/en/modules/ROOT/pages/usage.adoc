@@ -161,6 +161,31 @@ public void events(@Context SseEventSink sink, @Context Sse sse) {
 
 NOTE: The current implementation (`CassiniSseEventSink`) buffers then emits in bulk — spec-compliant per §11 on the contract, but real-time chunked streaming is scheduled for milestone **M2i** (see lien:{repo-cassini}/src/branch/main/ASYNC.md[`ASYNC.md`]).
 
+== JAX-RS Client
+
+Add `cassini-client` to the path and `ClientBuilder.newClient()` returns a Cassini client (discovered via `ServiceLoader`). It is a zero-dependency Jakarta REST 4.0 Client built on `java.net.http` + virtual threads, sharing JSON-B (de)serialization with the server side.
+
+[source,java]
+----
+try (Client client = ClientBuilder.newClient()) {
+    User u = client.target("https://api.example.com")
+        .path("/users/{id}").resolveTemplate("id", 42)
+        .request(MediaType.APPLICATION_JSON)
+        .get(User.class);
+}
+----
+
+Supported: `WebTarget` URI building, `ClientRequestFilter` / `ClientResponseFilter` (`@Priority`-ordered), `ReaderInterceptor` / `WriterInterceptor`, async invocation on a virtual thread (`.async().get()`), and auto-registered `Feature`s discovered via `ServiceLoader` (e.g. MicroProfile Telemetry instrumentation — no explicit `.register()` needed).
+
+[source,java]
+----
+Response r = client.target(base).path("/orders")
+    .request()
+    .async()                       // runs on a virtual thread
+    .post(Entity.json(order))
+    .get();
+----
+
 == CDI / Vauban integration
 
 With `cassini-cdi-vauban` on the classpath, `VaubanBeanProvider.getResourceClasses()` walks the `BeanManager` and exposes all `@Path` / `@Provider` classes to the stack. No manual list of singletons is required.

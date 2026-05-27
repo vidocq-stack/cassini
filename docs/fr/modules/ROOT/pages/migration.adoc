@@ -65,9 +65,9 @@ SeBootstrap.start(MyApplication.class, SeBootstrap.Configuration.builder()
 | Vauban (Lite) optionnel
 | Vauban est CDI 4.1 Lite, pas Full. Vérifier que vous n'utilisez pas de fonctionnalités Full (decorators dynamiques, conversation scope, etc.).
 
-| `RestClient` MP
-| TODO post-1.0
-| Pas encore livré côté client.
+| `jakarta.ws.rs.client` (API Client)
+| `cassini-client`
+| Client JAX-RS 4.0 standard désormais livré (`java.net.http` + virtual threads). Le MicroProfile Rest Client est fourni séparément via xref:vidocq::index.adoc[Vidocq] (Cyrano).
 
 | Filters `Pre/Post-matching`
 | Identique Jakarta REST 4.0
@@ -101,7 +101,7 @@ Toutes les annotations standards sont préservées. Pas de changement attendu su
 * **Sub-resources locators** (`@Path` sur méthode retournant une instance) : supportés. Vérifier les imports si l'application utilisait une variante propriétaire.
 * **`@Suspended AsyncResponse`** : supporté ; le streaming chunked complet est en jalon M2h (voir xref:tck.adoc[TCK]).
 * **SSE backpressure** : `CassiniSseEventSink` bufférise pour la 0.1.0 — le streaming au fil de l'eau arrive en M2i.
-* **Multipart côté client** : Cassini est **serveur-only**. Pour faire des requêtes multipart, utiliser le client Jersey externe ou attendre la livraison du client REST 4.0.
+* **Client JAX-RS** : un client standard est désormais livré dans `cassini-client` (`ClientBuilder.newClient()`, `java.net.http` + virtual threads). Les entités multipart côté client restent limitées — utiliser un client externe pour ces cas en attendant.
 * **MicroProfile Config / Health / Metrics** : à brancher via xref:vidocq::index.adoc[Vidocq Runtime] (orchestrateur) — Cassini seul ne configure pas MP.
 
 == Voir aussi

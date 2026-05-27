@@ -39,12 +39,13 @@ Cassini sépare strictement la couche **REST** (lecture des annotations, dispatc
 * `cassini-chappe` — branche le moteur sur xref:chappe::index.adoc[Chappe] (HTTP/1.1, H2, virtual threads). **Transport de référence du TCK.**
 * `cassini-jdk-http` — fallback JDK 25 `com.sun.net.httpserver` (zéro dépendance externe, idéal pour smoke tests).
 * `cassini-cdi-vauban` — adapter `BeanProvider` qui résout les ressources via xref:vauban::index.adoc[Vauban].
+* `cassini-client` — `ClientBuilder` JAX-RS zéro-dépendance sur `java.net.http` + virtual threads (indépendant du serveur).
 
 `CassiniStack.builder()` choisit le transport via `ServiceLoader` — le code applicatif ne référence aucun symbole transport.
 
 == Deux modes d'instanciation des ressources
 
-. **Mode A — sans CDI** : `new()` via `DefaultResourceFactory`. Utilisé par `cassini-jdk-http` standalone ou pour les démos. Ressources `@Singleton` ou per-request selon le scope déclaré.
+. **Mode A — sans CDI** : `new()` via `ResourceFactory.defaultFactory()`. Utilisé par `cassini-jdk-http` standalone ou pour les démos. Ressources `@Singleton` ou per-request selon le scope déclaré.
 . **Mode B — DI via SPI `BeanProvider`** : `cassini-cdi-vauban` ou tout autre adapter `ServiceLoader`. Aucun import `jakarta.cdi` dans `cassini-api` / `cassini-core` — découplage strict.
 
 == Routing : carte de Cassini
@@ -70,13 +71,14 @@ Comme la triangulation géodésique, le routing JAX-RS est hiérarchique et dét
 
 == Codegen statique
 
-Cassini privilégie la **génération à la compilation** plutôt que la réflexion runtime :
+Cassini privilégie la **génération à la compilation** plutôt que la réflexion runtime. Par classe `@Path`, il génère deux artefacts résolus par nom :
 
-* Resources : scanner APT-like + Class-File API pour produire les invokeurs au `compile`.
-* Providers `MessageBodyReader/Writer` : enregistrement via `META-INF/services` ou APT — pas de scan classpath au démarrage.
-* Filters : ordre `@Priority` résolu au build du stack, pas par requête.
+* `<ResourceClass>$$CassiniAdapter` — invocation directe de méthode + injection de champs + coercition `@*Param` inline (pas de `Method.invoke`, aucune réflexion par requête).
+* `<ResourceClass>$$CassiniRoutes` — la table de routes sous forme de littéraux, convertie en routes au démarrage sans scan d'annotations.
 
-C'est compatible avec les modes AOT (GraalVM, Leyden CDS) — voir xref:internals.adoc[fonctionnement interne] pour le détail.
+Trois niveaux les produisent, du plus préféré au fallback : **APT** (`cassini-processor`, à la compilation), le **plugin Maven** (`cassini-maven-plugin`, au build, pour les JARs de dépendances), et un **générateur runtime Class-File API** (fallback JVM-only). Les deux premiers sont compatibles AOT (GraalVM, Leyden CDS). Les providers `MessageBodyReader/Writer` s'enregistrent via `META-INF/services` ; l'ordre `@Priority` des filtres est résolu au build du stack, pas par requête.
+
+Voir xref:internals.adoc[fonctionnement interne] pour le pipeline complet et la réflexion résiduelle documentée.
 
 == Périmètre TCK : Core Profile / SE-Bootstrap
 

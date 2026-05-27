@@ -33,8 +33,9 @@ mvn test
 Cassini est une implémentation Jakarta RESTful Web Services 4.0 (Core Profile / SE-Bootstrap) **transport-agnostique**.
 
 ```
-cassini-api          ← SPI HTTP public + SPI codegen stable (ResourceAdapter, InjectionSupport - spi.gen)
-cassini-core         ← Implémentation JAX-RS + RuntimeAdapterGenerator (Class-File API) + AdapterRegistry
+cassini-api          ← SPI HTTP public + SPI codegen stable (ResourceAdapter, RouteProvider, InjectionSupport - spi.gen)
+cassini-core         ← Implémentation JAX-RS + RuntimeAdapterGenerator (Class-File API) + AdapterRegistry + RouteRegistry
+cassini-client       ← Client JAX-RS 4.0 (ClientBuilder zéro-dép sur java.net.http + virtual threads)
 cassini-processor    ← APT (javax.annotation.processing) — génère CassiniAdapter à la compilation
 cassini-maven-plugin ← Maven plugin — pré-génère CassiniAdapter pour archives externes (dep JARs)
 cassini-cdi-vauban   ← Adapter CDI Vauban (BeanProvider + BCE @RequestScoped, optionnel)
@@ -58,6 +59,13 @@ Trois niveaux de génération d'adapters (`<Class>$$CassiniAdapter`), du plus pr
 `AdapterRegistry.lookup` essaie `Class.forName(<class>$$CassiniAdapter)` en premier (chemin
 APT/plugin), puis le générateur runtime, puis retourne le SENTINEL (fallback réflexif).
 
+**Table de routes générée (M5b)** : en plus de l'adapter, chaque classe `@Path` sans sub-resource
+locator obtient un `<Class>$$CassiniRoutes` (SPI `RouteProvider`) exposant la table de routes en
+littéraux (`RouteDescriptor`). `RouteRegistry` essaie `Class.forName(<class>$$CassiniRoutes)` puis
+convertit chaque descripteur en `ResourceMethod` via un `getDeclaredMethod(...)` ciblé (pas de scan
+d'annotations). Les classes avec locators positionnent `hasLocators()` et retombent sur
+`ResourceScanner.discover`.
+
 **Règle JPMS named-module (plugin)** : les adapters vivent dans le package de la ressource.
 Classpath JARs → écriture dans `target/classes`. JPMS named-module → fail-build (option
 `repackageModularDependencies=true` pour repackager le JAR).
@@ -72,7 +80,7 @@ Classpath JARs → écriture dans `target/classes`. JPMS named-module → fail-b
 - Coercition des **paramètres de méthode** : reste via `ParamExtractor` + `ParamValueConverter` (résolution `ParamConverterProvider`-aware au premier appel par type, pas par requête). **Volontairement non inlinée** — la précédence PCP est ce qui avait cassé 23 tests à la 1ʳᵉ tentative P1b.
 
 **Deux modes d'instanciation des ressources :**
-- Mode A : `new()` via `DefaultResourceFactory` (jdk-http, standalone)
+- Mode A : `new()` via `ResourceFactory.defaultFactory()` (jdk-http, standalone)
 - Mode B : DI via SPI publique `BeanProvider` (`cassini-cdi-vauban` ou tout autre adapter ServiceLoader). Aucun import `jakarta.cdi` dans `cassini-api`/`cassini-core` — découplage strict.
 
 **`RuntimeDelegate`** : déclaré uniquement dans `cassini-chappe` et `cassini-jdk-http` via ServiceLoader. `cassini-core` contient `CassiniRuntimeDelegate` mais ne l'expose plus pour éviter les collisions.
@@ -104,6 +112,8 @@ Classpath JARs → écriture dans `target/classes`. JPMS named-module → fail-b
 **cassini-processor** : `CassiniResourceProcessorTest`.
 
 **cassini-maven-plugin** : `GenerateAdaptersMojoTest` (toBytecode round-trip, JAR named-module detection).
+
+**cassini-client** : `ClientBuilderDiscoveryTest`, `BasicGetTest`, `FiltersTest`.
 
 ## Challenges TCK documentés
 

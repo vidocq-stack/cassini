@@ -32,7 +32,7 @@ The REST resource tree is a map. Cassini is the runtime that draws it and routes
 | Implemented spec | {spec-rest-4}
 | Repo | {repo-cassini}
 | Java | 25 (LTS)
-| JPMS modules | `io.vidocq.cassini.api`, `io.vidocq.cassini.core`, `io.vidocq.cassini.chappe`, `io.vidocq.cassini.jdkhttp`, `io.vidocq.cassini.cdi`
+| JPMS modules | `io.vidocq.cassini.api`, `io.vidocq.cassini.core`, `io.vidocq.cassini.client`, `io.vidocq.cassini.chappe`, `io.vidocq.cassini.jdkhttp`, `io.vidocq.cassini.cdi.vauban` (+ build-time: `io.vidocq.cassini.processor`, `cassini-maven-plugin`)
 | Runtime dependencies | Jakarta specs only (`jakarta.ws.rs`, `jakarta.json.bind`). Transport via xref:chappe::index.adoc[Chappe] or JDK `com.sun.net.httpserver`. CDI optional via xref:vauban::index.adoc[Vauban].
 | TCK | ✅ 2535 / 2535 applicable (100 %) — details xref:tck.adoc[here].
 |===
