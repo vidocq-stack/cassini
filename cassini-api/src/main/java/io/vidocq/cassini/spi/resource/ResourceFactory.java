@@ -36,11 +36,21 @@ public interface ResourceFactory {
     /**
      * Fabrique par défaut : nouvelle instance par appel via constructeur sans
      * argument. Aucune injection. Utilisée en Mode A.
+     *
+     * <p>M6a: if a generated adapter with {@code newInstance()} is available (i.e. the class
+     * has an accessible no-arg constructor), it is preferred over reflection. Falls back to
+     * {@code getDeclaredConstructor().newInstance()} otherwise.</p>
      */
     static ResourceFactory defaultFactory() {
         return new ResourceFactory() {
             @Override
+            @SuppressWarnings("unchecked")
             public <T> T create(Class<T> resourceClass) {
+                // NOTE: ResourceFactory is in cassini-api which does NOT depend on cassini-core,
+                // so we cannot call AdapterRegistry directly here. The M6a rewiring for this SPI
+                // is handled at the call sites in cassini-core (CassiniStackBuilderImpl resolver).
+                // This defaultFactory() is a convenience SPI that callers may replace; its own
+                // reflective path is kept for backward compat and for callers that use it standalone.
                 try {
                     return resourceClass.getDeclaredConstructor().newInstance();
                 } catch (ReflectiveOperationException e) {

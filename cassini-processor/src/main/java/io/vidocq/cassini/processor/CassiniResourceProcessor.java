@@ -481,6 +481,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
 
         List<FieldModel> fields = collectFields(resourceType);
         List<MethodModel> methods = collectMethods(resourceType);
+        boolean hasNoArgCtor = hasAccessibleNoArgCtor(resourceType);
 
         if (!pkg.isEmpty()) {
             w.println("package " + pkg + ";");
@@ -539,6 +540,10 @@ public class CassiniResourceProcessor extends AbstractProcessor {
 
         // invoke
         emitInvoke(w, resourceBinaryName, methods);
+        w.println();
+
+        // newInstance() — M6a
+        emitNewInstance(w, resourceBinaryName, hasNoArgCtor);
 
         w.println("}");
     }
@@ -648,6 +653,56 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         }
         w.println("            default: throw new UnsupportedOperationException(\"unknown methodId: \" + methodId);");
         w.println("        }");
+        w.println("    }");
+    }
+
+    // -------------------------------------------------------------------------
+    // newInstance() emission (M6a)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns {@code true} when the resource type has a no-arg constructor that is accessible
+     * from the adapter's package (public or package-private/protected; NOT private).
+     * Used by the APT processor to decide whether to emit a generated {@code newInstance()}.
+     */
+    private boolean hasAccessibleNoArgCtor(TypeElement resourceType) {
+        for (Element enc : resourceType.getEnclosedElements()) {
+            if (enc.getKind() != ElementKind.CONSTRUCTOR) continue;
+            ExecutableElement ctor = (ExecutableElement) enc;
+            if (!ctor.getParameters().isEmpty()) continue;
+            // no-arg constructor found — check accessibility
+            Set<Modifier> mods = ctor.getModifiers();
+            // private → not accessible from same-package adapter
+            return !mods.contains(Modifier.PRIVATE);
+        }
+        // No explicit no-arg constructor: it is implicitly public when the class is public/package
+        // and there are no other constructors. Check whether the class has any explicit constructors.
+        long ctorCount = resourceType.getEnclosedElements().stream()
+                .filter(e -> e.getKind() == ElementKind.CONSTRUCTOR)
+                .count();
+        if (ctorCount == 0) {
+            // Implicit no-arg constructor exists (and has the same access as the class)
+            Set<Modifier> classMods = resourceType.getModifiers();
+            // Private nested class → not accessible; otherwise OK
+            return !classMods.contains(Modifier.PRIVATE);
+        }
+        return false;
+    }
+
+    /**
+     * Emits the {@code newInstance()} override. If {@code hasNoArgCtor} is {@code true},
+     * emits {@code return new ResourceClass();}; otherwise the default interface method
+     * (throws {@link UnsupportedOperationException}) is inherited — no override emitted.
+     */
+    private void emitNewInstance(PrintWriter w, String resourceBinaryName, boolean hasNoArgCtor) {
+        if (!hasNoArgCtor) {
+            // Let the interface default (throws UnsupportedOperationException) be inherited.
+            return;
+        }
+        String resourceRef = resourceBinaryName.replace('$', '.');
+        w.println("    @Override");
+        w.println("    public Object newInstance() {");
+        w.println("        return new " + resourceRef + "();");
         w.println("    }");
     }
 

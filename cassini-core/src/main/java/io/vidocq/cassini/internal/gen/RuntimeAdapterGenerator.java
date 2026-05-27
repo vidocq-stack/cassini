@@ -117,6 +117,8 @@ public final class RuntimeAdapterGenerator {
         ClassDesc adapterCD  = ClassDesc.of(adapterName);
         ClassDesc resourceCD = ClassDesc.of(resourceClass.getName());
 
+        boolean hasNoArgCtor = hasAccessibleNoArgCtor(resourceClass);
+
         return ClassFile.of().build(adapterCD, clb -> {
             clb.withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER | ClassFile.ACC_FINAL);
             clb.withInterfaceSymbols(CD_ResourceAdapter);
@@ -148,6 +150,12 @@ public final class RuntimeAdapterGenerator {
 
             // invoke(int, Object, Object[]) — P1b: direct typed dispatch
             generateInvoke(clb, resourceClass, resourceCD, methodIds);
+
+            // newInstance() — M6a: direct new Foo() if accessible no-arg ctor exists
+            if (hasNoArgCtor) {
+                generateNewInstance(clb, resourceCD);
+            }
+            // else: leave the default UnsupportedOperationException impl from the interface
         });
     }
 
@@ -605,6 +613,51 @@ public final class RuntimeAdapterGenerator {
             cob.invokestatic(ClassDesc.of("java.lang.Character"), "valueOf",
                     MethodTypeDesc.of(ClassDesc.of("java.lang.Character"), ConstantDescs.CD_char));
         }
+    }
+
+    // ---- newInstance() generation (M6a) ----
+
+    /**
+     * Returns {@code true} when the resource class has an accessible no-arg constructor.
+     * Accessible means: public, OR package-private/protected (the adapter is in the same
+     * package, so it can call a non-private no-arg ctor). Private no-arg ctors are excluded
+     * because the generated adapter code would fail at classload time.
+     */
+    static boolean hasAccessibleNoArgCtor(Class<?> resourceClass) {
+        try {
+            java.lang.reflect.Constructor<?> ctor = resourceClass.getDeclaredConstructor();
+            int mods = ctor.getModifiers();
+            // private → not accessible from the same-package adapter
+            return !java.lang.reflect.Modifier.isPrivate(mods);
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Generates a {@code newInstance()} override that performs {@code new ResourceClass()}.
+     *
+     * <p>Bytecode shape:
+     * <pre>
+     * public Object newInstance() {
+     *     return new ResourceClass();
+     * }
+     * </pre>
+     * Uses {@code new} + {@code dup} + {@code invokespecial <init>()V} + {@code areturn}.
+     * The adapter lives in the resource's package, so package-private ctors are callable.</p>
+     */
+    private static void generateNewInstance(java.lang.classfile.ClassBuilder clb,
+                                             ClassDesc resourceCD) {
+        clb.withMethodBody("newInstance",
+                MethodTypeDesc.of(CD_Object),
+                ClassFile.ACC_PUBLIC,
+                cob -> {
+                    cob.new_(resourceCD);
+                    cob.dup();
+                    cob.invokespecial(resourceCD, ConstantDescs.INIT_NAME,
+                            MethodTypeDesc.of(CD_void));
+                    cob.areturn();
+                });
     }
 
     // ---- Field collection ----

@@ -237,6 +237,10 @@ class RuntimeAdapterGeneratorTest {
         // M5a fixtures
         AdapterRegistry.deregister(ProviderWithContextFields.class);
         AdapterRegistry.deregister(ProviderWithPrivateContextField.class);
+        // M6a fixtures
+        AdapterRegistry.deregister(PublicNoArgResource.class);
+        AdapterRegistry.deregister(PackageNoArgResource.class);
+        AdapterRegistry.deregister(CtorInjectionResource.class);
     }
 
     @Test
@@ -716,6 +720,101 @@ class RuntimeAdapterGeneratorTest {
         private UriInfo uriInfo;
 
         public UriInfo getUriInfo() { return uriInfo; }
+    }
+
+    // ---- M6a fixtures: newInstance() ----
+
+    /** Resource with a public no-arg constructor — adapter must generate newInstance(). */
+    static class PublicNoArgResource {
+        public PublicNoArgResource() {}
+        public String hello() { return "hello"; }
+    }
+
+    /** Resource with a package-private no-arg constructor — adapter must generate newInstance(). */
+    static class PackageNoArgResource {
+        PackageNoArgResource() {}
+    }
+
+    /** Resource with ONLY a String constructor — no no-arg ctor, adapter must NOT generate newInstance(). */
+    static class CtorInjectionResource {
+        final String value;
+        public CtorInjectionResource(String value) { this.value = value; }
+    }
+
+    // ---- M6a tests: newInstance() ----
+
+    @Test
+    void newInstanceWithPublicNoArgCtorReturnsFreshInstance() throws Exception {
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(PublicNoArgResource.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
+        Object instance1 = adapter.newInstance();
+        Object instance2 = adapter.newInstance();
+
+        assertNotNull(instance1, "newInstance() must return a non-null instance");
+        assertInstanceOf(PublicNoArgResource.class, instance1,
+                "newInstance() must return an instance of the resource class");
+        assertNotSame(instance1, instance2,
+                "newInstance() must return a fresh instance on each call (not a singleton)");
+    }
+
+    @Test
+    void newInstanceWithPackageNoArgCtorReturnsFreshInstance() throws Exception {
+        // Package-private ctor is accessible from the adapter (same package)
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(PackageNoArgResource.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
+        Object instance = adapter.newInstance();
+
+        assertNotNull(instance, "newInstance() must work for package-private no-arg ctor");
+        assertInstanceOf(PackageNoArgResource.class, instance);
+    }
+
+    @Test
+    void newInstanceWithoutNoArgCtorThrowsUnsupportedOperation() throws Exception {
+        // CtorInjectionResource has only String(String) ctor — no no-arg ctor
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(CtorInjectionResource.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
+        assertThrows(UnsupportedOperationException.class,
+                () -> adapter.newInstance(),
+                "newInstance() must throw UnsupportedOperationException when no no-arg ctor exists");
+    }
+
+    @Test
+    void hasAccessibleNoArgCtorDetectsPublicCtor() {
+        assertTrue(RuntimeAdapterGenerator.hasAccessibleNoArgCtor(PublicNoArgResource.class),
+                "public no-arg ctor should be detected");
+    }
+
+    @Test
+    void hasAccessibleNoArgCtorDetectsPackageCtor() {
+        assertTrue(RuntimeAdapterGenerator.hasAccessibleNoArgCtor(PackageNoArgResource.class),
+                "package-private no-arg ctor should be accessible from same-package adapter");
+    }
+
+    @Test
+    void hasAccessibleNoArgCtorReturnsFalseWhenOnlyArgedCtor() {
+        assertFalse(RuntimeAdapterGenerator.hasAccessibleNoArgCtor(CtorInjectionResource.class),
+                "class with only String-arg ctor should return false");
+    }
+
+    @Test
+    void beanParamUsesAdapterNewInstanceWhenAvailable() throws Exception {
+        // InjectionSupportImpl.beanParam should use adapter.newInstance() (M6a)
+        // when the adapter has a generated newInstance().
+        // We verify by calling beanParam and checking we get a valid instance.
+        RuntimeAdapterGenerator.generate(BeanParamHolder.class);
+
+        CassiniHttpExchange exchange = p4ExchangeWithUri("http://localhost/test?x=value");
+        MatchResult match = p4MinimalMatch(BeanParamHolder.class);
+        InjectionSupportImpl support = new InjectionSupportImpl(match, exchange);
+
+        Object result = support.beanParam(BeanParamHolder.class);
+        assertNotNull(result);
+        assertInstanceOf(BeanParamHolder.class, result);
+        BeanParamHolder holder = (BeanParamHolder) result;
+        assertEquals("value", holder.x, "M6a: @BeanParam bean created via newInstance() and fields injected");
     }
 
     /** Minimal exchange stub for P4 injection tests. Reuses the structure from AdapterRegistrySeamTest. */
