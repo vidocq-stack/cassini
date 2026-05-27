@@ -17,6 +17,9 @@ import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.ext.MessageBodyReader;
 import jakarta.ws.rs.ext.MessageBodyWriter;
 
+import io.vidocq.cassini.internal.gen.AdapterRegistry;
+import io.vidocq.cassini.internal.gen.InjectionSupportImpl;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -178,7 +181,7 @@ public final class Invoker {
                     new WebApplicationException("Cannot resolve root " + route.rootBeanClass().getName(), 500),
                     route, MediaType.WILDCARD_TYPE, null);
         }
-        FieldInjector.inject(injectionTarget(route.rootBeanClass(), root), match, request);
+        injectFields(route.rootBeanClass(), injectionTarget(route.rootBeanClass(), root), match, request, true);
         java.util.List<Object> matched = new java.util.ArrayList<>();
         matched.add(root);
         CURRENT_MATCH.set(match);
@@ -214,7 +217,7 @@ public final class Invoker {
                             route, MediaType.WILDCARD_TYPE, null);
                 }
             }
-            FieldInjector.inject(intermediate, match, request, false);
+            injectFields(intermediate.getClass(), intermediate, match, request, false);
             matched.add(0, intermediate);
         }
         // 2. Calculer le remaining path à partir du capture {__rest:.*}
@@ -313,7 +316,7 @@ public final class Invoker {
                             route, MediaType.WILDCARD_TYPE, null);
                 }
             }
-            FieldInjector.inject(intermediate, match, request, false);
+            injectFields(intermediate.getClass(), intermediate, match, request, false);
             matchedSoFar.add(0, intermediate);
         }
         String rest = "";
@@ -366,7 +369,7 @@ public final class Invoker {
         }
 
         // §3.4.1 : sub-resource via dynamic locator → pas d'injection @*Param
-        FieldInjector.inject(instance, match, request, false);
+        injectFields(instance.getClass(), instance, match, request, false);
         Object result;
         try {
             route.javaMethod().setAccessible(true);
@@ -648,7 +651,7 @@ public final class Invoker {
                 // Sub-resource locator §3.4.1 : instantier la ressource racine,
                 // parcourir la chaîne de locators, injecter fields à chaque étape.
                 Object root = resolver.apply(route.rootBeanClass());
-                FieldInjector.inject(injectionTarget(route.rootBeanClass(), root), match, request);
+                injectFields(route.rootBeanClass(), injectionTarget(route.rootBeanClass(), root), match, request, true);
                 matched.add(0, root);
                 Object intermediate = root;
                 for (java.lang.reflect.Method locStep : route.locatorChain()) {
@@ -674,7 +677,7 @@ public final class Invoker {
                                     route, chosen, rctx);
                         }
                     }
-                    FieldInjector.inject(intermediate, match, request, false);
+                    injectFields(intermediate.getClass(), intermediate, match, request, false);
                     matched.add(0, intermediate);
                 }
                 target = intermediate;
@@ -682,7 +685,7 @@ public final class Invoker {
                 target = resolver.apply(route.beanClass());
                 // §9 : injecter les @Context dans l'instance contextuelle réelle (déproxifiée),
                 // mais invoquer la méthode sur `target` (le proxy CDI délègue à cette instance).
-                FieldInjector.inject(injectionTarget(route.beanClass(), target), match, request);
+                injectFields(route.beanClass(), injectionTarget(route.beanClass(), target), match, request, true);
                 matched.add(target);
             }
         } catch (WebApplicationException wae) {
@@ -950,6 +953,29 @@ public final class Invoker {
         MatchResult match = CURRENT_MATCH.get();
         if (req == null || match == null) return;
         try { FieldInjector.inject(provider, match, req); } catch (RuntimeException ignored) {}
+    }
+
+    /**
+     * Seam: injects fields into {@code target} using the registered adapter if available,
+     * otherwise falls back to {@link FieldInjector#inject}.
+     *
+     * <p>P0: {@link AdapterRegistry#lookup} always returns empty → always falls back.
+     * P1: when an adapter is present, calls {@code adapter.injectFields(target, support, injectParams)}.</p>
+     *
+     * @param beanClass    the resource class (key for adapter lookup)
+     * @param target       the injection target (already unwrapped from CDI proxy)
+     * @param match        the routing result
+     * @param request      the HTTP exchange
+     * @param injectParams whether to inject @*Param fields (false for sub-resource roots per §3.4.1)
+     */
+    private void injectFields(Class<?> beanClass, Object target,
+                              MatchResult match, CassiniHttpExchange request, boolean injectParams) {
+        var adapter = AdapterRegistry.lookup(beanClass);
+        if (adapter.isPresent()) {
+            adapter.get().injectFields(target, new InjectionSupportImpl(match, request), injectParams);
+        } else {
+            FieldInjector.inject(target, match, request, injectParams);
+        }
     }
 
     private boolean hasRequestBody(CassiniHttpExchange request) {

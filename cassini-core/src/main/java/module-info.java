@@ -17,6 +17,8 @@ module io.vidocq.cassini.core {
     exports io.vidocq.cassini.internal
             to io.vidocq.cassini.tck,
                io.vidocq.cassini.client;
+    exports io.vidocq.cassini.internal.gen
+            to io.vidocq.cassini.tck;
     exports io.vidocq.cassini.internal.context
             to io.vidocq.cassini.tck;
     exports io.vidocq.cassini.internal.filter
