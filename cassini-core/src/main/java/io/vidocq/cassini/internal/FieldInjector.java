@@ -128,7 +128,8 @@ public final class FieldInjector {
         return null;
     }
 
-    private static Object resolveContext(Class<?> type, MatchResult match, CassiniHttpExchange request) {
+    /** Internal: delegated to by {@code InjectionSupportImpl} to keep a single source of truth. */
+    public static Object resolveContext(Class<?> type, MatchResult match, CassiniHttpExchange request) {
         if (type == UriInfo.class) return new CassiniUriInfo(request, request.contextPath(),
                 match.pathParams(), match.method() == null ? null : match.method().path());
         if (type == HttpHeaders.class) return new CassiniHttpHeaders(request);
@@ -247,12 +248,14 @@ public final class FieldInjector {
         return FormDecoder.parse(raw, !encoded);
     }
 
-    private static Map<String, List<String>> parsedQueryParams(CassiniHttpExchange request, boolean encoded) {
+    /** Internal: used by {@code InjectionSupportImpl}. */
+    public static Map<String, List<String>> parsedQueryParams(CassiniHttpExchange request, boolean encoded) {
         String raw = request.requestUri() == null ? null : request.requestUri().getRawQuery();
         return parseQuery(raw, encoded);
     }
 
-    private static String cookie(CassiniHttpExchange request, String name) {
+    /** Internal: used by {@code InjectionSupportImpl}. */
+    public static String cookie(CassiniHttpExchange request, String name) {
         for (String header : request.headers("Cookie")) {
             if (header == null) continue;
             for (String pair : header.split(";")) {
@@ -271,7 +274,8 @@ public final class FieldInjector {
         return null;
     }
 
-    private static List<String> matrix(CassiniHttpExchange request, String name, boolean encoded) {
+    /** Internal: used by {@code InjectionSupportImpl}. */
+    public static List<String> matrix(CassiniHttpExchange request, String name, boolean encoded) {
         List<String> out = new ArrayList<>();
         String path = request.requestUri() == null ? null : request.requestUri().getRawPath();
         if (path == null) return out;
@@ -299,8 +303,9 @@ public final class FieldInjector {
     /** Clé exchange pour le cache des bytes du body (partagé entre @FormParam et MBR). */
     public static final String ATTR_BODY_CACHE  = "cassini.body_cache";
 
+    /** Internal: used by {@code InjectionSupportImpl}. */
     @SuppressWarnings("unchecked")
-    private static Map<String, List<String>> readForm(CassiniHttpExchange request, boolean encoded) {
+    public static Map<String, List<String>> readForm(CassiniHttpExchange request, boolean encoded) {
         if (encoded) {
             Map<String, List<String>> enc =
                     (Map<String, List<String>>) request.getAttribute(ATTR_FORM_CACHE_ENCODED);
