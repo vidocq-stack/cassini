@@ -51,11 +51,21 @@ import java.util.Map;
  * </ul>
  *
  * <p><b>Private-field mechanism:</b> the {@code <clinit>} of the generated adapter calls
- * {@code MethodHandles.privateLookupIn(ResourceClass.class, MethodHandles.lookup())} which
- * succeeds when the resource class is in an unnamed or open module. For closed named modules
- * the application must declare {@code opens <package> to io.vidocq.cassini.core}; if
- * {@code privateLookupIn} fails, generation is aborted and {@link AdapterRegistry} falls back
- * to the reflective {@code FieldInjector} (the safety net).</p>
+ * {@code MethodHandles.privateLookupIn(ResourceClass.class, MethodHandles.lookup())} from
+ * <em>inside</em> the resource's own package (the adapter is defined there), so that call is
+ * trivially OK. The real JPMS gate is at generation time, when cassini-core needs a
+ * {@code privateLookupIn} on a downstream user class:</p>
+ * <ul>
+ *   <li><b>Read edge</b> — cassini-core must read the resource's module. Impossible to declare
+ *       statically (a framework cannot {@code requires} its users), so we add it dynamically
+ *       via {@link Module#addReads(Module)}.</li>
+ *   <li><b>Opens edge</b> — the resource's module must open its package to cassini-core. This
+ *       is on the user: either {@code opens <pkg>;} (unqualified) or
+ *       {@code opens <pkg> to io.vidocq.cassini.core;}. Unnamed and open modules satisfy this
+ *       automatically.</li>
+ * </ul>
+ * <p>If the opens edge is missing, generation aborts and {@link AdapterRegistry} falls back to
+ * the reflective {@code FieldInjector} (the safety net).</p>
  *
  * <p><b>Adapter name:</b> {@code <ResourceClass>$$CassiniAdapter} in the same package.</p>
  *
@@ -206,16 +216,35 @@ public final class RuntimeAdapterGenerator {
         // We need a Lookup whose package matches the adapter's package (= resource's package).
         // MethodHandles.privateLookupIn(resourceClass, our_lookup) gives us a Lookup in the
         // resource's package with full access (including private members of resourceClass).
-        // This also acts as an early access check: if the resource's module is not open to
-        // cassini-core, this call throws IllegalAccessException and we abort gracefully.
+        //
+        // privateLookupIn requires two conditions in named-module land:
+        //   1. cassini-core READS the resource's module (canRead) — impossible by construction:
+        //      a framework cannot `requires` its downstream user modules. We fix this at runtime
+        //      via Module.addReads, which is precisely what this API exists for (same pattern as
+        //      Weld/Hibernate/Jersey on user beans/entities/resources).
+        //   2. The resource's module OPENS its package to cassini-core — this is on the user,
+        //      either qualified `opens <pkg> to io.vidocq.cassini.core` or unqualified `opens <pkg>`.
+        //      Open-modules and unnamed modules satisfy this automatically.
+        //
+        // If (2) is missing, privateLookupIn still throws IllegalAccessException and we abort
+        // gracefully (AdapterRegistry installs the reflective FieldInjector safety net).
+        Module here = RuntimeAdapterGenerator.class.getModule();
+        Module target = resourceClass.getModule();
+        if (here.isNamed() && target != here && !here.canRead(target)) {
+            here.addReads(target);
+        }
         MethodHandles.Lookup resourceLookup;
         try {
             resourceLookup = MethodHandles.privateLookupIn(resourceClass, MethodHandles.lookup());
         } catch (IllegalAccessException iae) {
+            // After addReads above, the only remaining cause is a missing `opens` on the package.
+            String pkg = resourceClass.getPackageName();
+            String targetName = target.isNamed() ? target.getName() : "<unnamed>";
             throw new Exception("Cannot obtain privateLookupIn for " + resourceClass.getName()
-                    + " — module not open to io.vidocq.cassini.core? Add 'opens "
-                    + resourceClass.getPackageName() + " to io.vidocq.cassini.core' to your module-info.java. "
-                    + "Falling back to reflective FieldInjector.", iae);
+                    + " — module " + targetName + " does not open package " + pkg
+                    + " to io.vidocq.cassini.core. Add 'opens " + pkg
+                    + ";' (unqualified) or 'opens " + pkg + " to io.vidocq.cassini.core;' to "
+                    + targetName + "'s module-info.java. Falling back to reflective FieldInjector.", iae);
         }
 
         // defineClass requires that the new class's package matches the lookup's package.
