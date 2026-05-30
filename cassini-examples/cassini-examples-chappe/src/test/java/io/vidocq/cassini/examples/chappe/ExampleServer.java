@@ -5,9 +5,9 @@ import jakarta.ws.rs.SeBootstrap;
 import java.net.ServerSocket;
 
 /**
- * Serveur de test AutoCloseable — démarre Cassini Chappe sur un port aléatoire.
+ * AutoCloseable test server — starts Cassini Chappe on a random port.
  *
- * <p>Usage dans JUnit 5 :</p>
+ * <p>Usage in JUnit 5:</p>
  * <pre>{@code
  * private static ExampleServer server;
  *
@@ -24,7 +24,7 @@ public class ExampleServer implements AutoCloseable {
     private final int port;
 
     public ExampleServer() throws Exception {
-        // Obtenir un port aléatoire libre
+        // Obtain a free random port
         try (var ss = new ServerSocket(0)) {
             this.port = ss.getLocalPort();
         }

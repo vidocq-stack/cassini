@@ -3,19 +3,19 @@ package io.vidocq.cassini.spi.http;
 import java.util.concurrent.CompletionStage;
 
 /**
- * Contrat pour pousser des chunks au fil de l'eau pendant que la méthode
- * resource est encore en cours d'exécution.
+ * Contract for pushing chunks on the fly while the resource method is still
+ * executing.
  *
- * <p>Utilisé par :
+ * <p>Used by:
  * <ul>
- *   <li><b>SSE</b> (JAX-RS §11) — chaque {@code SseEventSink#send} écrit un
- *       chunk {@code event:/data:/...}.</li>
- *   <li><b>StreamingOutput async</b> — push progressif d'un body chunked-transfer.</li>
+ *   <li><b>SSE</b> (JAX-RS §11) — each {@code SseEventSink#send} writes one
+ *       {@code event:/data:/...} chunk.</li>
+ *   <li><b>Async StreamingOutput</b> — progressive push of a chunked-transfer body.</li>
  * </ul>
  *
- * <p><b>Statut M2i</b> : l'implémentation actuelle de Cassini bufferise puis
- * émet en bloc à la fin de la méthode resource. M2i refactorera pour push réel
- * chunked-transfer via cet API.
+ * <p><b>M2i status</b>: the current Cassini implementation buffers and emits
+ * everything at the end of the resource method. M2i will refactor it for real
+ * chunked-transfer pushing via this API.
  */
 public interface CassiniStreamingSink {
 

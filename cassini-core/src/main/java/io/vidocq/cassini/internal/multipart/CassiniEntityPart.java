@@ -12,7 +12,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
-/** §3.5.4 EntityPart : représentation d'une partie multipart/form-data. */
+/** §3.5.4 EntityPart: representation of a multipart/form-data part. */
 public final class CassiniEntityPart implements EntityPart {
 
     private final String name;
@@ -66,7 +66,7 @@ public final class CassiniEntityPart implements EntityPart {
         if (type == byte[].class) return (T) bytes;
         if (type == String.class) return (T) new String(bytes, StandardCharsets.UTF_8);
         if (type == InputStream.class) return (T) new ByteArrayInputStream(bytes);
-        // Best-effort fallback : si le type a un constructor (String) ou est CharSequence
+        // Best-effort fallback: if the type has a (String) constructor or is CharSequence
         if (CharSequence.class.isAssignableFrom(type)) return (T) new String(bytes, StandardCharsets.UTF_8);
         throw new IllegalArgumentException("Unsupported EntityPart content type: " + type.getName());
     }

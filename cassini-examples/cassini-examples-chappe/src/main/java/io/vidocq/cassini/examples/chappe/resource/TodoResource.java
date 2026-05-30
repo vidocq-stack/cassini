@@ -19,10 +19,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Ressource CRUD Todos — store statique pour l'exemple standalone.
+ * Todos CRUD resource — static store for the standalone example.
  *
- * <p>Note : le store étant statique, un {@code @BeforeEach} de réinitialisation
- * est nécessaire dans les tests.</p>
+ * <p>Note: since the store is static, a {@code @BeforeEach} reset is required
+ * in tests.</p>
  */
 @Path("/todos")
 @Produces(MediaType.APPLICATION_JSON)
@@ -32,7 +32,7 @@ public class TodoResource {
     static final Map<Long, Todo> STORE = new ConcurrentHashMap<>();
     static final AtomicLong COUNTER = new AtomicLong(0);
 
-    /** Réinitialise le store (utilisé dans les tests). */
+    /** Resets the store (used in tests). */
     public static void reset() {
         STORE.clear();
         COUNTER.set(0);

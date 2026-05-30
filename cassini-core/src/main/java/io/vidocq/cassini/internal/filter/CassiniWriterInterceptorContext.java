@@ -16,10 +16,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Chaîne {@link WriterInterceptor} → MBW.writeTo terminale §7.2.
- * Chaque interceptor reçoit ce context, le mute au besoin, puis
- * appelle {@link #proceed()} qui avance l'index. Quand l'index atteint
- * la fin de la liste, on appelle le {@link MessageBodyWriter} final.
+ * {@link WriterInterceptor} chain → terminal MBW.writeTo §7.2.
+ * Each interceptor receives this context, mutates it as needed, then
+ * calls {@link #proceed()} which advances the index. When the index
+ * reaches the end of the list, the final {@link MessageBodyWriter}
+ * is invoked.
  */
 public final class CassiniWriterInterceptorContext implements WriterInterceptorContext {
 
@@ -72,9 +73,9 @@ public final class CassiniWriterInterceptorContext implements WriterInterceptorC
             WriterInterceptor i = interceptors.get(index++).instance();
             i.aroundWriteTo(this);
         } else {
-            // §7.2 : setEntity/setType peut avoir changé le type pendant la
-            // chaîne ; re-sélectionner un MBW compatible si le terminal
-            // initial ne convient plus.
+            // §7.2: setEntity/setType may have changed the type during the
+            // chain; re-select a compatible MBW if the initial terminal is
+            // no longer suitable.
             MessageBodyWriter w = terminal;
             if (entity != null && registry != null && !w.isWriteable(type, genericType, annotations, mediaType)) {
                 w = registry.findWriter(type, genericType, annotations, mediaType).orElse(terminal);
@@ -90,7 +91,7 @@ public final class CassiniWriterInterceptorContext implements WriterInterceptorC
 
     @Override public Annotation[] getAnnotations() { return annotations; }
     @Override public void setAnnotations(Annotation[] a) {
-        // §7.2 : setAnnotations(null) doit lever NullPointerException.
+        // §7.2: setAnnotations(null) must throw NullPointerException.
         if (a == null) throw new NullPointerException("annotations is null");
         this.annotations = a;
     }

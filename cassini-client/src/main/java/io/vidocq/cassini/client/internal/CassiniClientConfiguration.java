@@ -29,10 +29,10 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Implémentation de {@link Configuration} pour le {@link jakarta.ws.rs.client.ClientBuilder}
- * Cassini. Stocke les composants enregistrés, les properties, et les paramètres transport
- * (timeouts, executor). Les filtres CLIENT seront appliqués au pipeline en M2d.2 (cf.
- * {@code ClientFilterChain}).
+ * {@link Configuration} implementation for the Cassini
+ * {@link jakarta.ws.rs.client.ClientBuilder}. Stores the registered components,
+ * the properties, and the transport settings (timeouts, executor). The CLIENT
+ * filters will be applied to the pipeline in M2d.2 (see {@code ClientFilterChain}).
  */
 final class CassiniClientConfiguration implements Configuration {
 
@@ -95,19 +95,19 @@ final class CassiniClientConfiguration implements Configuration {
     @Override public Set<Object> getInstances() { return Set.copyOf(instancesByClass.values()); }
 
     /**
-     * Renvoie les {@link ClientRequestFilter} enregistrés, triés par priorité ASCENDANTE
-     * (la plus basse, donc {@code Priorities.AUTHENTICATION=1000}, s'exécute en premier ;
-     * la plus haute, {@code Priorities.USER=5000}, en dernier — convention JAX-RS §6.3).
-     * La priorité provient en premier de la map passée à {@code register(...)}, sinon
-     * de l'annotation {@link Priority} sur la classe, sinon {@code Priorities.USER}.
+     * Returns the registered {@link ClientRequestFilter}s, sorted by ASCENDING priority
+     * (the lowest, i.e. {@code Priorities.AUTHENTICATION=1000}, runs first; the highest,
+     * {@code Priorities.USER=5000}, runs last — JAX-RS §6.3 convention). The priority
+     * comes first from the map passed to {@code register(...)}, otherwise from the
+     * {@link Priority} annotation on the class, otherwise {@code Priorities.USER}.
      */
     List<ClientRequestFilter> getRequestFilters() {
         return sortFilters(ClientRequestFilter.class, false);
     }
 
     /**
-     * Renvoie les {@link ClientResponseFilter} triés par priorité DESCENDANTE (la plus
-     * haute s'exécute en premier — sens inverse des request filters, JAX-RS §6.3).
+     * Returns the {@link ClientResponseFilter}s sorted by DESCENDING priority (the
+     * highest runs first — reverse direction relative to request filters, JAX-RS §6.3).
      */
     List<ClientResponseFilter> getResponseFilters() {
         return sortFilters(ClientResponseFilter.class, true);

@@ -4,36 +4,36 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 
 /**
- * Helpers pour la frontière sync ↔ async dans Cassini.
+ * Helpers for the sync ↔ async boundary in Cassini.
  *
- * <p><b>M2h — async non-bloquant + virtual threads</b></p>
- * <p>L'Invoker actuel exécute les méthodes resource en mode synchrone et
- * renvoie un {@link io.vidocq.cassini.internal.transport.CassiniHttpResponse}
- * directement. Quand une méthode resource retourne un {@link CompletionStage},
- * l'Invoker le résout en bloquant via {@link #awaitBlocking(CompletionStage)}.
+ * <p><b>M2h — non-blocking async + virtual threads</b></p>
+ * <p>The current Invoker executes resource methods synchronously and returns
+ * a {@link io.vidocq.cassini.internal.transport.CassiniHttpResponse} directly.
+ * When a resource method returns a {@link CompletionStage}, the Invoker
+ * resolves it blockingly via {@link #awaitBlocking(CompletionStage)}.
  *
- * <p><b>Suppression M2h</b> : le refactor M2h propagera les {@code CompletionStage}
- * jusqu'au transport via {@link io.vidocq.cassini.spi.http.CassiniHttpAdapter#dispatch
- * CassiniHttpAdapter.dispatch} (qui retourne déjà {@code CompletionStage<Void>}).
- * Ce helper sera alors supprimé — toutes ses occurrences doivent être traitées
- * lors de M2h.
+ * <p><b>M2h removal</b>: the M2h refactor will propagate {@code CompletionStage}
+ * down to the transport via {@link io.vidocq.cassini.spi.http.CassiniHttpAdapter#dispatch
+ * CassiniHttpAdapter.dispatch} (which already returns {@code CompletionStage<Void>}).
+ * This helper will then be removed — all its occurrences must be handled
+ * during M2h.
  *
- * <p>Pour faciliter le refactor M2h, isoler tous les blocages dans cette classe
- * (ne JAMAIS faire {@code .toCompletableFuture().get()} en ligne ailleurs).
+ * <p>To ease the M2h refactor, isolate all blocking calls in this class
+ * (NEVER inline {@code .toCompletableFuture().get()} elsewhere).
  */
 public final class Async {
 
     private Async() {}
 
     /**
-     * Attend la complétion d'un {@link CompletionStage} de façon bloquante.
+     * Awaits the completion of a {@link CompletionStage} blockingly.
      *
-     * <p><b>TODO(M2h)</b> : remplacer chaque appel par une propagation
-     * non-bloquante du stage jusqu'au transport. Cf. {@code CassiniHttpAdapter.dispatch}.
+     * <p><b>TODO(M2h)</b>: replace each call by a non-blocking propagation
+     * of the stage down to the transport. See {@code CassiniHttpAdapter.dispatch}.
      *
-     * @param cs stage à attendre
-     * @return la valeur résolue du stage
-     * @throws RuntimeException si le stage échoue (cause préservée)
+     * @param cs stage to await
+     * @return the resolved value of the stage
+     * @throws RuntimeException if the stage fails (cause preserved)
      */
     public static <T> T awaitBlocking(CompletionStage<T> cs) {
         try {

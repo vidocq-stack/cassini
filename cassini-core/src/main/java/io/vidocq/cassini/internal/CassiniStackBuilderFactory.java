@@ -3,9 +3,9 @@ package io.vidocq.cassini.internal;
 import io.vidocq.cassini.spi.http.CassiniStack;
 
 /**
- * SPI ServiceLoader — fournit un {@link CassiniStack.Builder} depuis cassini-core.
+ * ServiceLoader SPI — provides a {@link CassiniStack.Builder} from cassini-core.
  *
- * <p>Déclaré via {@code module-info.java :
+ * <p>Declared via {@code module-info.java:
  * provides io.vidocq.cassini.spi.http.CassiniStack.BuilderFactory
  *         with io.vidocq.cassini.internal.CassiniStackBuilderFactory;
  * }

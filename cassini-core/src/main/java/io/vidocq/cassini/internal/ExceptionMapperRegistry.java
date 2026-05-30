@@ -13,11 +13,11 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Registre des {@link ExceptionMapper} annotés {@code @Provider}.
+ * Registry of {@link ExceptionMapper}s annotated {@code @Provider}.
  *
- * <p>Sélection du mapper (§4.4) : on préfère le mapper dont le type
- * paramétré d'exception est le plus spécifique (plus proche de la
- * classe concrète) parmi ceux qui matchent.</p>
+ * <p>Mapper selection (§4.4): prefer the mapper whose parameterized
+ * exception type is the most specific (closest to the concrete class)
+ * among those that match.</p>
  */
 public final class ExceptionMapperRegistry {
 
@@ -29,8 +29,8 @@ public final class ExceptionMapperRegistry {
         mappers.add(new Registration<>(exceptionType, mapper));
     }
 
-    /** Enregistre un instance {@code @Provider} implémentant {@link ExceptionMapper} si applicable.
-     *  Résout le type d'exception via les interfaces génériques. */
+    /** Registers a {@code @Provider} instance implementing {@link ExceptionMapper} if applicable.
+     *  Resolves the exception type via the generic interfaces. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     public void register(Object instance) {
         if (!(instance instanceof ExceptionMapper)) return;
@@ -39,9 +39,9 @@ public final class ExceptionMapperRegistry {
         mappers.add(new Registration(excType, (ExceptionMapper) instance));
     }
 
-    /** §4.4 : si un ExceptionMapper lève lui-même une exception pendant
-     *  sa propre exécution, celle-ci ne doit pas être mappée à nouveau —
-     *  elle doit remonter en 500. Ce flag per-thread empêche la récursion. */
+    /** §4.4: if an ExceptionMapper itself throws during its own execution,
+     *  that exception must not be mapped again — it must bubble up as 500.
+     *  This per-thread flag prevents recursion. */
     private static final ThreadLocal<Boolean> MAPPING = ThreadLocal.withInitial(() -> false);
 
     public Optional<Response> map(Throwable t) {
@@ -52,7 +52,7 @@ public final class ExceptionMapperRegistry {
                 if (best == null) {
                     best = r;
                 } else if (best.exceptionType() == r.exceptionType()) {
-                    // §4.4 / §4.1.4 : même type d'exception → priority basse gagne.
+                    // §4.4 / §4.1.4: same exception type → lowest priority wins.
                     if (priorityOf(r.mapper()) < priorityOf(best.mapper())) best = r;
                 } else if (best.exceptionType().isAssignableFrom(r.exceptionType())) {
                     best = r;
@@ -70,7 +70,7 @@ public final class ExceptionMapperRegistry {
         }
     }
 
-    /** §10.2 : retourne le mapper le plus spécifique pour {@code type} sans l'exécuter. */
+    /** §10.2: returns the most specific mapper for {@code type} without executing it. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     public <T extends Throwable> ExceptionMapper<T> findMapper(Class<T> type) {
         Registration<?> best = null;

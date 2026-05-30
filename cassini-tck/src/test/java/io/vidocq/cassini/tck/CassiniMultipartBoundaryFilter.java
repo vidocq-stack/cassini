@@ -8,10 +8,10 @@ import jakarta.ws.rs.ext.Provider;
 import java.util.UUID;
 
 /**
- * §3.5.4 / RFC 7578 : si une requête CLIENT a Content-Type=multipart/form-data
- * sans paramètre boundary, on en génère un et on le met dans le Content-Type
- * AVANT que le MBW ne soit appelé. Sans cela, le serveur ne peut pas parser
- * le body (boundary inconnu).
+ * §3.5.4 / RFC 7578: when a CLIENT request has Content-Type=multipart/form-data
+ * without a boundary parameter, generate one and inject it into the Content-Type
+ * BEFORE the MBW is invoked. Without this, the server cannot parse the body
+ * (unknown boundary).
  */
 @Provider
 public final class CassiniMultipartBoundaryFilter implements ClientRequestFilter {

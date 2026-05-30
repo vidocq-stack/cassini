@@ -4,14 +4,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Résultat d'un match {@link UriRouter} : la {@link ResourceMethod} choisie
- * et les valeurs capturées par les templates URI. Chaque nom logique peut
- * avoir plusieurs valeurs (template répété : /{id}/{id}/{id}) pour supporter
- * l'injection {@code @PathParam List<String>} (§3.3.1).
+ * Result of a {@link UriRouter} match: the chosen {@link ResourceMethod}
+ * and the values captured by the URI templates. Each logical name can have
+ * several values (repeated template: /{id}/{id}/{id}) to support
+ * {@code @PathParam List<String>} injection (§3.3.1).
  *
- * <p>{@code pathParams} contient les valeurs sans matrix params (pour la plupart
- * des types), {@code rawPathParams} conserve les segments originaux avec leurs
- * matrix params (utilisé pour l'injection {@link jakarta.ws.rs.core.PathSegment}).</p>
+ * <p>{@code pathParams} contains values without matrix params (for most
+ * types), {@code rawPathParams} keeps the original segments with their
+ * matrix params (used for {@link jakarta.ws.rs.core.PathSegment} injection).</p>
  */
 public record MatchResult(ResourceMethod method,
                           Map<String, List<String>> pathParams,

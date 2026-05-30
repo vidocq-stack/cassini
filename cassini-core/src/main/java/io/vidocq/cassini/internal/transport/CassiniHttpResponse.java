@@ -5,14 +5,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Réponse HTTP neutre (sans dépendance transport).
+ * Transport-neutral HTTP response (no transport dependency).
  *
- * <p>Construit par l'{@code Invoker} à partir d'une méthode resource JAX-RS,
- * puis copié sur un {@link io.vidocq.cassini.spi.http.CassiniHttpExchange}
- * par l'adapter (Chappe, JDK HttpServer, ...).
+ * <p>Built by the {@code Invoker} from a JAX-RS resource method, then copied
+ * to a {@link io.vidocq.cassini.spi.http.CassiniHttpExchange} by the adapter
+ * (Chappe, JDK HttpServer, ...).
  *
- * <p>Le body est un {@code byte[]} pré-sérialisé. Pour le streaming (SSE,
- * StreamingOutput), un type spécifique sera ajouté ultérieurement (M2i).
+ * <p>The body is a pre-serialized {@code byte[]}. For streaming (SSE,
+ * StreamingOutput), a dedicated type will be added later (M2i).
  */
 public final class CassiniHttpResponse {
 
@@ -54,8 +54,8 @@ public final class CassiniHttpResponse {
     public byte[] body() { return body; }
 
     /**
-     * Copie ce résultat sur un {@link io.vidocq.cassini.spi.http.CassiniHttpExchange} —
-     * utilisé par les adapters de transport pour écrire la réponse HTTP finale.
+     * Copies this result onto a {@link io.vidocq.cassini.spi.http.CassiniHttpExchange} —
+     * used by transport adapters to write the final HTTP response.
      */
     public void writeTo(io.vidocq.cassini.spi.http.CassiniHttpExchange exchange) throws java.io.IOException {
         exchange.setStatus(status);

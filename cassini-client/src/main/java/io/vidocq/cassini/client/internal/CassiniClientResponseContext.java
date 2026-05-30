@@ -31,14 +31,14 @@ import java.util.Set;
 import java.util.function.Predicate;
 
 /**
- * Implémentation mutable de {@link ClientResponseContext} — alimente les
- * {@link jakarta.ws.rs.client.ClientResponseFilter} qui peuvent lire/modifier
- * status, headers et entity stream.
+ * Mutable {@link ClientResponseContext} implementation — feeds the
+ * {@link jakarta.ws.rs.client.ClientResponseFilter}s which can read/modify
+ * status, headers and entity stream.
  *
- * <p>Le body est bufferisé une fois en {@code byte[]} à l'arrivée de la réponse,
- * puis chaque accès à {@code getEntityStream()} renvoie une nouvelle vue
- * {@link ByteArrayInputStream} — permet la lecture multiple par plusieurs filtres
- * sans avoir à appeler {@code bufferEntity()} manuellement.</p>
+ * <p>The body is buffered once into a {@code byte[]} when the response arrives,
+ * then each call to {@code getEntityStream()} returns a fresh
+ * {@link ByteArrayInputStream} view — enabling multiple reads by several filters
+ * without having to call {@code bufferEntity()} manually.</p>
  */
 final class CassiniClientResponseContext implements ClientResponseContext {
 
@@ -156,7 +156,7 @@ final class CassiniClientResponseContext implements ClientResponseContext {
     @Override
     public void setEntityStream(InputStream input) { this.entityStreamOverride = input; }
 
-    /** Conversion finale vers {@link CassiniClientResponse} après application du pipeline. */
+    /** Final conversion to {@link CassiniClientResponse} after the pipeline has been applied. */
     Response toResponse() {
         return CassiniClientResponse.fromBufferedBody(status, body(), headers);
     }

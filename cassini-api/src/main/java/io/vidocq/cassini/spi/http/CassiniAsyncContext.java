@@ -3,14 +3,14 @@ package io.vidocq.cassini.spi.http;
 import java.time.Duration;
 
 /**
- * Contrat pour suspendre/reprendre une requête en cours — support de
- * {@code @Suspended AsyncResponse} (JAX-RS §8) et des {@code CompletionStage}
- * retournés par les méthodes resource.
+ * Contract for suspending/resuming an in-flight request — backs
+ * {@code @Suspended AsyncResponse} (JAX-RS §8) and the {@code CompletionStage}
+ * values returned by resource methods.
  *
- * <p><b>Statut M2h</b> : ce contrat est figé dès l'extraction. L'implémentation
- * actuelle (Cassini 0.1.x) traite tous les async de façon bloquante via
- * {@code awaitBlocking()} dans l'Invoker. M2h refactorera l'Invoker pour
- * propager les stages jusqu'à cet API sans bloquer.
+ * <p><b>M2h status</b>: this contract is frozen as of extraction. The current
+ * implementation (Cassini 0.1.x) handles every async case blockingly via
+ * {@code awaitBlocking()} in the Invoker. M2h will refactor the Invoker to
+ * propagate stages all the way to this API without blocking.
  */
 public interface CassiniAsyncContext {
 

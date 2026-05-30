@@ -11,7 +11,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
- * Implémentation Cassini de {@link SseBroadcaster}. In-memory, single-process.
+ * Cassini implementation of {@link SseBroadcaster}. In-memory, single-process.
  */
 public final class CassiniSseBroadcaster implements SseBroadcaster {
 

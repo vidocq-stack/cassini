@@ -13,8 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Vérifie que le handler composite sert l'UI statique sur {@code /}
- * en parallèle de l'API REST sur {@code /api/*}.
+ * Verifies that the composite handler serves the static UI on {@code /}
+ * alongside the REST API on {@code /api/*}.
  */
 class StaticUiTest {
 
@@ -71,10 +71,10 @@ class StaticUiTest {
 
     @Test
     void apiAndStaticCoexist() throws Exception {
-        // Le statique sur /
+        // Static on /
         var html = get("/");
         assertEquals(200, html.statusCode());
-        // L'API sur /api/todos
+        // API on /api/todos
         var api = get("/api/todos");
         assertEquals(200, api.statusCode());
         assertTrue(api.headers().firstValue("Content-Type").orElse("").contains("json"));

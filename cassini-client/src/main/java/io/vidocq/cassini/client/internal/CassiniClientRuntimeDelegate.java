@@ -12,13 +12,13 @@ package io.vidocq.cassini.client.internal;
 import io.vidocq.cassini.internal.runtime.CassiniRuntimeDelegate;
 
 /**
- * Sous-classe locale de {@link CassiniRuntimeDelegate} — JPMS contraint le
- * {@code provides ... with X} à ce que {@code X} soit déclaré dans le même module.
+ * Local subclass of {@link CassiniRuntimeDelegate} — JPMS requires that
+ * {@code provides ... with X} has {@code X} declared in the same module.
  *
- * <p>Cette indirection ne change rien au comportement runtime : tout le code utile est
- * hérité de {@code cassini-core}. Elle existe uniquement pour satisfaire le contrat
- * JPMS et permettre à cassini-client de rester autonome (utilisable sans tirer
- * cassini-chappe ou cassini-jdk-http en runtime).</p>
+ * <p>This indirection does not change runtime behaviour: all useful code is
+ * inherited from {@code cassini-core}. It exists solely to satisfy the JPMS
+ * contract and let cassini-client stay self-contained (usable without pulling
+ * cassini-chappe or cassini-jdk-http at runtime).</p>
  */
 public final class CassiniClientRuntimeDelegate extends CassiniRuntimeDelegate {
 

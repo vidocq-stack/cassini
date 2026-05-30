@@ -18,27 +18,27 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 
 /**
- * Coercion d'une chaîne (ou d'une liste de chaînes) vers le type Java cible,
- * selon JAX-RS 4.0 §3.2.
+ * Coercion of a string (or list of strings) to the target Java type,
+ * per JAX-RS 4.0 §3.2.
  *
- * <p>Ordre de résolution pour une valeur simple :</p>
+ * <p>Resolution order for a single value:</p>
  * <ol>
- *   <li>{@link String} — passage direct</li>
+ *   <li>{@link String} — direct pass-through</li>
  *   <li>primitive / wrapper — {@code Integer.parseInt}, etc.</li>
  *   <li>{@link Enum} — {@link Enum#valueOf}</li>
- *   <li>méthode statique publique {@code valueOf(String)}</li>
- *   <li>méthode statique publique {@code fromString(String)}</li>
- *   <li>constructeur public à un argument {@link String}</li>
+ *   <li>public static method {@code valueOf(String)}</li>
+ *   <li>public static method {@code fromString(String)}</li>
+ *   <li>public single-argument {@link String} constructor</li>
  * </ol>
  *
- * <p>Les types collection {@link List}, {@link Set}, {@link SortedSet}
- * paramétrés sont dépliés sur leur type d'élément.</p>
+ * <p>Parameterized collection types {@link List}, {@link Set}, {@link SortedSet}
+ * are unwrapped on their element type.</p>
  */
 public final class ParamValueConverter {
 
     private ParamValueConverter() {}
 
-    /** Convertit une liste de valeurs brutes vers le type cible (potentiellement collection). */
+    /** Converts a list of raw values to the target type (possibly a collection). */
     public static Object coerce(Class<?> raw, Class<?> elementType, List<String> values) {
         if (isListLike(raw)) {
             List<Object> items = new ArrayList<>(values.size());
@@ -74,8 +74,8 @@ public final class ParamValueConverter {
         }
 
         if (type.isEnum()) {
-            // §3.2 : pour un enum avec fromString(String), celui-ci a priorité
-            // sur Enum.valueOf (sinon un enum built-in valueOf chope toujours).
+            // §3.2: for an enum with fromString(String), it takes precedence
+            // over Enum.valueOf (otherwise the built-in enum valueOf always wins).
             try {
                 Method fs = type.getDeclaredMethod("fromString", String.class);
                 if (Modifier.isStatic(fs.getModifiers())) {
@@ -123,9 +123,9 @@ public final class ParamValueConverter {
         return 0;
     }
 
-    /** §3.2 : PathSegment depuis un segment brut "path;k1=v1;k2=v2".
-     *  L'ordre de déclaration des matrix params est préservé (LinkedHashMap),
-     *  exigé par les TCK qui comparent les sérialisations littérales. */
+    /** §3.2: PathSegment from a raw "path;k1=v1;k2=v2" segment.
+     *  The declaration order of matrix params is preserved (LinkedHashMap),
+     *  required by TCKs that compare literal serializations. */
     public static PathSegment parsePathSegment(String raw) {
         if (raw == null) raw = "";
         String[] parts = raw.split(";", -1);
@@ -144,7 +144,7 @@ public final class ParamValueConverter {
         };
     }
 
-    /** MultivaluedMap qui préserve l'ordre d'insertion des clés. */
+    /** MultivaluedMap that preserves the insertion order of keys. */
     private static final class OrderedMultivaluedMap extends AbstractMultivaluedMap<String, String> {
         OrderedMultivaluedMap() { super(new java.util.LinkedHashMap<>()); }
     }
@@ -153,10 +153,10 @@ public final class ParamValueConverter {
         return new WebApplicationException(msg, Response.Status.BAD_REQUEST);
     }
 
-    /** Appelle une méthode statique. Si elle lève une WebApplicationException
-     *  (ou l'emballe via InvocationTargetException), on la propage
-     *  telle quelle — JAX-RS §3.2 impose de respecter son status. Les
-     *  autres exceptions deviennent un 400 par défaut. */
+    /** Invokes a static method. If it throws a WebApplicationException
+     *  (or wraps one via InvocationTargetException), it is propagated
+     *  as-is — JAX-RS §3.2 mandates honoring its status. Other
+     *  exceptions become a 400 by default. */
     private static Object invokeOrPropagate(Method m, Object instance, Object... args) {
         try {
             return m.invoke(instance, args);

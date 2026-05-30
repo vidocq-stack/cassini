@@ -16,10 +16,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Adapter Chappe → {@link CassiniHttpExchange}.
+ * Chappe adapter to {@link CassiniHttpExchange}.
  *
- * <p>Lit en lazy depuis {@link Request} et collecte status/headers/body en mémoire ;
- * la {@link Response} Chappe finale est construite par {@link ChappeHttpAdapter}.
+ * <p>Lazily reads from {@link Request} and collects status/headers/body in memory;
+ * the final Chappe {@link Response} is built by {@link ChappeHttpAdapter}.
  */
 public final class ChappeHttpExchange implements CassiniHttpExchange {
 
@@ -76,7 +76,7 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
     @Override public String contextPath() { return contextPath; }
 
     @Override public String routingPath() {
-        // Chappe fournit pathInfo() qui est déjà stripped du contextPath.
+        // Chappe provides pathInfo() which is already stripped of the contextPath.
         String pi = request.pathInfo();
         if (pi == null || pi.isEmpty()) return "/";
         return pi;

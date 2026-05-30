@@ -1,11 +1,11 @@
 /**
- * Cassini JAX-RS Client 4.0 — implémentation {@link jakarta.ws.rs.client.ClientBuilder}
- * zéro-dépendance basée sur {@link java.net.http.HttpClient} et virtual threads.
+ * Cassini JAX-RS Client 4.0 — zero-dependency {@link jakarta.ws.rs.client.ClientBuilder}
+ * implementation built on {@link java.net.http.HttpClient} and virtual threads.
  *
- * <p>Découverte standard via {@link java.util.ServiceLoader} sur le classpath et via
- * {@code provides} JPMS sur le module-path. Réutilise {@code MessageBodyRegistry},
- * {@code CassiniResponse}, {@code CassiniUriBuilder} et {@code CassiniRuntimeDelegate}
- * de {@code cassini-core} pour mutualiser la sérialisation request/response.</p>
+ * <p>Standard discovery via {@link java.util.ServiceLoader} on the classpath and via
+ * JPMS {@code provides} on the module-path. Reuses {@code MessageBodyRegistry},
+ * {@code CassiniResponse}, {@code CassiniUriBuilder} and {@code CassiniRuntimeDelegate}
+ * from {@code cassini-core} to share request/response serialization.</p>
  */
 module io.vidocq.cassini.client {
     requires transitive io.vidocq.cassini.api;
@@ -13,32 +13,32 @@ module io.vidocq.cassini.client {
     requires io.vidocq.cassini.core;
     requires java.net.http;
 
-    // @Priority utilisé pour résoudre l'ordre des ClientRequest/ResponseFilter
-    // quand aucune entrée explicite n'est passée à register(component, priority).
+    // @Priority used to resolve the order of ClientRequest/ResponseFilters
+    // when no explicit value is passed to register(component, priority).
     requires static jakarta.annotation;
 
-    // jdk.httpserver utilisé exclusivement par FakeHttpServer en src/test/java —
-    // `static` car aucune dépendance runtime en production sur com.sun.net.httpserver.
+    // jdk.httpserver used exclusively by FakeHttpServer under src/test/java —
+    // `static` because there is no runtime production dependency on com.sun.net.httpserver.
     requires static jdk.httpserver;
 
-    // Aucun package public exposé en MVP — toute la surface JAX-RS Client est consommée
-    // via les interfaces jakarta.ws.rs.client.* et la discovery `provides` ci-dessous.
+    // No public package is exposed in the MVP — the entire JAX-RS Client surface is consumed
+    // through the jakarta.ws.rs.client.* interfaces and the `provides` discovery below.
 
     provides jakarta.ws.rs.client.ClientBuilder
             with io.vidocq.cassini.client.internal.CassiniClientBuilder;
 
-    // Auto-discovery des Features tiers (instrumentation OTel, auth, logging...) qui
-    // s'enregistrent via ServiceLoader. CassiniClientBuilder.build() les invoque sur
-    // un FeatureContext adapter. MP Telemetry 2.1 exige ce comportement pour que
-    // ClientBuilder.newClient() soit auto-instrumenté sans .register() explicite.
+    // Auto-discovery of third-party Features (OTel instrumentation, auth, logging...) that
+    // register themselves via ServiceLoader. CassiniClientBuilder.build() invokes them on
+    // a FeatureContext adapter. MP Telemetry 2.1 mandates this behaviour so that
+    // ClientBuilder.newClient() is auto-instrumented without an explicit .register().
     uses jakarta.ws.rs.core.Feature;
 
-    // RuntimeDelegate : nécessaire pour UriBuilder.fromUri(...) côté Client. Cassini-core
-    // contient déjà CassiniRuntimeDelegate mais ne le déclare pas comme service par défaut
-    // pour éviter une collision si plusieurs adapters (chappe, jdk-http) sont en classpath.
-    // Côté Client : on l'expose ici pour rendre cassini-client autonome — le ServiceLoader
-    // résoudra l'un des trois providers (chappe / jdk-http / client) selon le classpath ;
-    // tous trois pointent vers CassiniRuntimeDelegate, donc pas de divergence runtime.
+    // RuntimeDelegate: required by UriBuilder.fromUri(...) on the Client side. cassini-core
+    // already contains CassiniRuntimeDelegate but does not declare it as a default service
+    // to avoid a collision when several adapters (chappe, jdk-http) are on the classpath.
+    // Client side: we expose it here to make cassini-client self-contained — ServiceLoader
+    // resolves one of the three providers (chappe / jdk-http / client) depending on classpath;
+    // all three point to CassiniRuntimeDelegate, so there is no runtime divergence.
     provides jakarta.ws.rs.ext.RuntimeDelegate
             with io.vidocq.cassini.client.internal.CassiniClientRuntimeDelegate;
 }

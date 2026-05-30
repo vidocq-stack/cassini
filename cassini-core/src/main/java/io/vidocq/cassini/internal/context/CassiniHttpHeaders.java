@@ -16,7 +16,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Implémentation {@link HttpHeaders} adossée à un {@link CassiniHttpExchange}.
+ * {@link HttpHeaders} implementation backed by a {@link CassiniHttpExchange}.
  */
 public final class CassiniHttpHeaders implements HttpHeaders {
 
@@ -53,7 +53,7 @@ public final class CassiniHttpHeaders implements HttpHeaders {
     }
 
     @Override public List<MediaType> getAcceptableMediaTypes() {
-        // §6.7.4.7 : la liste retournée est triée par q-value décroissant.
+        // §6.7.4.7: returned list is sorted by descending q-value.
         List<MediaType> list = MediaTypes.parseList(exchange.firstHeader("Accept"));
         java.util.List<MediaType> mut = new java.util.ArrayList<>(list);
         mut.sort((a, b) -> Double.compare(qValue(b), qValue(a)));
@@ -61,7 +61,7 @@ public final class CassiniHttpHeaders implements HttpHeaders {
     }
 
     @Override public List<Locale> getAcceptableLanguages() {
-        // §6.7.4.7 : tri par q-value décroissant.
+        // §6.7.4.7: sort by descending q-value.
         String raw = exchange.firstHeader("Accept-Language");
         if (raw == null || raw.isBlank()) return List.of();
         java.util.List<java.util.Map.Entry<Locale, Double>> entries = new java.util.ArrayList<>();
@@ -93,8 +93,8 @@ public final class CassiniHttpHeaders implements HttpHeaders {
     }
 
     @Override public MediaType getMediaType() {
-        // §3.6.4 / §6.7.4 : null si pas de Content-Type
-        // (NE pas tomber sur WILDCARD comme MediaTypes.parse).
+        // §3.6.4 / §6.7.4: null if no Content-Type
+        // (do NOT fall back to WILDCARD like MediaTypes.parse).
         String raw = exchange.firstHeader("Content-Type");
         if (raw == null || raw.isBlank()) return null;
         return MediaTypes.parse(raw);
@@ -103,16 +103,16 @@ public final class CassiniHttpHeaders implements HttpHeaders {
     @Override public Locale getLanguage() {
         String raw = exchange.firstHeader("Content-Language");
         if (raw == null) return null;
-        // §4.3 : on accepte aussi la convention Java "en_US" en plus du
-        // RFC 5646 "en-US" — Locale.forLanguageTag attend les dashes,
-        // sinon on tombe sur Locale.ROOT.
+        // §4.3: also accept the Java convention "en_US" in addition to
+        // RFC 5646 "en-US" — Locale.forLanguageTag expects dashes,
+        // otherwise it falls back to Locale.ROOT.
         return Locale.forLanguageTag(raw.replace('_', '-'));
     }
 
     @Override public Map<String, Cookie> getCookies() {
-        // §4.3.2 / RFC 2109 : un Cookie header peut combiner plusieurs cookies
-        // séparés par ';' avec attributs $Version/$Path/$Domain qui s'appliquent
-        // au cookie suivant ($Version) ou précédent ($Path/$Domain).
+        // §4.3.2 / RFC 2109: a Cookie header may combine several cookies
+        // separated by ';' with $Version/$Path/$Domain attributes that apply
+        // to the next cookie ($Version) or the previous one ($Path/$Domain).
         Map<String, Cookie> out = new HashMap<>();
         for (String header : exchange.headers("Cookie")) {
             int currentVersion = 0;

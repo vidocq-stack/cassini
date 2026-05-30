@@ -12,19 +12,20 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /**
- * Implémentation centrale de {@link CassiniHttpAdapter} — route chaque requête
- * via {@link UriRouter} puis invoque la resource method via {@link Invoker}.
+ * Central {@link CassiniHttpAdapter} implementation — routes each request via
+ * {@link UriRouter} then invokes the resource method via {@link Invoker}.
  *
- * <p>Gère les pre-matching filters (§6.6.1) : ils s'exécutent AVANT le routing
- * et peuvent aborter la requête ou modifier verb/URI.</p>
+ * <p>Handles pre-matching filters (§6.6.1): they run BEFORE routing and can
+ * abort the request or modify verb/URI.</p>
  *
- * <p>Écrit le résultat dans l'{@link CassiniHttpExchange} fourni (status, headers,
- * body) afin que le transport (Chappe, JDK...) n'ait qu'à lire les valeurs
- * collectées après dispatch.</p>
+ * <p>Writes the result to the provided {@link CassiniHttpExchange} (status,
+ * headers, body) so the transport (Chappe, JDK...) just needs to read the
+ * values collected after dispatch.</p>
  *
- * <p>Cas SSE streaming : si l'attribut {@code cassini.streaming_pis} est positionné
- * sur l'exchange après invocation, le transport est responsable d'écrire le body
- * (streaming chunked) — {@code DefaultCassiniHttpAdapter} n'écrit pas le body.</p>
+ * <p>SSE streaming case: if the {@code cassini.streaming_pis} attribute is set
+ * on the exchange after invocation, the transport is responsible for writing
+ * the body (chunked streaming) — {@code DefaultCassiniHttpAdapter} does not
+ * write the body.</p>
  */
 public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
 
@@ -63,10 +64,10 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
 
         String path = exchange.routingPath();
 
-        // §6.6.1 : pre-matching filters s'exécutent AVANT le routing → si
-        // l'un d'eux abortWith(), retourner directement sans tenter de
-        // matcher une route (sinon /chemin-inexistant tombe en 404 même
-        // si un filter aurait short-circuité).
+        // §6.6.1: pre-matching filters run BEFORE routing → if one of them
+        // abortWith(), return directly without attempting to match a route
+        // (otherwise /nonexistent-path would 404 even if a filter would have
+        // short-circuited it).
         var preMatchFilters = invoker.filters().preMatching();
         if (!preMatchFilters.isEmpty()) {
             Object[] holderPre = new Object[1];
@@ -81,8 +82,8 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
                     applyResponse(pmr.response(), exchange);
                     return;
                 }
-                // §6.6.1 : si un pre-matching filter a appelé setMethod /
-                // setRequestUri, on relance le routing sur les valeurs mutées.
+                // §6.6.1: if a pre-matching filter called setMethod /
+                // setRequestUri, re-run routing on the mutated values.
                 if (pmr.ctx() != null) {
                     CassiniRequestContext ctx = pmr.ctx();
                     String mutMethod = ctx.currentMethod();
@@ -92,7 +93,7 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
                         String mutPath = mutUri.getRawPath();
                         if (mutPath == null) mutPath = mutUri.getPath();
                         if (mutPath == null) mutPath = "/";
-                        // Strip contextPath de l'URI absolue mutée (§6.6.1 setRequestUri)
+                        // Strip contextPath from the mutated absolute URI (§6.6.1 setRequestUri)
                         String ctxPath = exchange.contextPath();
                         if (ctxPath != null && !ctxPath.isEmpty() && !"/".equals(ctxPath)
                                 && mutPath.startsWith(ctxPath)) {
@@ -111,7 +112,7 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
         if (candidates.isEmpty()) {
             List<String> allowed = router.methodsAllowedFor(path);
             if (!allowed.isEmpty()) {
-                // §3.3.5 : OPTIONS sans handler explicite → 200 + Allow header
+                // §3.3.5: OPTIONS without explicit handler → 200 + Allow header
                 if ("OPTIONS".equalsIgnoreCase(verb)) {
                     if (!allowed.contains("OPTIONS")) allowed.add("OPTIONS");
                     if (allowed.contains("GET") && !allowed.contains("HEAD")) allowed.add("HEAD");
@@ -122,7 +123,7 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
                             .body(new byte[0])
                             .build();
                 } else {
-                    // §3.7.2 : 405 via WebApplicationException pour laisser l'ExceptionMapper intercepter
+                    // §3.7.2: 405 via WebApplicationException so the ExceptionMapper can intercept
                     var r405 = jakarta.ws.rs.core.Response.status(405)
                             .header("Allow", String.join(", ", allowed)).build();
                     out = invoker.renderThrowable(
@@ -136,7 +137,7 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
         } else {
             MatchResult result = candidates.get(0);
             out = invoker.invoke(candidates, exchange);
-            // §3.3.5 : HEAD invoqué sur méthode @GET → renvoyer les headers sans body
+            // §3.3.5: HEAD invoked on a @GET method → return headers without body
             if ("HEAD".equalsIgnoreCase(verb) && !"HEAD".equalsIgnoreCase(result.method().httpMethod())) {
                 var b = CassiniHttpResponse.builder().status(out.status()).body(new byte[0]);
                 for (var e : out.headers().entrySet())
@@ -153,8 +154,8 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
         exchange.setStatus(out.status());
         exchange.responseHeaders().putAll(out.headers());
 
-        // SSE streaming : si le transport a déjà envoyé les headers+body en mode streaming,
-        // l'attribut cassini.streaming_pis est positionné — on ne réécrit pas le body.
+        // SSE streaming: if the transport has already sent headers+body in streaming mode,
+        // the cassini.streaming_pis attribute is set — do not rewrite the body.
         PipedInputStream streamingPis =
                 (PipedInputStream) exchange.getAttribute("cassini.streaming_pis");
         if (streamingPis != null) return;

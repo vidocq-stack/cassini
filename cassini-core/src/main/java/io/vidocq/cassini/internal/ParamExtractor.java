@@ -33,14 +33,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Résout les arguments d'appel d'une méthode de ressource à partir d'une
- * {@link Request} Chappe + d'un {@link MatchResult} routeur.
+ * Resolves the call arguments of a resource method from a Chappe
+ * {@link Request} + a router {@link MatchResult}.
  *
- * <p>M2b : support de {@link PathParam}, {@link QueryParam}, {@link HeaderParam},
+ * <p>M2b: support for {@link PathParam}, {@link QueryParam}, {@link HeaderParam},
  * {@link CookieParam}, {@link FormParam}, {@link MatrixParam},
- * {@link DefaultValue}. Les paramètres sans annotation JAX-RS sont
- * considérés comme le corps de la requête — leur index est exposé via
- * {@link ResolvedArgs#bodyIndex} et sera rempli par l'Invoker via un
+ * {@link DefaultValue}. Parameters without a JAX-RS annotation are treated
+ * as the request body — their index is exposed via
+ * {@link ResolvedArgs#bodyIndex} and filled by the Invoker through a
  * {@link MessageBodyRegistry}.</p>
  */
 public final class ParamExtractor {
@@ -48,14 +48,14 @@ public final class ParamExtractor {
     public record ResolvedArgs(Object[] args, int bodyIndex) {}
 
     private static ThreadLocal<Providers> CURRENT_PROVIDERS = new ThreadLocal<>();
-    // InheritableThreadLocal : hérité par les virtual threads créés dans l'adapter (M2h).
+    // InheritableThreadLocal: inherited by virtual threads created in the adapter (M2h).
     private static final ThreadLocal<jakarta.ws.rs.core.Application> CURRENT_APPLICATION =
             new InheritableThreadLocal<>();
     public static void setApplication(jakarta.ws.rs.core.Application app) { CURRENT_APPLICATION.set(app); }
     public static void clearApplication() { CURRENT_APPLICATION.remove(); }
     public static jakarta.ws.rs.core.Application currentApplication() { return CURRENT_APPLICATION.get(); }
 
-    /** Permet à l'Invoker d'exposer un Providers au resolveContext pour la durée d'une requête. */
+    /** Lets the Invoker expose a Providers to resolveContext for the duration of a request. */
     public static void setProviders(Providers p) { CURRENT_PROVIDERS.set(p); }
     public static void clearProviders() { CURRENT_PROVIDERS.remove(); }
     public static Providers currentProviders() { return CURRENT_PROVIDERS.get(); }
@@ -67,8 +67,8 @@ public final class ParamExtractor {
     }
     public static void clearParamConverterProviders() { CURRENT_PCPS.remove(); }
 
-    /** §11.1 (SSE) : sink+sse partagés pour la durée de l'invocation
-     *  d'une méthode resource avec @Produces text/event-stream. */
+    /** §11.1 (SSE): sink+sse shared for the duration of the invocation of
+     *  a resource method with @Produces text/event-stream. */
     private static final ThreadLocal<io.vidocq.cassini.internal.sse.CassiniSseEventSink> CURRENT_SINK =
             new ThreadLocal<>();
     public static void setCurrentSink(io.vidocq.cassini.internal.sse.CassiniSseEventSink s) {
@@ -82,9 +82,9 @@ public final class ParamExtractor {
     private ParamExtractor() {}
 
     /**
-     * Résout les arguments d'un constructeur de ressource (§3.1.1).
-     * Les paramètres sans annotation JAX-RS reçoivent leur valeur par défaut
-     * (un constructeur ne peut pas consommer le body).
+     * Resolves the arguments of a resource constructor (§3.1.1).
+     * Parameters without a JAX-RS annotation receive their default value
+     * (a constructor cannot consume the body).
      */
     public static Object[] resolveConstructorArgs(Parameter[] params, MatchResult match, CassiniHttpExchange request) {
         Object[] args = new Object[params.length];
@@ -174,8 +174,8 @@ public final class ParamExtractor {
                 args[i] = resolveContext(p.getType(), match, request);
                 continue;
             }
-            // §8.2 : @Suspended AsyncResponse — injecté depuis l'attribut exchange
-            // posé par l'Invoker avant l'extraction des params.
+            // §8.2: @Suspended AsyncResponse — injected from the exchange
+            // attribute set by the Invoker before param extraction.
             if (p.getAnnotation(jakarta.ws.rs.container.Suspended.class) != null) {
                 args[i] = request.getAttribute(CassiniAsyncResponseImpl.ATTR_KEY);
                 continue;
@@ -234,7 +234,7 @@ public final class ParamExtractor {
         return new ResolvedArgs(args, bodyIndex);
     }
 
-    /** Vrai si le paramètre n'a aucune annotation JAX-RS reconnue → candidat body. */
+    /** True if the parameter has no recognized JAX-RS annotation → body candidate. */
     private static boolean isBodyCandidate(Parameter p) {
         for (Annotation a : p.getAnnotations()) {
             Class<? extends Annotation> t = a.annotationType();
@@ -288,13 +288,13 @@ public final class ParamExtractor {
             };
         }
         if (type == jakarta.ws.rs.core.Application.class) {
-            // §9.4 : l'Application est l'instance user-level si l'harness
-            // (ou l'intégration) en a publié une via setCurrentApplication()
-            // — sinon on retourne une Application minimale.
+            // §9.4: the Application is the user-level instance if the harness
+            // (or integration) published one via setCurrentApplication()
+            // — otherwise return a minimal Application.
             jakarta.ws.rs.core.Application app = CURRENT_APPLICATION.get();
             if (app != null) {
-                // §9.2 : @Context fields de la sous-classe Application doivent
-                // exposer le contexte courant (proxy injection per-request).
+                // §9.2: @Context fields on the Application subclass must
+                // expose the current context (proxy injection per-request).
                 try { io.vidocq.cassini.internal.FieldInjector.inject(app, match, request); }
                 catch (RuntimeException ignored) {}
                 return app;
@@ -376,26 +376,27 @@ public final class ParamExtractor {
         }
     }
 
-    /** Construit une Response stub sans RuntimeDelegate pour conserver le
-     *  statut cible. Utilisé par coerce() car {@code new WebApplicationException(cause, status)}
-     *  nécessite une Response pour joindre la cause. */
+    /** Builds a stub Response without RuntimeDelegate to preserve the target
+     *  status. Used by coerce() because {@code new WebApplicationException(cause, status)}
+     *  requires a Response to attach the cause. */
     private static jakarta.ws.rs.core.Response javax404Response(int status) {
         return jakarta.ws.rs.core.Response.status(status).build();
     }
 
-    /** Sentinelle : aucun ParamConverter applicatif ne gère ce type. */
+    /** Sentinel: no application-supplied ParamConverter handles this type. */
     private static final Object USE_FALLBACK = new Object();
 
-    /** §6.1.4 : interroge les ParamConverterProvider enregistrés et délègue la
-     *  conversion s'ils retournent un ParamConverter compatible.
-     *  Retourne {@link #USE_FALLBACK} si aucun converter applicable, sinon
-     *  l'objet converti (ou null si raws est vide et le converter accepte ""). */
+    /** §6.1.4: queries the registered ParamConverterProviders and delegates
+     *  conversion if they return a compatible ParamConverter.
+     *  Returns {@link #USE_FALLBACK} if no converter is applicable, otherwise
+     *  the converted object (or null if raws is empty and the converter
+     *  accepts ""). */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static Object tryUserParamConverter(Class<?> raw, Class<?> element, Parameter p, List<String> raws) {
         java.util.List<jakarta.ws.rs.ext.ParamConverterProvider> pcps = CURRENT_PCPS.get();
         if (pcps == null || pcps.isEmpty()) return USE_FALLBACK;
-        // §6.1.4 : on offre d'abord le type "raw" (collection ou direct) puis
-        // l'element type (pour List<X> avec un converter pour X).
+        // §6.1.4: offer the "raw" type first (collection or direct) then the
+        // element type (for List<X> with a converter for X).
         Class<?> targetType = raw;
         java.lang.reflect.Type targetGeneric = p.getParameterizedType();
         java.lang.annotation.Annotation[] anns = p.getAnnotations();
@@ -407,7 +408,7 @@ public final class ParamExtractor {
             } catch (RuntimeException ignored) {}
         }
         if (conv == null && element != raw) {
-            // collection-like : essayer sur l'élément
+            // collection-like: try on the element
             for (var pcp : pcps) {
                 try {
                     conv = pcp.getConverter(element, element, anns);
@@ -456,8 +457,8 @@ public final class ParamExtractor {
         return String.class;
     }
 
-    /** Décode %XX de path params comme {@link URLDecoder} mais sans remplacer
-     *  '+' par espace (path ≠ form-urlencoded). */
+    /** Decodes %XX in path params like {@link URLDecoder} but without
+     *  replacing '+' with a space (path ≠ form-urlencoded). */
     private static String decodePath(String s) {
         if (s == null || s.indexOf('%') < 0) return s;
         try { return URLDecoder.decode(s.replace("+", "%2B"), StandardCharsets.UTF_8); }
@@ -519,7 +520,7 @@ public final class ParamExtractor {
     }
     @SuppressWarnings("unchecked")
     private static Map<String, List<String>> readForm(CassiniHttpExchange request, boolean encoded) {
-        // On a deux caches distincts selon le mode (decoded vs @Encoded) — stockés en attributs exchange (M2h).
+        // Two separate caches depending on mode (decoded vs @Encoded) — stored in exchange attributes (M2h).
         if (encoded) {
             Map<String, List<String>> enc =
                     (Map<String, List<String>>) request.getAttribute(FieldInjector.ATTR_FORM_CACHE_ENCODED);

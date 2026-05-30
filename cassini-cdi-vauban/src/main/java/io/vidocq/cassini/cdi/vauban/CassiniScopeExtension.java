@@ -12,30 +12,31 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.ext.Provider;
 
 /**
- * {@link BuildCompatibleExtension} qui aligne Vauban sur la spec JAX-RS 4.0 §11.2.5 :
- * les classes annotées {@code @Path} ou {@code @Provider} doivent être discoverable
- * comme beans CDI managed même sans scope explicite. Sans cette BCE, un container
- * CDI générique comme Vauban ignore ces classes lors du bean discovery
- * (pas d'annotation bean-defining) et Cassini ne peut donc pas les retrouver
- * via {@link VaubanBeanProvider#getResourceClasses()}.
+ * {@link BuildCompatibleExtension} that aligns Vauban with JAX-RS 4.0 spec §11.2.5:
+ * classes annotated with {@code @Path} or {@code @Provider} must be discoverable
+ * as managed CDI beans even without an explicit scope. Without this BCE, a generic
+ * CDI container like Vauban ignores these classes during bean discovery (no
+ * bean-defining annotation) and Cassini cannot find them via
+ * {@link VaubanBeanProvider#getResourceClasses()}.
  *
  * <ul>
- *   <li>{@code @Path} sans scope → {@code @RequestScoped} (sémantique JAX-RS standard :
- *       une nouvelle instance de resource par requête)</li>
- *   <li>{@code @Provider} sans scope → {@code @Dependent} (singleton-équivalent côté
- *       JAX-RS : les providers sont par défaut singletons par classe — {@code @Dependent}
- *       permet l'instanciation à la demande sans surcharge de proxy normal-scope)</li>
+ *   <li>{@code @Path} without a scope → {@code @RequestScoped} (standard JAX-RS
+ *       semantics: a fresh resource instance per request)</li>
+ *   <li>{@code @Provider} without a scope → {@code @Dependent} (singleton-equivalent
+ *       on the JAX-RS side: providers default to per-class singletons —
+ *       {@code @Dependent} enables on-demand instantiation without the overhead of
+ *       a normal-scope proxy)</li>
  * </ul>
  *
- * <p>Cette BCE est le pendant Cassini de la règle CDI standard "bean-defining
- * annotation". Elle évite à Vauban (container CDI générique) de connaître
- * {@code jakarta.ws.rs} et garde la séparation des préoccupations propre.</p>
+ * <p>This BCE is the Cassini counterpart of the standard CDI "bean-defining
+ * annotation" rule. It spares Vauban (a generic CDI container) from knowing about
+ * {@code jakarta.ws.rs} and keeps the separation of concerns clean.</p>
  */
 public class CassiniScopeExtension implements BuildCompatibleExtension {
 
     private static final System.Logger LOG = System.getLogger(CassiniScopeExtension.class.getName());
 
-    /** {@code @Path} sans scope → {@code @RequestScoped}. */
+    /** {@code @Path} without a scope → {@code @RequestScoped}. */
     @SuppressWarnings("unused")
     @Enhancement(types = Object.class, withAnnotations = Path.class)
     public void addPathDefaultScope(ClassConfig clazz) {
@@ -47,11 +48,11 @@ public class CassiniScopeExtension implements BuildCompatibleExtension {
         }
     }
 
-    /** {@code @Provider} sans scope → {@code @Dependent}. */
+    /** {@code @Provider} without a scope → {@code @Dependent}. */
     @SuppressWarnings("unused")
     @Enhancement(types = Object.class, withAnnotations = Provider.class)
     public void addProviderDefaultScope(ClassConfig clazz) {
-        // Exclure les classes qui sont aussi @Path (déjà gérées par addPathDefaultScope)
+        // Skip classes that are also @Path (already handled by addPathDefaultScope)
         if (clazz.info().hasAnnotation(Path.class)) return;
         if (!hasAnyScope(clazz)) {
             clazz.addAnnotation(Dependent.class);

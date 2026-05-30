@@ -11,9 +11,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Service Todo — scope Application (singleton CDI).
+ * Todo service — Application scope (CDI singleton).
  *
- * <p>Toute la logique métier est ici ; les ressources REST restent légères.</p>
+ * <p>All business logic lives here; REST resources stay lightweight.</p>
  */
 @ApplicationScoped
 public class TodoService {
@@ -21,7 +21,7 @@ public class TodoService {
     private final Map<Long, Todo> store = new ConcurrentHashMap<>();
     private final AtomicLong counter = new AtomicLong(0);
 
-    /** Réinitialise le store (utilisé dans les tests). */
+    /** Resets the store (used in tests). */
     public void reset() {
         store.clear();
         counter.set(0);

@@ -13,10 +13,9 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
 
 /**
- * Implémentation {@link Providers} §10.2 — façade sur les registries
- * internes Cassini pour les providers MBR/MBW et ExceptionMapper.
- * Les ContextResolver ne sont pas encore enregistrés (getContextResolver
- * retourne null).
+ * {@link Providers} §10.2 implementation — facade over Cassini's internal
+ * registries for MBR/MBW and ExceptionMapper providers.
+ * ContextResolvers are not yet registered (getContextResolver returns null).
  */
 public final class CassiniProviders implements Providers {
 
@@ -55,10 +54,10 @@ public final class CassiniProviders implements Providers {
     @Override
     @SuppressWarnings({"rawtypes", "unchecked"})
     public <T> ContextResolver<T> getContextResolver(Class<T> contextType, MediaType mediaType) {
-        // §4.3 : sélectionner le ContextResolver dont @Produces matche le
-        // media type demandé. Si plusieurs matchent, choisir le plus spécifique
-        // (concret > wildcard subtype > wildcard type). Un CR sans @Produces
-        // équivaut à @Produces("*&#47;*").
+        // §4.3: select the ContextResolver whose @Produces matches the
+        // requested media type. If several match, pick the most specific
+        // (concrete > wildcard subtype > wildcard type). A CR without
+        // @Produces is equivalent to @Produces("*&#47;*").
         ContextResolver<?> best = null;
         int bestScore = -1;
         for (ContextResolver<?> cr : contextResolvers) {
@@ -68,14 +67,14 @@ public final class CassiniProviders implements Providers {
             jakarta.ws.rs.Produces prod = cr.getClass().getAnnotation(jakarta.ws.rs.Produces.class);
             int score = -1;
             if (prod == null || prod.value().length == 0) {
-                // Pas de @Produces → wildcard implicite, score 0
+                // No @Produces → implicit wildcard, score 0
                 score = 0;
             } else {
                 for (String mt : prod.value()) {
                     MediaType declared = io.vidocq.cassini.internal.MediaTypes.parse(mt);
                     if (mediaType == null
                             || io.vidocq.cassini.internal.MediaTypes.matches(declared, mediaType)) {
-                        // Spécificité : 2 pour type concret, 1 pour subtype concret
+                        // Specificity: 2 for concrete type, 1 for concrete subtype
                         int sp = (!declared.isWildcardType() ? 2 : 0)
                                 + (!declared.isWildcardSubtype() ? 1 : 0);
                         if (sp > score) score = sp;

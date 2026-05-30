@@ -21,17 +21,17 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
- * Implémentation de {@link AsyncInvoker} basée sur {@link CompletableFuture} +
- * virtual threads. Chaque méthode délègue à la méthode sync correspondante de
- * {@link CassiniInvocationBuilder} en l'exécutant dans un virtual thread.
+ * {@link AsyncInvoker} implementation backed by {@link CompletableFuture} +
+ * virtual threads. Each method delegates to the corresponding sync method on
+ * {@link CassiniInvocationBuilder}, executing it inside a virtual thread.
  *
- * <p>Le pipeline des filtres CLIENT (request/response) s'exécute entièrement
- * dans le thread async — les spans {@code kind=CLIENT} posés par
- * {@code HumboldtClientRequestFilter}/{@code HumboldtClientResponseFilter} sont
- * donc bien créés et terminés autour de chaque appel async.</p>
+ * <p>The CLIENT filter pipeline (request/response) runs entirely inside the
+ * async thread — {@code kind=CLIENT} spans produced by
+ * {@code HumboldtClientRequestFilter}/{@code HumboldtClientResponseFilter} are
+ * therefore created and closed around each async call.</p>
  *
- * <p>{@link InvocationCallback} : la méthode {@code completed(T)} est invoquée
- * en succès, {@code failed(Throwable)} en cas d'erreur HTTP I/O.</p>
+ * <p>{@link InvocationCallback}: {@code completed(T)} is invoked on success,
+ * {@code failed(Throwable)} on HTTP I/O error.</p>
  */
 final class CassiniAsyncInvoker implements AsyncInvoker {
 
@@ -46,11 +46,12 @@ final class CassiniAsyncInvoker implements AsyncInvoker {
     // ---- helpers ---------------------------------------------------------------------------
 
     /**
-     * Capture le {@code io.opentelemetry.context.Context} courant (si OTel est en
-     * classpath via {@link AsyncContextPropagator}) et le ré-attache dans le thread
-     * async. Sans ça, le span CLIENT généré par les filtres OTel humboldt-rest
-     * dans le thread async serait root et la chaîne SERVER → CLIENT → SERVER cible
-     * serait cassée. Cassini-client reste découplé d'OTel grâce à la réflexion.
+     * Captures the current {@code io.opentelemetry.context.Context} (when OTel is on
+     * the classpath, via {@link AsyncContextPropagator}) and re-attaches it inside
+     * the async thread. Without this, the CLIENT span produced by the OTel
+     * humboldt-rest filters inside the async thread would be a root span and the
+     * SERVER → CLIENT → SERVER chain would break. Cassini-client stays decoupled
+     * from OTel thanks to reflection.
      */
     private Future<Response> async(String method, Entity<?> entity) {
         Object ctx = AsyncContextPropagator.capture();
@@ -70,7 +71,7 @@ final class CassiniAsyncInvoker implements AsyncInvoker {
                 throwIfErrorStatus(r);
                 return (T) r.readEntity(type);
             } catch (jakarta.ws.rs.WebApplicationException wae) {
-                throw wae;  // Propage telle quelle pour que Future.get() expose via ExecutionException.getCause()
+                throw wae;  // Propagate as-is so Future.get() surfaces it via ExecutionException.getCause()
             } catch (Exception e) { throw new RuntimeException(e); }
         }, executor);
     }
@@ -90,9 +91,9 @@ final class CassiniAsyncInvoker implements AsyncInvoker {
     }
 
     /**
-     * Spec JAX-RS §5.6 — quand un type entity non-null est demandé et que la response
-     * a un status d'erreur (≥400), throw {@link jakarta.ws.rs.WebApplicationException}
-     * (ou sous-classe spécialisée selon le status code, ex: NotFoundException pour 404).
+     * JAX-RS spec §5.6 — when a non-null entity type is requested and the response
+     * carries an error status (≥400), throw {@link jakarta.ws.rs.WebApplicationException}
+     * (or a specialised subclass depending on the status code, e.g. NotFoundException for 404).
      */
     private static void throwIfErrorStatus(Response r) {
         int s = r.getStatus();

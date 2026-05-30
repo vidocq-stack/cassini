@@ -3,7 +3,7 @@ package io.vidocq.cassini.spi.gen;
 import java.util.List;
 
 /**
- * Stable façade exposed to generated resource adapters for resolving
+ * Stable facade exposed to generated resource adapters for resolving
  * {@code @Context} values and JAX-RS parameter values with coercion.
  *
  * <p>Generated adapters (emitted by APT or the runtime Class-File generator)
@@ -60,7 +60,7 @@ public interface InjectionSupport {
      */
     Object suspendedAsyncResponse();
 
-    // ---- M6b: inline-conversion façade methods ----
+    // ---- M6b: inline-conversion facade methods ----
 
     /**
      * Returns the raw (un-coerced) string values for the given parameter from the request source.

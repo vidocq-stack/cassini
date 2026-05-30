@@ -27,29 +27,28 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Adaptateur Arquillian qui déploie un {@link WebArchive} de test TCK REST
- * sur une instance {@link CassiniTestHarness}.
+ * Arquillian adapter that deploys a REST TCK {@link WebArchive} onto a
+ * {@link CassiniTestHarness} instance.
  *
- * <p>Stratégie : extraire les classes de {@code /WEB-INF/classes/}, filtrer
- * celles annotées {@code @Path} (ou implémentant une {@link Application}
- * déclarant des classes), les instancier par reflection (le classloader
- * de test les voit — le jar runtime TCK est sur le classpath) et les
- * charger dans le harness Cassini. Retourne un {@link ProtocolMetaData}
- * {@code Servlet 3.0} avec le baseUrl pour que le client TCK cible la
- * bonne URL.</p>
+ * <p>Strategy: extract classes from {@code /WEB-INF/classes/}, filter those
+ * annotated with {@code @Path} (or implementing an {@link Application} that
+ * declares classes), instantiate them by reflection (the test classloader
+ * sees them — the TCK runtime jar is on the classpath) and load them into
+ * the Cassini harness. Returns a {@code Servlet 3.0} {@link ProtocolMetaData}
+ * with the baseUrl so the TCK client targets the correct URL.</p>
  */
 public class VidocqCassiniDeployableContainer implements DeployableContainer<VidocqContainerConfiguration> {
 
     private VidocqContainerConfiguration config;
 
-    /** prefix → bridge handler (sans ContextStrippingHandler — géré par le dispatcher). */
+    /** prefix → bridge handler (without ContextStrippingHandler — handled by the dispatcher). */
     private final LinkedHashMap<String, Handler> contextHandlers = new LinkedHashMap<>();
-    /** archive name → prefix (pour undeploy). */
+    /** archive name → prefix (for undeploy). */
     private final LinkedHashMap<String, String> archivePrefixes = new LinkedHashMap<>();
-    /** archive name → baseUrl (pour ProtocolMetaData). */
+    /** archive name → baseUrl (for ProtocolMetaData). */
     private final LinkedHashMap<String, String> archiveBaseUrls = new LinkedHashMap<>();
 
-    /** Serveur partagé unique sur le port 8080. */
+    /** Single shared server on port 8080. */
     private Server sharedServer;
     private int sharedPort;
 
@@ -79,11 +78,11 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         }
     }
 
-    /** Redémarre le serveur partagé avec tous les contextes actuellement enregistrés. */
+    /** Restarts the shared server with all currently registered contexts. */
     private void restartSharedServer(int port) {
         stopSharedServer();
         if (contextHandlers.isEmpty()) return;
-        // Snapshot immutable pour le handler
+        // Immutable snapshot for the handler
         var snapshot = new LinkedHashMap<>(contextHandlers);
         Handler dispatcher = request -> {
             String path = request.path() == null ? "/" : request.path();
@@ -154,7 +153,7 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         List<String> registered = new java.util.ArrayList<>();
         List<String> providers = new java.util.ArrayList<>();
 
-        // Étape 1 : collecter toutes les classes du WAR.
+        // Step 1: collect all classes from the WAR.
         List<Class<?>> classes = new java.util.ArrayList<>();
         for (Node node : war.getContent().values()) {
             String path = node.getPath().get();
@@ -166,7 +165,7 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
             catch (Throwable t) { /* ignored */ }
         }
 
-        // Étape 2 : Application sub-class → getClasses()/getSingletons().
+        // Step 2: Application sub-class → getClasses()/getSingletons().
         Application appInstance = null;
         for (Class<?> c : classes) {
             if (Application.class.isAssignableFrom(c) && !Application.class.equals(c)) {
@@ -179,15 +178,15 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         boolean appFiltersResources = appInstance != null
                 && (!appClasses.isEmpty() || !appSingletons.isEmpty());
 
-        // Étape 3 : enregistrer resources + providers.
+        // Step 3: register resources + providers.
         if (appFiltersResources) {
             for (Class<?> c : appClasses) registerDiscovered(c, builder, registered, providers);
             for (Object s : appSingletons) registerSingleton(s, builder, registered, providers);
         } else {
             for (Class<?> c : classes) registerDiscovered(c, builder, registered, providers);
         }
-        // §10 : ServiceLoader (META-INF/services/) — Feature et DynamicFeature
-        // peuvent être déclarés ici en plus de Application.getClasses().
+        // §10: ServiceLoader (META-INF/services/) — Feature and DynamicFeature
+        // can be declared here in addition to Application.getClasses().
         java.util.Set<Class<?>> features = new java.util.LinkedHashSet<>();
         for (Class<?> c : (appFiltersResources ? appClasses : classes)) {
             if (jakarta.ws.rs.core.Feature.class.isAssignableFrom(c)) features.add(c);
@@ -210,7 +209,7 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
                 } catch (java.io.IOException ignored) {}
             }
         }
-        // §10 : invoquer Feature.configure() — register() délègue au builder.
+        // §10: invoke Feature.configure() — register() delegates to the builder.
         for (Class<?> c : features) {
             if (!c.isInterface() && !java.lang.reflect.Modifier.isAbstract(c.getModifiers())
                     && jakarta.ws.rs.core.Feature.class.isAssignableFrom(c)) {
@@ -222,8 +221,8 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
                     providers.add(c.getSimpleName());
                 } catch (ReflectiveOperationException ignored) {}
             } else if (jakarta.ws.rs.container.DynamicFeature.class.isAssignableFrom(c)) {
-                // DynamicFeature : enregistre comme provider — le bridge
-                // l'appelle par méthode resource au scan-time (M2g).
+                // DynamicFeature: register as a provider — the bridge calls
+                // it per resource method at scan time (M2g).
                 try {
                     Object instance = c.getDeclaredConstructor().newInstance();
                     builder.provider(instance);
@@ -233,13 +232,13 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         }
         if (appInstance != null) {
             builder.application(appInstance);
-            // §11.2.1 : @ApplicationPath sur la sous-classe Application
-            // s'ajoute au contextPath de l'archive comme servlet path.
+            // §11.2.1: @ApplicationPath on the Application subclass is
+            // appended to the archive contextPath as a servlet path.
             jakarta.ws.rs.ApplicationPath appPath =
                     appInstance.getClass().getAnnotation(jakarta.ws.rs.ApplicationPath.class);
             if (appPath != null && !appPath.value().isEmpty()) {
-                // §2.3.2 : @ApplicationPath value est URI-encodé, on décode
-                // pour matcher la forme transportée par le client (ex. %21 → !).
+                // §2.3.2: @ApplicationPath value is URI-encoded; decode it to
+                // match the form sent on the wire by the client (e.g. %21 → !).
                 String ap = java.net.URLDecoder.decode(appPath.value(),
                         java.nio.charset.StandardCharsets.UTF_8);
                 if (!ap.startsWith("/")) ap = "/" + ap;
@@ -248,14 +247,14 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
             }
         }
 
-        // Construire le bridge sans démarrer de serveur, puis enregistrer dans
-        // le dispatcher partagé. Le serveur partagé est (re)démarré pour prendre
-        // en compte tous les contextes connus.
+        // Build the bridge without starting a server, then register it in
+        // the shared dispatcher. The shared server is (re)started so that all
+        // known contexts are taken into account.
         CassiniTestHarness.Builder.BuiltHandler bh = builder.buildHandler();
         String actualPrefix = bh.prefix();
-        // §6.1 BASIC : si web.xml déclare une security-constraint avec
-        // <auth-method>BASIC</auth-method>, on wrappe le bridge avec un
-        // handler qui valide Authorization Basic et pose un AuthInfo.
+        // §6.1 BASIC: if web.xml declares a security-constraint with
+        // <auth-method>BASIC</auth-method>, wrap the bridge with a handler
+        // that validates Authorization Basic and sets an AuthInfo.
         io.vidocq.chappe.api.Handler bridgeOrAuth = bh.bridgeHandler();
         String authPattern = parseBasicAuthPattern(war, actualPrefix);
         if (authPattern != null) {
@@ -303,12 +302,12 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
             try { b.resourceClass(cls); registered.add(cls.getSimpleName()); }
             catch (RuntimeException ignored) {}
         } else if (cls.isAnnotationPresent(Provider.class) || isProviderClass(cls)) {
-            // §9.4 : Application.getClasses() peut renvoyer une classe qui
-            // implémente un type provider standard sans porter @Provider.
-            // §9.2 : un provider singleton peut avoir des constructeurs
-            // @Context-only — on choisit le plus large public et instancie
-            // avec null aux args. Les fields @Context seront ré-injectés
-            // per-request par injectProviderContexts().
+            // §9.4: Application.getClasses() may return a class that
+            // implements a standard provider type without carrying @Provider.
+            // §9.2: a singleton provider may have @Context-only constructors
+            // — pick the widest public one and instantiate it with null
+            // arguments. @Context fields will be re-injected per-request by
+            // injectProviderContexts().
             Object instance = instantiateProvider(cls);
             if (instance != null) {
                 b.provider(instance);
@@ -321,10 +320,10 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         try {
             return cls.getDeclaredConstructor().newInstance();
         } catch (ReflectiveOperationException ignored) {}
-        // Pas de constructeur no-arg : §4.5 sélectionne le ctor public avec
-        // le plus d'arguments dont chacun a un type @Context résolvable. Les
-        // valeurs sont des proxies dynamiques qui délèguent à la requête
-        // courante (ThreadLocal Invoker.CURRENT_REQUEST + CURRENT_MATCH).
+        // No no-arg constructor: §4.5 selects the public ctor with the most
+        // arguments, each having a resolvable @Context type. Values are
+        // dynamic proxies that delegate to the current request (ThreadLocal
+        // Invoker.CURRENT_REQUEST + CURRENT_MATCH).
         java.lang.reflect.Constructor<?> best = null;
         int bestParams = -1;
         for (var c : cls.getConstructors()) {
@@ -350,11 +349,11 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
     }
 
     /**
-     * Parse WEB-INF/web.xml du WAR : si une security-constraint avec
-     * url-pattern et auth-method=BASIC est trouvée, retourne un regex
-     * matchant les paths protégés (le contextPath du WAR ayant déjà été
-     * strippé par le dispatcher partagé en amont — donc on ne préfixe
-     * PAS la regex), sinon null.
+     * Parses WEB-INF/web.xml of the WAR: if a security-constraint with
+     * url-pattern and auth-method=BASIC is found, returns a regex matching
+     * the protected paths (the WAR contextPath has already been stripped
+     * upstream by the shared dispatcher — so the regex is NOT prefixed),
+     * otherwise null.
      */
     private static String parseBasicAuthPattern(WebArchive war, String prefix) {
         Node webXml = war.get("/WEB-INF/web.xml");
@@ -420,14 +419,15 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
             b.resource(instance); registered.add(cls.getSimpleName());
             return;
         }
-        // §9.4 : un singleton peut être un provider sans annotation @Provider
-        // s'il implémente un des types standards (MBR, MBW, ExceptionMapper,
-        // ContextResolver, Feature, DynamicFeature, Filter, Interceptor).
+        // §9.4: a singleton may be a provider without the @Provider
+        // annotation if it implements one of the standard types (MBR, MBW,
+        // ExceptionMapper, ContextResolver, Feature, DynamicFeature, Filter,
+        // Interceptor).
         if (cls.isAnnotationPresent(Provider.class) || isProviderType(instance)) {
             b.provider(instance); providers.add(cls.getSimpleName());
             return;
         }
-        // Singleton utilitaire sans type reconnu : on l'expose comme ressource.
+        // Utility singleton with no recognized type: expose it as a resource.
         b.resource(instance); registered.add(cls.getSimpleName());
     }
 
@@ -445,7 +445,7 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
                 || instance instanceof jakarta.ws.rs.core.Feature;
     }
 
-    /** §10 FeatureContext minimal : .register() délègue au harness builder. */
+    /** §10 minimal FeatureContext: .register() delegates to the harness builder. */
     private static final class CassiniFeatureContext implements jakarta.ws.rs.core.FeatureContext {
         private final CassiniTestHarness.Builder builder;
         private final List<String> registered;

@@ -17,12 +17,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /**
- * Implémentation {@link CassiniHttpExchange} adossée à un
- * {@link HttpExchange} JDK ({@code com.sun.net.httpserver}).
+ * {@link CassiniHttpExchange} implementation backed by a JDK
+ * {@link HttpExchange} ({@code com.sun.net.httpserver}).
  *
- * <p>Sert de transport "Mode A" autonome (zéro dépendance externe), utilisé
- * pour les unit tests Cassini-pur et comme fallback si Vauban ne peut pas
- * dépendre de Chappe.
+ * <p>Serves as a standalone "Mode A" transport (zero external dependency), used
+ * for Cassini-pure unit tests and as a fallback when Vauban cannot depend on
+ * Chappe.
  */
 public final class JdkHttpExchange implements CassiniHttpExchange {
 
@@ -81,9 +81,9 @@ public final class JdkHttpExchange implements CassiniHttpExchange {
     @Override public Object getAttribute(String key) { return attributes.get(key); }
 
     /**
-     * Ouvre le mode streaming chunked (M2i) : envoie les headers immédiatement
-     * avec longueur=0 (chunked transfer) et retourne un sink permettant
-     * d'écrire des events SSE au fil de l'eau.
+     * Opens chunked streaming mode (M2i): sends the headers immediately with
+     * length=0 (chunked transfer) and returns a sink that allows writing SSE
+     * events as they come.
      */
     @Override
     public CassiniStreamingSink openForStreaming(int status, Map<String, List<String>> headers) {

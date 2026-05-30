@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests best-match §3.7.2 : littéral > regex custom > regex par défaut.
+ * Tests best-match §3.7.2: literal > custom regex > default regex.
  */
 class UriRouterBestMatchTest {
 

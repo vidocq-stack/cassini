@@ -40,8 +40,8 @@ module io.vidocq.cassini.core {
     provides io.vidocq.cassini.spi.http.CassiniStack.BuilderFactory
             with io.vidocq.cassini.internal.CassiniStackBuilderFactory;
 
-    // jakarta.ws.rs.ext.RuntimeDelegate fourni par cassini-chappe ou
-    // cassini-jdk-http (transport-spécifique pour SeBootstrap). Cassini-core
-    // n'expose pas son CassiniRuntimeDelegate par ServiceLoader pour éviter
-    // la collision : c'est le rôle de l'adapter de transport actif.
+    // jakarta.ws.rs.ext.RuntimeDelegate provided by cassini-chappe or
+    // cassini-jdk-http (transport-specific for SeBootstrap). Cassini-core
+    // does not expose its CassiniRuntimeDelegate via ServiceLoader to avoid
+    // collision: this is the role of the active transport adapter.
 }

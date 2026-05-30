@@ -16,11 +16,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Registre des {@link ContainerRequestFilter} / {@link ContainerResponseFilter}
- * enregistrés manuellement ou via scan. Expose les listes triées par priorité.
+ * Registry of {@link ContainerRequestFilter} / {@link ContainerResponseFilter}
+ * registered manually or via scan. Exposes lists sorted by priority.
  *
- * <p>§6.2 : les request filters s'exécutent dans l'ordre de priorité croissant ;
- * les response filters dans l'ordre décroissant.</p>
+ * <p>§6.2: request filters run in ascending priority order;
+ * response filters run in descending order.</p>
  */
 public final class FilterRegistry {
 
@@ -35,8 +35,8 @@ public final class FilterRegistry {
     public void addDynamicFeature(jakarta.ws.rs.container.DynamicFeature df) { dynamicFeatures.add(df); }
     public List<jakarta.ws.rs.container.DynamicFeature> dynamicFeatures() { return dynamicFeatures; }
 
-    /** §6.5.5 : enregistre une instance comme filter/interceptor lié à
-     *  une méthode resource précise (binding dynamique). */
+    /** §6.5.5: registers an instance as a filter/interceptor bound to a
+     *  specific resource method (dynamic binding). */
     public void registerDynamic(Object instance, java.lang.reflect.Method target) {
         if (instance instanceof ContainerRequestFilter r) {
             requestFilters.add(FilterEntry.dynamicFor(r, target));
@@ -66,8 +66,8 @@ public final class FilterRegistry {
         responseFilters.sort(Comparator.comparingInt(FilterEntry<ContainerResponseFilter>::priority).reversed());
     }
 
-    /** Enregistre un filtre d'après son type, sans distinction request/response.
-     *  Si l'instance implémente les deux, elle est ajoutée aux deux listes. */
+    /** Registers a filter by its type, without distinguishing request/response.
+     *  If the instance implements both, it is added to both lists. */
     public void register(Object instance) {
         if (instance instanceof ContainerRequestFilter r) addRequest(r);
         if (instance instanceof ContainerResponseFilter r) addResponse(r);
@@ -78,9 +78,9 @@ public final class FilterRegistry {
         if (instance instanceof jakarta.ws.rs.container.DynamicFeature df) addDynamicFeature(df);
     }
 
-    /** §6.5.5 : exécute toutes les DynamicFeatures pour chaque resource method
-     *  donnée. Les filtres/interceptors enregistrés via featureContext.register
-     *  seront liés à cette méthode (binding dynamique). */
+    /** §6.5.5: runs all DynamicFeatures for each given resource method.
+     *  Filters/interceptors registered via featureContext.register will
+     *  be bound to that method (dynamic binding). */
     public void applyDynamicFeatures(java.util.Collection<io.vidocq.cassini.internal.ResourceMethod> routes) {
         if (dynamicFeatures.isEmpty() || routes.isEmpty()) return;
         for (var route : routes) {
@@ -102,7 +102,7 @@ public final class FilterRegistry {
 
     public void addParamConverterProvider(ParamConverterProvider p) {
         paramConverterProviders.add(p);
-        // §4.1.4 : tri par @Priority croissant (priorité haute = valeur basse).
+        // §4.1.4: sort by ascending @Priority (high priority = low value).
         paramConverterProviders.sort(Comparator.comparingInt(FilterRegistry::priorityOf));
     }
     public List<ParamConverterProvider> paramConverterProviders() { return paramConverterProviders; }
@@ -125,13 +125,13 @@ public final class FilterRegistry {
     public List<FilterEntry<ReaderInterceptor>> readerInterceptors() { return readerInterceptors; }
     public List<FilterEntry<WriterInterceptor>> writerInterceptors() { return writerInterceptors; }
 
-    /** §6.5.3 : filtre les reader interceptors par @NameBinding sur la méthode/classe cible. */
+    /** §6.5.3: filters reader interceptors by @NameBinding on the target method/class. */
     public List<FilterEntry<ReaderInterceptor>> readerInterceptorsFor(java.lang.reflect.Method m, Class<?> cls) {
         if (readerInterceptors.isEmpty()) return readerInterceptors;
         return readerInterceptors.stream().filter(e -> e.appliesTo(m, cls)).toList();
     }
 
-    /** §6.5.3 : filtre les writer interceptors par @NameBinding sur la méthode/classe cible. */
+    /** §6.5.3: filters writer interceptors by @NameBinding on the target method/class. */
     public List<FilterEntry<WriterInterceptor>> writerInterceptorsFor(java.lang.reflect.Method m, Class<?> cls) {
         if (writerInterceptors.isEmpty()) return writerInterceptors;
         return writerInterceptors.stream().filter(e -> e.appliesTo(m, cls)).toList();

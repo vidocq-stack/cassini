@@ -6,26 +6,26 @@ import io.vidocq.vauban.core.container.VaubanContainer;
 import java.util.concurrent.CountDownLatch;
 
 /**
- * Point d'entrée Cassini + Chappe + Vauban CDI avec UI HTML statique.
+ * Cassini + Chappe + Vauban CDI entry point with a static HTML UI.
  *
- * <p>Architecture :</p>
+ * <p>Architecture:</p>
  * <ul>
- *   <li><b>Vauban CDI</b> : démarre le container et s'enregistre comme
+ *   <li><b>Vauban CDI</b>: starts the container and registers itself as
  *       {@code CDI.current()} via {@code VaubanCDIProvider} (ServiceLoader).</li>
- *   <li><b>Cassini</b> : assemble la stack via {@code CassiniStack.builder()}
- *       qui auto-détecte le {@code BeanProvider} Vauban (ServiceLoader).</li>
- *   <li><b>Handler composite Chappe</b> : sert l'UI statique
- *       ({@code index.html}, {@code style.css}, {@code app.js}) sur {@code /}
- *       et délègue les routes {@code /api/*} à Cassini.</li>
+ *   <li><b>Cassini</b>: assembles the stack via {@code CassiniStack.builder()},
+ *       which auto-detects the Vauban {@code BeanProvider} (ServiceLoader).</li>
+ *   <li><b>Composite Chappe handler</b>: serves the static UI
+ *       ({@code index.html}, {@code style.css}, {@code app.js}) on {@code /}
+ *       and delegates the {@code /api/*} routes to Cassini.</li>
  * </ul>
  */
 public class Main {
 
     static void main(String[] args) throws Exception {
-        // scanClasspath() lit META-INF/vauban-beans.list, généré à la compile
-        // par vauban-maven-plugin (goal 'generate'). Fonctionne en JPMS named
-        // module — les ressources META-INF/ sont toujours accessibles via
-        // ClassLoader.getResources() peu importe le mode de packaging.
+        // scanClasspath() reads META-INF/vauban-beans.list, generated at compile
+        // time by vauban-maven-plugin (goal 'generate'). Works in JPMS named
+        // module — META-INF/ resources are always accessible via
+        // ClassLoader.getResources() regardless of the packaging mode.
         var container = VaubanContainer.builder()
                 .scanClasspath()
                 .build();
@@ -37,13 +37,13 @@ public class Main {
         server.start();
 
         System.out.println("┌──────────────────────────────────────────────┐");
-        System.out.println("│ Cassini + Vauban CDI — démarré sur port 8080 │");
+        System.out.println("│ Cassini + Vauban CDI — started on port 8080  │");
         System.out.println("├──────────────────────────────────────────────┤");
-        System.out.println("│  UI  → http://localhost:8080/                │");
-        System.out.println("│  API → http://localhost:8080/api/todos       │");
-        System.out.println("│        http://localhost:8080/api/greetings   │");
+        System.out.println("│  UI  -> http://localhost:8080/               │");
+        System.out.println("│  API -> http://localhost:8080/api/todos      │");
+        System.out.println("│         http://localhost:8080/api/greetings  │");
         System.out.println("└──────────────────────────────────────────────┘");
-        System.out.println("CTRL-C pour arrêter.");
+        System.out.println("CTRL-C to stop.");
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.stop();

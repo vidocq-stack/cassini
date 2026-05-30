@@ -13,12 +13,12 @@ import java.util.Locale;
 import java.util.List;
 
 /**
- * Implémentation {@link jakarta.ws.rs.core.Request} avec support
- * {@link #evaluatePreconditions} (§4.5) et {@link #selectVariant} (§5.1).
+ * {@link jakarta.ws.rs.core.Request} implementation with support for
+ * {@link #evaluatePreconditions} (§4.5) and {@link #selectVariant} (§5.1).
  */
 public final class CassiniRequest implements jakarta.ws.rs.core.Request {
 
-    /** Clé d'attribut exchange pour les dimensions Vary collectées par selectVariant (M2h). */
+    /** Exchange attribute key for the Vary dimensions collected by selectVariant (M2h). */
     public static final String ATTR_PENDING_VARY = "cassini.pending_vary";
 
     private final String method;
@@ -46,9 +46,9 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
         String acceptEnc = delegate.firstHeader("Accept-Encoding");
         boolean encWildcard = acceptEnc != null && containsWildcard(acceptEnc);
 
-        // §5.1 : dimensions de négociation = toutes celles présentes sur
-        // au moins un Variant. On set Vary pour ces dimensions, indépendamment
-        // de la sélection finale (le client doit savoir comment varier sa requête).
+        // §5.1: negotiation dimensions = all those present on at least one
+        // Variant. Vary is set for these dimensions regardless of the final
+        // selection (the client needs to know how to vary its request).
         boolean anyMedia = variants.stream().anyMatch(v -> v.getMediaType() != null);
         boolean anyLang = variants.stream().anyMatch(v -> v.getLanguage() != null);
         boolean anyEnc = variants.stream().anyMatch(v -> v.getEncoding() != null);
@@ -81,8 +81,8 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
         return best;
     }
 
-    /** RFC 7231 §5.3 : un Accept-Language/Encoding peut contenir "*" qui matche
-     *  toute valeur (ou comme part de liste, ex "en-US, *;q=0.5"). */
+    /** RFC 7231 §5.3: an Accept-Language/Encoding may contain "*" which matches
+     *  any value (or as part of a list, e.g. "en-US, *;q=0.5"). */
     private static boolean containsWildcard(String header) {
         for (String tok : header.split(",")) {
             int semi = tok.indexOf(';');

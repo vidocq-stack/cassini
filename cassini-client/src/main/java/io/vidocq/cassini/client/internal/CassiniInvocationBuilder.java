@@ -183,16 +183,16 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
     // ---- Internal -------------------------------------------------------------------------
 
     /**
-     * Pipeline d'invocation conforme JAX-RS §6.3 :
+     * Invocation pipeline conforming to JAX-RS §6.3:
      * <ol>
-     *   <li>Build {@link CassiniClientRequestContext} mutable depuis l'invocation builder</li>
-     *   <li>Exécuter chaque {@link ClientRequestFilter} (priorité ASC). Si {@code abortWith()}
-     *       est appelé → skip transport et construit la response context depuis la Response</li>
-     *   <li>Sinon : faire l'appel HTTP réel (URI / method / headers / body lus depuis le ctx
-     *       éventuellement muté par les filtres)</li>
-     *   <li>Build {@link CassiniClientResponseContext} (headers + status + body buffered)</li>
-     *   <li>Exécuter chaque {@link ClientResponseFilter} (priorité DESC)</li>
-     *   <li>Retourner {@link CassiniClientResponse} fabriquée depuis le ctx final</li>
+     *   <li>Build a mutable {@link CassiniClientRequestContext} from the invocation builder</li>
+     *   <li>Run each {@link ClientRequestFilter} (ASC priority). If {@code abortWith()} is
+     *       called → skip transport and build the response context from the Response</li>
+     *   <li>Otherwise: perform the real HTTP call (URI / method / headers / body read from
+     *       the context, possibly mutated by the filters)</li>
+     *   <li>Build {@link CassiniClientResponseContext} (headers + status + buffered body)</li>
+     *   <li>Run each {@link ClientResponseFilter} (DESC priority)</li>
+     *   <li>Return the {@link CassiniClientResponse} built from the final context</li>
      * </ol>
      */
     Response invoke(String method, Entity<?> entity) {

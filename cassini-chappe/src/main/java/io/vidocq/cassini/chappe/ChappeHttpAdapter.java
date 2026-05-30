@@ -12,20 +12,20 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 /**
- * Adapter HTTP Chappe → Cassini.
+ * Chappe to Cassini HTTP adapter.
  *
- * <p>Pour chaque requête HTTP reçue par Chappe :</p>
+ * <p>For each HTTP request received by Chappe:</p>
  * <ol>
- *   <li>convertit {@link Request}/{@link Response} Chappe ↔ {@link io.vidocq.cassini.spi.http.CassiniHttpExchange} ;</li>
- *   <li>délègue le dispatch à {@link CassiniHttpAdapter} ;</li>
- *   <li>copie le résultat collecté depuis {@link ChappeHttpExchange} dans la {@link Response} Chappe.</li>
+ *   <li>converts Chappe {@link Request}/{@link Response} to/from {@link io.vidocq.cassini.spi.http.CassiniHttpExchange};</li>
+ *   <li>delegates dispatch to {@link CassiniHttpAdapter};</li>
+ *   <li>copies the collected result from {@link ChappeHttpExchange} into the Chappe {@link Response}.</li>
  * </ol>
  */
 public final class ChappeHttpAdapter implements Handler {
 
     private static final System.Logger LOG = System.getLogger(ChappeHttpAdapter.class.getName());
 
-    /** Hook lifecycle : entre/sort du scope CDI ({@code @RequestScoped}) si fourni. */
+    /** Lifecycle hook: enters/exits the CDI scope ({@code @RequestScoped}) if provided. */
     @FunctionalInterface
     public interface Scoped {
         void runInScope(Runnable action);
@@ -45,10 +45,10 @@ public final class ChappeHttpAdapter implements Handler {
     }
 
     /**
-     * Chaque requête est traitée sur un virtual thread dédié (M2h).
-     * Cela garantit : (1) isolation des ScopedValues request-scope,
-     * (2) aucun starvation de platform thread si la resource method bloque
-     * sur I/O ou attend un CompletionStage.
+     * Each request is handled on a dedicated virtual thread (M2h).
+     * This guarantees: (1) isolation of request-scope ScopedValues,
+     * (2) no platform-thread starvation if the resource method blocks
+     * on I/O or waits on a CompletionStage.
      */
     @Override
     public Response handle(Request request) throws Exception {
@@ -85,7 +85,7 @@ public final class ChappeHttpAdapter implements Handler {
         });
         if (error[0] instanceof Exception ex) throw ex;
 
-        // Streaming SSE : Body.streaming(pis)
+        // SSE streaming: Body.streaming(pis)
         PipedInputStream streamingPis =
                 (PipedInputStream) exchange.getAttribute("cassini.streaming_pis");
         if (streamingPis != null) {

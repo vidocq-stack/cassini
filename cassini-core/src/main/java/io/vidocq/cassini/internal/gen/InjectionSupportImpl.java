@@ -137,7 +137,7 @@ public final class InjectionSupportImpl implements InjectionSupport {
                 io.vidocq.cassini.internal.CassiniAsyncResponseImpl.ATTR_KEY);
     }
 
-    // ---- M6b: inline-conversion façade methods ----
+    // ---- M6b: inline-conversion facade methods ----
 
     @Override
     public List<String> rawValues(ParamKind kind, String name, boolean encoded) {

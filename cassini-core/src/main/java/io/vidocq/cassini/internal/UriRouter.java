@@ -8,31 +8,31 @@ import java.util.Optional;
 
 
 /**
- * Routeur Cassini : sélection best-match JAX-RS 4.0 §3.7.2.
+ * Cassini router: best-match selection per JAX-RS 4.0 §3.7.2.
  *
- * <p>Au constructeur, les routes sont triées par spécificité décroissante :</p>
+ * <p>At construction, routes are sorted by decreasing specificity:</p>
  * <ol>
- *   <li>nombre de caractères littéraux (descendant)</li>
- *   <li>nombre total de groupes capturants (descendant)</li>
- *   <li>nombre de groupes à regex par défaut (descendant)</li>
+ *   <li>number of literal characters (descending)</li>
+ *   <li>total number of capturing groups (descending)</li>
+ *   <li>number of default-regex groups (descending)</li>
  * </ol>
  *
- * <p>Lors du routing, on parcourt cette liste triée et on retient le
- * premier template qui matche (et dont le verbe HTTP correspond).</p>
+ * <p>During routing, this sorted list is walked and the first matching
+ * template (with matching HTTP verb) is returned.</p>
  */
 public final class UriRouter {
 
-    // §3.7.2 : d'abord la spécificité du @Path racine (classe), puis celle
-    // du template combiné. Une sous-ressource @Path("resource/subresource")
-    // doit battre une méthode @Path("subresource") sur @Path("resource").
-    // En cas d'égalité, les routes directes (non-locatées) passent avant les
-    // routes issues d'un sub-resource locator (§3.7.2 Step 2c > Step 2d).
+    // §3.7.2: first the specificity of the root @Path (class), then that of
+    // the combined template. A sub-resource @Path("resource/subresource")
+    // must beat a method @Path("subresource") on @Path("resource").
+    // On ties, direct (non-located) routes come before routes from a
+    // sub-resource locator (§3.7.2 Step 2c > Step 2d).
     private static final Comparator<ResourceMethod> BY_SPECIFICITY =
             Comparator.comparingInt((ResourceMethod r) -> r.classPathLiterals()).reversed()
                     .thenComparing(Comparator.comparingInt((ResourceMethod r) -> r.template().literalChars()).reversed())
                     .thenComparing(Comparator.comparingInt((ResourceMethod r) -> r.template().totalCaptures()).reversed())
                     .thenComparing(Comparator.comparingInt(r -> r.template().defaultCaptures()))
-                    .thenComparing(r -> r.isLocated() ? 1 : 0); // routes directes avant locatées
+                    .thenComparing(r -> r.isLocated() ? 1 : 0); // direct routes before located ones
 
     private final List<ResourceMethod> routes;
 
@@ -47,22 +47,22 @@ public final class UriRouter {
         return all.isEmpty() ? Optional.empty() : Optional.of(all.get(0));
     }
 
-    /** Retourne tous les ResourceMethod qui matchent (verb, path).
-     *  L'Invoker utilise cette liste pour filtrer par @Consumes (Content-Type
-     *  requête) et @Produces (Accept header) §3.7.2. */
+    /** Returns all ResourceMethods that match (verb, path).
+     *  The Invoker uses this list to filter by @Consumes (request Content-Type)
+     *  and @Produces (Accept header) per §3.7.2. */
     public List<MatchResult> matchAll(String httpMethod, String path) {
         String normalized = normalize(path);
-        String p = stripMatrixParams(normalized); // chemin sans matrix params pour le matching
+        String p = stripMatrixParams(normalized); // path without matrix params for matching
         List<MatchResult> out = new ArrayList<>();
         for (ResourceMethod r : routes) {
             Optional<java.util.Map<String, java.util.List<String>>> params = r.template().match(p);
             if (params.isPresent() && (r.httpMethod().equals("*") || r.httpMethod().equalsIgnoreCase(httpMethod))) {
-                // rawParams : valeurs avec matrix params, pour PathSegment injection §3.2.
+                // rawParams: values with matrix params, for PathSegment injection §3.2.
                 Optional<java.util.Map<String, java.util.List<String>>> rawParams = r.template().match(normalized);
                 out.add(new MatchResult(r, params.get(), rawParams.orElse(params.get())));
             }
         }
-        // §3.3.5 : HEAD → GET fallback (body discard côté Bridge)
+        // §3.3.5: HEAD → GET fallback (body discarded by the Bridge)
         if (out.isEmpty() && "HEAD".equalsIgnoreCase(httpMethod)) {
             for (ResourceMethod r : routes) {
                 Optional<java.util.Map<String, java.util.List<String>>> params = r.template().match(p);
@@ -75,8 +75,8 @@ public final class UriRouter {
         return out;
     }
 
-    /** §3.7 : les matrix params (segments contenant ';') ne participent pas
-     *  au matching URI → on les strippe avant d'essayer les templates. */
+    /** §3.7: matrix params (segments containing ';') do not participate in
+     *  URI matching → strip them before trying templates. */
     static String stripMatrixParams(String path) {
         if (path == null || path.indexOf(';') < 0) return path;
         StringBuilder sb = new StringBuilder(path.length());

@@ -8,15 +8,15 @@ import java.util.Comparator;
 import java.util.ServiceLoader;
 
 /**
- * Facade de bootstrap Cassini — assemble les composants internes (router,
- * invoker, registries) et expose un {@link CassiniHttpAdapter} prêt à dispatcher.
+ * Cassini bootstrap facade — wires the internal components (router, invoker,
+ * registries) and exposes a {@link CassiniHttpAdapter} ready to dispatch.
  *
- * <p>Permet à {@code cassini-chappe}, {@code cassini-jdk-http} et aux modules
- * d'intégration DI (ex. {@code cassini-cdi-vauban}) de ne plus dépendre de
- * {@code cassini-core} directement : ils passent par la SPI publique
+ * <p>Lets {@code cassini-chappe}, {@code cassini-jdk-http} and DI-integration
+ * modules (e.g. {@code cassini-cdi-vauban}) avoid depending on
+ * {@code cassini-core} directly: they go through the public SPI of
  * {@code cassini-api}.
  *
- * <p>Exemple d'usage :
+ * <p>Usage example:
  * <pre>{@code
  * CassiniStack stack = CassiniStack.builder()
  *         .application(new MyApplication())
@@ -24,15 +24,14 @@ import java.util.ServiceLoader;
  * CassiniHttpAdapter adapter = stack.adapter();
  * }</pre>
  *
- * <p>Si un {@link BeanProvider.Factory} est enregistré via {@link ServiceLoader}
- * (ex. {@code cassini-cdi-vauban} sur le classpath), le {@link Builder} est
- * automatiquement préconfiguré avec le {@link BeanProvider} de plus haute
- * priorité. L'utilisateur peut neutraliser cela en passant explicitement
- * {@code beanProvider(null)}.</p>
+ * <p>If a {@link BeanProvider.Factory} is registered via {@link ServiceLoader}
+ * (e.g. {@code cassini-cdi-vauban} on the classpath), the {@link Builder} is
+ * automatically pre-configured with the highest-priority {@link BeanProvider}.
+ * Callers can disable this by passing {@code beanProvider(null)} explicitly.</p>
  */
 public interface CassiniStack {
 
-    /** L'adapter HTTP prêt à dispatcher des requêtes. */
+    /** The HTTP adapter ready to dispatch requests. */
     CassiniHttpAdapter adapter();
 
     static Builder builder() {
@@ -56,20 +55,20 @@ public interface CassiniStack {
         Builder application(Application app);
         Builder resourceFactory(ResourceFactory factory);
 
-        /** Ajoute une instance {@code @Provider} enregistrée manuellement. */
+        /** Registers a manually-supplied {@code @Provider} instance. */
         Builder provider(Object providerInstance);
 
         /**
-         * Configure le {@link BeanProvider} utilisé pour résoudre les ressources
-         * et providers managés. Si {@code null}, désactive tout BeanProvider
-         * (y compris celui découvert automatiquement par {@link CassiniStack#builder()}).
+         * Configures the {@link BeanProvider} used to resolve managed resources
+         * and providers. If {@code null}, disables every BeanProvider (including
+         * the one auto-discovered by {@link CassiniStack#builder()}).
          */
         Builder beanProvider(BeanProvider provider);
 
         CassiniStack build();
     }
 
-    /** SPI — implémentée par cassini-core via ServiceLoader. */
+    /** SPI — implemented by cassini-core via ServiceLoader. */
     interface BuilderFactory {
         Builder create();
     }

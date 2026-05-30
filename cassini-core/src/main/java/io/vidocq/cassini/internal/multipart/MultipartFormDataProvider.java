@@ -23,11 +23,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * §3.5.4 : MBR/MBW pour {@code List<EntityPart>} sur {@code multipart/form-data}.
+ * §3.5.4: MBR/MBW for {@code List<EntityPart>} over {@code multipart/form-data}.
  *
- * <p>Parser RFC 7578 minimal : pour chaque partie, lit les headers
- * {@code Content-Disposition} et {@code Content-Type}, puis le contenu jusqu'au
- * boundary suivant.</p>
+ * <p>Minimal RFC 7578 parser: for each part, reads the {@code Content-Disposition}
+ * and {@code Content-Type} headers, then the content up to the next boundary.</p>
  */
 @Consumes("multipart/form-data")
 @Produces("multipart/form-data")
@@ -79,14 +78,14 @@ public final class MultipartFormDataProvider
         if (boundary == null || boundary.isEmpty()) {
             boundary = "Boundary_" + UUID.randomUUID().toString().replace("-", "");
         }
-        // §3.5.4 : on force le Content-Type wire à inclure le boundary, peu
-        // importe la valeur initiale de mediaType — sans cela, le récepteur
-        // ne peut pas parser le body.
+        // §3.5.4: force the wire Content-Type to include the boundary,
+        // regardless of the initial mediaType value — without it, the
+        // receiver cannot parse the body.
         httpHeaders.putSingle("Content-Type", "multipart/form-data; boundary=" + boundary);
         write(parts, boundary, entityStream);
     }
 
-    /** RFC 7578 : sérialise les parts en multipart/form-data. */
+    /** RFC 7578: serializes parts as multipart/form-data. */
     static void write(List<EntityPart> parts, String boundary, OutputStream out) throws IOException {
         byte[] eol = {'\r', '\n'};
         byte[] dashBoundary = ("--" + boundary).getBytes(StandardCharsets.UTF_8);
@@ -126,7 +125,7 @@ public final class MultipartFormDataProvider
         out.write(eol);
     }
 
-    /** RFC 7578 : parse un body multipart/form-data en parts. */
+    /** RFC 7578: parses a multipart/form-data body into parts. */
     static List<EntityPart> parse(byte[] body, String boundary) throws IOException {
         List<EntityPart> out = new ArrayList<>();
         byte[] delim = ("--" + boundary).getBytes(StandardCharsets.UTF_8);
@@ -161,7 +160,7 @@ public final class MultipartFormDataProvider
                     try { ct = MediaType.valueOf(hvalue); } catch (RuntimeException ignored) {}
                 }
             }
-            // Content jusqu'au prochain boundary
+            // Content up to the next boundary
             int next = indexOf(body, delim, idx);
             if (next < 0) break;
             int contentEnd = next;

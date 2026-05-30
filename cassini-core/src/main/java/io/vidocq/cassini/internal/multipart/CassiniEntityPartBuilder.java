@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
-/** §3.5.4 : implémentation {@link EntityPart.Builder}. */
+/** §3.5.4: {@link EntityPart.Builder} implementation. */
 public final class CassiniEntityPartBuilder implements EntityPart.Builder {
 
     private final String name;
@@ -84,7 +84,7 @@ public final class CassiniEntityPartBuilder implements EntityPart.Builder {
             } catch (IOException e) { throw new IllegalArgumentException(e); }
             return this;
         }
-        // Fallback : toString → bytes
+        // Fallback: toString → bytes
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         try { bos.write(value.toString().getBytes(StandardCharsets.UTF_8)); }
         catch (IOException e) { throw new IllegalArgumentException(e); }

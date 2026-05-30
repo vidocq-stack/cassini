@@ -14,13 +14,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Test d'intégration : @ConfigProperty injecté dans une ressource JAX-RS Cassini
+ * Integration test: @ConfigProperty injected into a Cassini JAX-RS resource
  * via Ravel + CDI Vauban.
  *
- * <p>Valide que {@code ConfigDemoResource} reçoit ses propriétés depuis
+ * <p>Validates that {@code ConfigDemoResource} receives its properties from
  * {@code META-INF/microprofile-config.properties} via {@code ravel-cdi-vauban}.</p>
  */
-@DisplayName("Cassini + Ravel @ConfigProperty — intégration end-to-end")
+@DisplayName("Cassini + Ravel @ConfigProperty — end-to-end integration")
 class ConfigDemoResourceTest {
 
     private static ExampleServer server;
@@ -38,22 +38,22 @@ class ConfigDemoResourceTest {
     }
 
     @Test
-    @DisplayName("GET /config retourne le greeting configuré dans microprofile-config.properties")
+    @DisplayName("GET /config returns the greeting configured in microprofile-config.properties")
     void getConfigInfo_returnsConfiguredGreeting() throws Exception {
         var resp = http.send(
                 HttpRequest.newBuilder(URI.create(server.apiUrl() + "/config")).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
 
         assertEquals(200, resp.statusCode());
-        // Le greeting vient de microprofile-config.properties
+        // The greeting comes from microprofile-config.properties
         assertTrue(resp.body().contains("Ravel") || resp.body().contains("Hello"),
                 "Expected greeting from config, got: " + resp.body());
-        // La version est également injectée
+        // The version is also injected
         assertTrue(resp.body().contains("v"), "Expected version in response: " + resp.body());
     }
 
     @Test
-    @DisplayName("GET /config/details retourne les détails JSON de la configuration")
+    @DisplayName("GET /config/details returns the JSON configuration details")
     void getConfigDetails_returnsJsonWithConfiguredValues() throws Exception {
         var resp = http.send(
                 HttpRequest.newBuilder(URI.create(server.apiUrl() + "/config/details")).GET().build(),

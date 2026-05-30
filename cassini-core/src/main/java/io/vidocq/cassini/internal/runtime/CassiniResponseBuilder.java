@@ -18,10 +18,10 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Implémentation de {@link jakarta.ws.rs.core.Response.ResponseBuilder}.
- * Couvre les setters fréquents (status / entity / header / type / location
- * / cookie / allow / cacheControl). Les variants et links complets
- * arriveront avec un M2e-2 si le TCK les réclame.
+ * {@link jakarta.ws.rs.core.Response.ResponseBuilder} implementation.
+ * Covers the common setters (status / entity / header / type / location
+ * / cookie / allow / cacheControl). Full variants and links will arrive
+ * with M2e-2 if the TCK requires them.
  */
 public final class CassiniResponseBuilder extends Response.ResponseBuilder {
 
@@ -33,8 +33,8 @@ public final class CassiniResponseBuilder extends Response.ResponseBuilder {
     private final MultivaluedMap<String, Object> headers = new MultivaluedHashMap<>();
 
     @Override public Response build() {
-        // §3.5 : statut par défaut = 200 si entity != null, 204 sinon. Si
-        // l'appelant a explicitement positionné un statut, on le respecte.
+        // §3.5: default status = 200 if entity != null, 204 otherwise. If
+        // the caller explicitly set a status, honor it.
         int s = statusExplicit ? status : (entity == null ? 204 : 200);
         return new CassiniResponse(s, reason, entity, annotations, copy(headers));
     }
@@ -156,7 +156,7 @@ public final class CassiniResponseBuilder extends Response.ResponseBuilder {
         return this;
     }
 
-    /** ThreadLocal baseUri pour résoudre les URIs relatives §6.7. */
+    /** ThreadLocal baseUri to resolve relative URIs per §6.7. */
     private static final ThreadLocal<URI> BASE_URI = new ThreadLocal<>();
     public static void setBaseUri(URI base) { BASE_URI.set(base); }
     public static void clearBaseUri() { BASE_URI.remove(); }

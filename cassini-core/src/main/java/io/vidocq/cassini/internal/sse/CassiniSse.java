@@ -10,11 +10,11 @@ import jakarta.ws.rs.sse.SseEventSink;
 import java.lang.reflect.Type;
 
 /**
- * Implémentation Cassini de {@link Sse} (factory côté serveur).
+ * Cassini implementation of {@link Sse} (server-side factory).
  *
- * <p>Implémentation minimale pour passer le TCK §11 :
- *  {@link #newEventBuilder()} produit un {@link CassiniOutboundSseEventBuilder} ;
- *  {@link #newBroadcaster()} renvoie un broadcaster en mémoire single-thread.</p>
+ * <p>Minimal implementation to pass the TCK §11:
+ *  {@link #newEventBuilder()} produces a {@link CassiniOutboundSseEventBuilder};
+ *  {@link #newBroadcaster()} returns a single-threaded in-memory broadcaster.</p>
  */
 public final class CassiniSse implements Sse {
 
@@ -38,7 +38,7 @@ public final class CassiniSse implements Sse {
         return new CassiniSseBroadcaster();
     }
 
-    /** Représentation immuable d'un OutboundSseEvent. */
+    /** Immutable representation of an OutboundSseEvent. */
     static final class CassiniOutboundSseEvent implements OutboundSseEvent {
         private final String id;
         private final String name;

@@ -10,16 +10,16 @@ import java.net.InetSocketAddress;
 import java.util.ArrayList;
 
 /**
- * Adapter HTTP basé sur {@link HttpServer} (JDK pur).
+ * HTTP adapter based on {@link HttpServer} (pure JDK).
  *
- * <p>Sert de transport autonome pour Cassini en Mode A, sans dépendance
- * externe. Utilisé pour les unit tests Cassini-pur et comme transport de
- * référence si l'utilisateur ne souhaite pas dépendre de Chappe.
+ * <p>Serves as a standalone Mode A transport for Cassini, with no external
+ * dependency. Used for Cassini-pure unit tests and as a reference transport
+ * when users do not want to depend on Chappe.
  *
- * <p>Chaque requête est exécutée sur un virtual thread via
+ * <p>Each request is executed on a virtual thread via
  * {@link java.util.concurrent.Executors#newVirtualThreadPerTaskExecutor()} —
- * configurer l'executor du {@link HttpServer} en conséquence (ou utiliser
- * {@link #serve(int)} qui le fait automatiquement).
+ * configure the {@link HttpServer} executor accordingly (or use
+ * {@link #serve(int)} which does it automatically).
  */
 public final class JdkHttpAdapter {
 
@@ -35,7 +35,7 @@ public final class JdkHttpAdapter {
         this.contextPath = contextPath == null ? "" : contextPath;
     }
 
-    /** Crée un {@link HttpHandler} JDK qui dispatche vers Cassini. */
+    /** Creates a JDK {@link HttpHandler} that dispatches to Cassini. */
     public HttpHandler asHandler() {
         return jdkExchange -> {
             JdkHttpExchange exchange = new JdkHttpExchange(jdkExchange, contextPath);
@@ -67,7 +67,7 @@ public final class JdkHttpAdapter {
         }
     }
 
-    /** Démarre un {@link HttpServer} JDK sur {@code port} et bind l'adapter à {@code contextPath}. */
+    /** Starts a JDK {@link HttpServer} on {@code port} and binds the adapter to {@code contextPath}. */
     public HttpServer serve(int port) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext(contextPath.isEmpty() ? "/" : contextPath, asHandler());
@@ -77,7 +77,7 @@ public final class JdkHttpAdapter {
     }
 
     /**
-     * Démarre un serveur avec une {@link Application} JAX-RS bootstrappée via
+     * Starts a server with a JAX-RS {@link Application} bootstrapped via
      * {@link CassiniStack}.
      */
     public static HttpServer serve(int port, jakarta.ws.rs.core.Application app)

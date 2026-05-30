@@ -9,21 +9,21 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Template URI JAX-RS 4.0 (§3.1.1 / §3.7).
+ * JAX-RS 4.0 URI template (§3.1.1 / §3.7).
  *
- * <p>Supporte :</p>
+ * <p>Supports:</p>
  * <ul>
- *   <li>segments littéraux : {@code /foo/bar}</li>
- *   <li>paramètres par défaut : {@code /{id}} (regex {@code [^/]+})</li>
- *   <li>paramètres contraints : {@code /{id:[0-9]+}} ou {@code /{path:.*}}</li>
+ *   <li>literal segments: {@code /foo/bar}</li>
+ *   <li>default parameters: {@code /{id}} (regex {@code [^/]+})</li>
+ *   <li>constrained parameters: {@code /{id:[0-9]+}} or {@code /{path:.*}}</li>
  * </ul>
  *
- * <p>Expose les trois métriques de spécificité utilisées pour la sélection
- * best-match (§3.7.2) :</p>
+ * <p>Exposes the three specificity metrics used for best-match selection
+ * (§3.7.2):</p>
  * <ol>
- *   <li>{@link #literalChars()} — caractères non capturés (littéraux)</li>
- *   <li>{@link #totalCaptures()} — nombre total de groupes capturants</li>
- *   <li>{@link #defaultCaptures()} — groupes capturants utilisant le regex par défaut</li>
+ *   <li>{@link #literalChars()} — uncaptured (literal) characters</li>
+ *   <li>{@link #totalCaptures()} — total number of capturing groups</li>
+ *   <li>{@link #defaultCaptures()} — capturing groups using the default regex</li>
  * </ol>
  */
 public final class UriTemplate {
@@ -32,11 +32,11 @@ public final class UriTemplate {
 
     private final String template;
     private final Pattern pattern;
-    /** Noms logiques des paramètres (dans l'ordre, avec doublons). */
+    /** Logical parameter names (in order, with duplicates). */
     private final List<String> paramNames;
-    /** Noms de groupes capturants dans le regex (uniques, parallèles à paramNames). */
+    /** Capturing group names in the regex (unique, parallel to paramNames). */
     private final List<String> groupNames;
-    /** Noms logiques dédupliqués (ordre de première apparition). */
+    /** Deduplicated logical names (order of first appearance). */
     private final List<String> uniqParamNames;
     private final int literalChars;
     private final int totalCaptures;
@@ -58,10 +58,10 @@ public final class UriTemplate {
     public static UriTemplate compile(String template) {
         String t = normalize(template);
         StringBuilder regex = new StringBuilder("^");
-        List<String> names = new ArrayList<>();   // logiques, avec doublons
-        List<String> groups = new ArrayList<>();  // noms de groupe regex, uniques
-        // §3.7 : même paramètre peut apparaître plusieurs fois (ex. /{id}/{id}/{id}).
-        // Chaque occurrence capture indépendamment pour alimenter List<String> @PathParam.
+        List<String> names = new ArrayList<>();   // logical, with duplicates
+        List<String> groups = new ArrayList<>();  // regex group names, unique
+        // §3.7: the same parameter may appear several times (e.g. /{id}/{id}/{id}).
+        // Each occurrence captures independently to feed List<String> @PathParam.
         java.util.Map<String, Integer> seen = new java.util.HashMap<>();
         int literals = 0;
         int total = 0;
@@ -88,7 +88,7 @@ public final class UriTemplate {
                 if (name.isEmpty()) throw new IllegalArgumentException("Empty param name in template: " + template);
                 seen.merge(name, 1, Integer::sum);
                 names.add(name);
-                // Nom de groupe positionnel p0, p1, p2… — valide en Java regex (alphanum seul)
+                // Positional group name p0, p1, p2… — valid in Java regex (alphanum only)
                 String groupName = "p" + total;
                 groups.add(groupName);
                 total++;
@@ -107,7 +107,7 @@ public final class UriTemplate {
                 literals, total, defaults);
     }
 
-    /** Retourne les path params multi-valués (plusieurs occurrences du même nom → List). */
+    /** Returns multi-valued path params (multiple occurrences of the same name → List). */
     public Optional<Map<String, List<String>>> match(String path) {
         Matcher m = pattern.matcher(path);
         if (!m.matches()) return Optional.empty();

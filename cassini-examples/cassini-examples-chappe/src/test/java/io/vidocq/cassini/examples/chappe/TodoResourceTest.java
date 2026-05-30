@@ -73,7 +73,7 @@ class TodoResourceTest {
     @Test
     @Order(3)
     void getTodo() throws Exception {
-        // Créer d'abord
+        // Create first
         http.send(
                 HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos"))
                         .header("Content-Type", "application/json")
@@ -106,7 +106,7 @@ class TodoResourceTest {
     @Test
     @Order(5)
     void updateTodo() throws Exception {
-        // Créer
+        // Create
         http.send(
                 HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos"))
                         .header("Content-Type", "application/json")
@@ -115,7 +115,7 @@ class TodoResourceTest {
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
 
-        // Mettre à jour
+        // Update
         var resp = http.send(
                 HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos/1"))
                         .header("Content-Type", "application/json")
@@ -132,7 +132,7 @@ class TodoResourceTest {
     @Test
     @Order(6)
     void deleteTodo() throws Exception {
-        // Créer
+        // Create
         http.send(
                 HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos"))
                         .header("Content-Type", "application/json")
@@ -141,7 +141,7 @@ class TodoResourceTest {
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
 
-        // Supprimer
+        // Delete
         var del = http.send(
                 HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos/1"))
                         .DELETE().build(),
@@ -149,7 +149,7 @@ class TodoResourceTest {
 
         assertEquals(204, del.statusCode());
 
-        // Vérifier qu'il n'existe plus
+        // Verify it no longer exists
         var get = http.send(
                 HttpRequest.newBuilder(URI.create(server.baseUrl() + "/todos/1"))
                         .GET().build(),

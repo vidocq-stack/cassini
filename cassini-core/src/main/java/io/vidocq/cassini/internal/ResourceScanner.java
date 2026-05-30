@@ -20,8 +20,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Scanne les classes annotées {@code @Path} pour produire la liste des
- * {@link ResourceMethod} adressables.
+ * Scans classes annotated {@code @Path} to produce the list of addressable
+ * {@link ResourceMethod}s.
  */
 public final class ResourceScanner {
 
@@ -43,19 +43,19 @@ public final class ResourceScanner {
             Set<String> classConsumes = consumes(cls.getAnnotation(Consumes.class));
 
             for (Method m : collectInheritedMethods(cls)) {
-                // §3.3.1 : une méthode de ressource doit être publique.
+                // §3.3.1: a resource method must be public.
                 if (!java.lang.reflect.Modifier.isPublic(m.getModifiers())) continue;
                 String verb = resolveHttpMethod(m);
                 Path sub = m.getAnnotation(Path.class);
-                // Sub-resource locator §3.4.1 : @Path sur méthode SANS verbe HTTP
-                // → la méthode retourne une instance dont on scanne les routes
-                //   en préfixant par le path courant + @Path(method).
+                // Sub-resource locator §3.4.1: @Path on method WITHOUT HTTP verb
+                // → the method returns an instance whose routes we scan,
+                //   prefixed by the current path + @Path(method).
                 if (verb == null) {
                     if (sub == null) continue;
                     Class<?> returnCls = m.getReturnType();
                     if (returnCls == void.class || returnCls == null) continue;
-                    // §3.4.2 : un locator peut retourner Class<T> — on déballe
-                    // T via le type générique pour scanner ses @Path.
+                    // §3.4.2: a locator may return Class<T> — unwrap T via
+                    // the generic type to scan its @Path.
                     if (returnCls == Class.class
                             && m.getGenericReturnType() instanceof java.lang.reflect.ParameterizedType pt
                             && pt.getActualTypeArguments().length == 1
@@ -63,14 +63,14 @@ public final class ResourceScanner {
                         returnCls = argCls;
                     }
                     String locatorPath = combine(basePath, normalize(sub.value()));
-                    // Héritage @Produces/@Consumes : locator méthode > classe.
+                    // @Produces/@Consumes inheritance: locator method > class.
                     Set<String> locatorProduces = produces(m.getAnnotation(Produces.class));
                     Set<String> locatorConsumes = consumes(m.getAnnotation(Consumes.class));
                     Set<String> inhProd = locatorProduces.isEmpty() ? classProduces : locatorProduces;
                     Set<String> inhCons = locatorConsumes.isEmpty() ? classConsumes : locatorConsumes;
                     m.setAccessible(true);
-                    // §3.4.1 : si le type de retour est Response, le locator EST le handler
-                    // terminal — on crée une route directe "*" (toutes méthodes HTTP).
+                    // §3.4.1: if the return type is Response, the locator IS the terminal
+                    // handler — create a direct route "*" (all HTTP methods).
                     if (jakarta.ws.rs.core.Response.class.isAssignableFrom(returnCls)) {
                         out.add(new ResourceMethod(cls, m, "*", UriTemplate.compile(locatorPath),
                                 inhProd, inhCons, null, null, classLits));
@@ -95,18 +95,17 @@ public final class ResourceScanner {
     }
 
     /**
-     * §3.6 : les annotations JAX-RS portées par une super-classe ou une
-     * interface sont héritées. On collecte les méthodes et on remplace
-     * chacune par sa version la plus dérivée portant au moins une
-     * annotation JAX-RS reconnue.
+     * §3.6: JAX-RS annotations carried by a super-class or an interface are
+     * inherited. Collect methods and replace each with its most derived
+     * version that carries at least one recognized JAX-RS annotation.
      */
     private static java.util.List<Method> collectInheritedMethods(Class<?> cls) {
         java.util.LinkedHashMap<String, Method> merged = new java.util.LinkedHashMap<>();
-        // 1. méthodes déclarées directement
+        // 1. directly declared methods
         for (Method m : cls.getDeclaredMethods()) {
             merged.put(signature(m), effectiveMethod(m, cls));
         }
-        // 2. méthodes de la hiérarchie héritées (super-classes + interfaces)
+        // 2. inherited methods from the hierarchy (super-classes + interfaces)
         for (Method m : cls.getMethods()) {
             if (m.getDeclaringClass() == Object.class) continue;
             String sig = signature(m);
@@ -117,19 +116,19 @@ public final class ResourceScanner {
         return new java.util.ArrayList<>(merged.values());
     }
 
-    /** Signature = nom + types de param (ignore le type de retour). */
+    /** Signature = name + param types (ignores return type). */
     private static String signature(Method m) {
         StringBuilder sb = new StringBuilder(m.getName()).append('(');
         for (Class<?> p : m.getParameterTypes()) sb.append(p.getName()).append(',');
         return sb.append(')').toString();
     }
 
-    /** Retourne la méthode la plus dérivée dans la hiérarchie de {@code cls}
-     *  correspondant à la même signature que {@code m}, en priorisant celle
-     *  qui porte une annotation JAX-RS (héritage §3.6). */
+    /** Returns the most derived method in the hierarchy of {@code cls}
+     *  matching the same signature as {@code m}, prioritizing one carrying
+     *  a JAX-RS annotation (inheritance §3.6). */
     private static Method effectiveMethod(Method m, Class<?> cls) {
         if (hasJaxrsAnnotation(m)) return m;
-        // Remonter super-classes
+        // Walk up super-classes
         Class<?> sup = cls.getSuperclass();
         while (sup != null && sup != Object.class) {
             try {
@@ -138,7 +137,7 @@ public final class ResourceScanner {
             } catch (NoSuchMethodException ignored) {}
             sup = sup.getSuperclass();
         }
-        // Remonter interfaces
+        // Walk up interfaces
         for (Class<?> iface : cls.getInterfaces()) {
             try {
                 Method parent = iface.getDeclaredMethod(m.getName(), m.getParameterTypes());
@@ -155,7 +154,7 @@ public final class ResourceScanner {
         return false;
     }
 
-    /** Compte les caractères littéraux hors {templates} dans un path. */
+    /** Counts literal characters outside {templates} in a path. */
     private static int countLiterals(String path) {
         if (path == null) return 0;
         int n = 0; int depth = 0;
@@ -183,9 +182,9 @@ public final class ResourceScanner {
         return null;
     }
 
-    /** §3.4.1 : profondeur max pour les sub-resource locators récursifs.
-     *  Le TCK recursiveResourceLocatorTest envoie 10 segments imbriqués —
-     *  on prend une marge confortable. */
+    /** §3.4.1: max depth for recursive sub-resource locators.
+     *  The TCK recursiveResourceLocatorTest sends 10 nested segments —
+     *  take a comfortable margin. */
     private static final int MAX_RECURSIVE_DEPTH = 12;
 
     private static void scanLocatorType(Class<?> cls, String basePath,
@@ -194,22 +193,22 @@ public final class ResourceScanner {
                                         int rootClassLiterals,
                                         java.util.Set<Class<?>> visited, List<ResourceMethod> out) {
         if (cls == null) return;
-        // §3.4.1 : un sub-resource locator peut retourner Object — son type
-        // effectif n'est connu qu'au runtime. On émet une paire de routes
-        // catch-all qui déclenchent le dispatch dynamique côté Invoker :
-        //   - basePath           → match exact (sous-ressource sans sous-segments)
-        //   - basePath/{__rest:.*} → match avec sous-segments propagés
+        // §3.4.1: a sub-resource locator may return Object — its effective
+        // type is only known at runtime. Emit a pair of catch-all routes
+        // that trigger dynamic dispatch in the Invoker:
+        //   - basePath           → exact match (sub-resource without sub-segments)
+        //   - basePath/{__rest:.*} → match with propagated sub-segments
         if (cls == Object.class) {
             emitDynamicLocatorRoute(basePath, inheritedProduces, inheritedConsumes,
                     rootBeanClass, locatorChain, rootClassLiterals, out);
             return;
         }
         if (!visited.add(cls)) {
-            // §3.4.1 : un locator récursif (cls retourne la même classe) doit
-            // pouvoir matcher une URI imbriquée. On autorise jusqu'à
-            // MAX_RECURSIVE_DEPTH niveaux uniquement si le dernier locator
-            // appelé déclare le même type que cls (vraie auto-récursion),
-            // pas une simple revisite via une autre branche.
+            // §3.4.1: a recursive locator (cls returns the same class) must
+            // be able to match a nested URI. Allow up to MAX_RECURSIVE_DEPTH
+            // levels only if the last invoked locator declares the same type
+            // as cls (true self-recursion), not a mere revisit via another
+            // branch.
             int depth = 0;
             for (Method m : locatorChain) if (m.getDeclaringClass() == cls) depth++;
             if (depth >= MAX_RECURSIVE_DEPTH) return;
@@ -226,7 +225,7 @@ public final class ResourceScanner {
             String verb = resolveHttpMethod(m);
             Path sub = m.getAnnotation(Path.class);
             if (verb == null) {
-                // Sous-locator de niveau N+1 : §3.4.1 récursion
+                // Sub-locator at level N+1: §3.4.1 recursion
                 if (sub == null) continue;
                 Class<?> nestedReturn = m.getReturnType();
                 if (nestedReturn == void.class || nestedReturn == null) continue;
@@ -260,10 +259,10 @@ public final class ResourceScanner {
         }
     }
 
-    /** §3.4.1 : émet 2 routes catch-all (path exact + sous-path) avec
-     *  {@code dynamicLocator=true} pour signaler à l'{@link Invoker} qu'il
-     *  doit invoquer la chaîne de locators puis scanner la classe effective
-     *  de l'instance retournée. La méthode finale est résolue au runtime. */
+    /** §3.4.1: emits 2 catch-all routes (exact path + sub-path) with
+     *  {@code dynamicLocator=true} to signal to the {@link Invoker} that it
+     *  must invoke the locator chain then scan the effective class of the
+     *  returned instance. The final method is resolved at runtime. */
     private static void emitDynamicLocatorRoute(String basePath,
                                                 Set<String> inheritedProduces, Set<String> inheritedConsumes,
                                                 Class<?> rootBeanClass, java.util.List<Method> locatorChain,
@@ -271,12 +270,12 @@ public final class ResourceScanner {
         if (locatorChain == null || locatorChain.isEmpty() || rootBeanClass == null) return;
         Method last = locatorChain.get(locatorChain.size() - 1);
         java.util.List<Method> chain = java.util.List.copyOf(locatorChain);
-        // Variante 1 : path exact (ex : GET /resource/l2locator → MainResourceLocator.get())
+        // Variant 1: exact path (e.g. GET /resource/l2locator → MainResourceLocator.get())
         out.add(new ResourceMethod(Object.class, last, "*",
                 UriTemplate.compile(basePath),
                 inheritedProduces, inheritedConsumes,
                 rootBeanClass, chain, rootClassLiterals, true));
-        // Variante 2 : path + sous-segments (ex : DELETE /resource/l2locator/l2locator)
+        // Variant 2: path + sub-segments (e.g. DELETE /resource/l2locator/l2locator)
         String wildcardPath = combine(basePath, "/{__rest:.*}");
         out.add(new ResourceMethod(Object.class, last, "*",
                 UriTemplate.compile(wildcardPath),

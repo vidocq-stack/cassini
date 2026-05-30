@@ -8,7 +8,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 
 /**
- * Ressource de salutation — {@code @ApplicationScoped} pour l'intégration CDI.
+ * Greeting resource — {@code @ApplicationScoped} for CDI integration.
  */
 @ApplicationScoped
 @Path("/greetings")

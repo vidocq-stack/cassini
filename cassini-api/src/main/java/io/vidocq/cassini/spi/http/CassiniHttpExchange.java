@@ -9,16 +9,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Abstraction de la requête/réponse HTTP en cours, exposée par un transport
- * (Chappe, JDK HttpServer, etc.) au runtime Cassini.
+ * Abstraction of the in-flight HTTP request/response, exposed by a transport
+ * (Chappe, JDK HttpServer, etc.) to the Cassini runtime.
  *
- * <p>Le contrat est délibérément minimal : Cassini ne dépend d'aucun moteur HTTP
- * particulier. Toute la logique JAX-RS (routing, providers, filters, interceptors)
- * est portée par {@code cassini-core} et opère sur cette interface.
+ * <p>The contract is deliberately minimal: Cassini does not depend on any
+ * particular HTTP engine. All JAX-RS logic (routing, providers, filters,
+ * interceptors) is carried by {@code cassini-core} and operates on this
+ * interface.
  *
- * <p><b>Cycle de vie</b> : un exchange est valide pour la durée d'un dispatch.
- * Les headers et le statut sont lus juste avant l'écriture du body. L'output
- * stream est consommé une seule fois.
+ * <p><b>Lifecycle</b>: an exchange is valid for the duration of one dispatch.
+ * Headers and status are read just before the body is written. The output
+ * stream is consumed exactly once.
  */
 public interface CassiniHttpExchange {
 
@@ -26,12 +27,12 @@ public interface CassiniHttpExchange {
 
     URI requestUri();
 
-    /** URI brute non-décodée — pour préserver l'encoding original (cf. JAX-RS §3.7). */
+    /** Raw, un-decoded URI — preserves the original encoding (cf. JAX-RS §3.7). */
     String requestUriRaw();
 
     Map<String, List<String>> requestHeaders();
 
-    /** Lookup case-insensitive d'un header — retourne {@code null} si absent. */
+    /** Case-insensitive header lookup — returns {@code null} if absent. */
     default String firstHeader(String name) {
         for (var e : requestHeaders().entrySet()) {
             if (e.getKey().equalsIgnoreCase(name)) {
@@ -42,7 +43,7 @@ public interface CassiniHttpExchange {
         return null;
     }
 
-    /** Lookup case-insensitive — retourne une liste vide si absent. */
+    /** Case-insensitive lookup — returns an empty list if absent. */
     default List<String> headers(String name) {
         for (var e : requestHeaders().entrySet()) {
             if (e.getKey().equalsIgnoreCase(name)) {
@@ -52,7 +53,7 @@ public interface CassiniHttpExchange {
         return List.of();
     }
 
-    /** Query string décodée — Map clé → liste de valeurs. Map vide si pas de query. */
+    /** Decoded query string — Map of key → list of values. Empty map if no query. */
     default Map<String, List<String>> queryParams() {
         String raw = requestUri().getRawQuery();
         if (raw == null || raw.isEmpty()) return Map.of();
@@ -73,23 +74,23 @@ public interface CassiniHttpExchange {
 
     InputStream requestBody();
 
-    /** Content-Length de la requête, ou {@code -1} si inconnu/non-fourni. */
+    /** Request Content-Length, or {@code -1} if unknown/not supplied. */
     default long contentLength() {
         String raw = firstHeader("Content-Length");
         if (raw == null || raw.isEmpty()) return -1L;
         try { return Long.parseLong(raw.trim()); } catch (NumberFormatException e) { return -1L; }
     }
 
-    /** Préfixe d'application (ex. {@code "/api"}). Vide ou {@code "/"} si pas de contexte. */
+    /** Application prefix (e.g. {@code "/api"}). Empty or {@code "/"} if no context. */
     default String contextPath() { return ""; }
 
     /**
-     * Chemin de la requête sans le contextPath — prêt pour le routing.
+     * Request path stripped of the contextPath — ready for routing.
      *
-     * <p>L'implémentation par défaut soustrait {@link #contextPath()} de
-     * {@link #requestUri()}{@code .getRawPath()}. Les transports qui disposent
-     * d'un {@code pathInfo} natif (ex. Chappe {@code Request.pathInfo()}) doivent
-     * surcharger cette méthode pour éviter un double-décodage.
+     * <p>The default implementation subtracts {@link #contextPath()} from
+     * {@link #requestUri()}{@code .getRawPath()}. Transports exposing a native
+     * {@code pathInfo} (e.g. Chappe {@code Request.pathInfo()}) should override
+     * this method to avoid a double decoding pass.
      */
     default String routingPath() {
         URI u = requestUri();
@@ -105,7 +106,7 @@ public interface CassiniHttpExchange {
 
     void setStatus(int code);
 
-    /** Headers de réponse mutables, lus juste avant flush du body. */
+    /** Mutable response headers, read just before flushing the body. */
     Map<String, List<String>> responseHeaders();
 
     OutputStream responseBody();
@@ -114,36 +115,36 @@ public interface CassiniHttpExchange {
 
     boolean isSecure();
 
-    /** Schéma d'authentification (BASIC, DIGEST, BEARER...) ou {@code null} si non authentifié. */
+    /** Authentication scheme (BASIC, DIGEST, BEARER...) or {@code null} if unauthenticated. */
     String authScheme();
 
-    /** Principal authentifié ou {@code null}. */
+    /** Authenticated principal, or {@code null}. */
     Principal userPrincipal();
 
-    /** Vérification de rôle déléguée au transport (BASIC auth via Chappe, etc.). */
+    /** Role check delegated to the transport (BASIC auth via Chappe, etc.). */
     boolean isUserInRole(String role);
 
     /**
-     * Store d'attributs request-scope, thread-safe avec virtual threads (M2h).
-     * Remplace les {@code ThreadLocal} per-request dans {@code cassini-core}.
+     * Request-scoped attribute store, thread-safe with virtual threads (M2h).
+     * Replaces the per-request {@code ThreadLocal}s inside {@code cassini-core}.
      */
     void setAttribute(String key, Object value);
 
-    /** @return la valeur de l'attribut {@code key}, ou {@code null} si absent. */
+    /** @return the value of attribute {@code key}, or {@code null} if absent. */
     Object getAttribute(String key);
 
     /**
-     * Ouvre le mode streaming pour SSE / chunked-transfer (M2i).
+     * Opens streaming mode for SSE / chunked-transfer (M2i).
      *
-     * <p>Envoie les headers de réponse avec un corps de longueur inconnue
-     * ({@code Transfer-Encoding: chunked} pour HTTP/1.1) et retourne un
-     * {@link CassiniStreamingSink} permettant d'écrire des chunks au fil de l'eau.
+     * <p>Sends the response headers with an unknown-length body
+     * ({@code Transfer-Encoding: chunked} on HTTP/1.1) and returns a
+     * {@link CassiniStreamingSink} allowing chunk-by-chunk writes.
      *
-     * <p>Les transports qui ne supportent pas le streaming retournent {@code null} —
-     * l'appelant doit retomber sur le mode bufferisé.
+     * <p>Transports that do not support streaming return {@code null} —
+     * the caller must fall back to buffered mode.
      *
-     * @param status code HTTP de la réponse (ex. 200)
-     * @param headers headers de réponse à envoyer avant le corps
+     * @param status HTTP response code (e.g. 200)
+     * @param headers response headers to send before the body
      */
     default CassiniStreamingSink openForStreaming(int status, Map<String, List<String>> headers) {
         return null;

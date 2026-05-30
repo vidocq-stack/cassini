@@ -11,10 +11,10 @@ import java.net.ServerSocket;
 import java.util.Set;
 
 /**
- * Serveur de test — démarre Cassini + JDK HttpServer sur un port aléatoire.
+ * Test server — starts Cassini + JDK HttpServer on a random port.
  *
- * <p>Bootstrap manuel via {@link CassiniStack#builder()} (pas de SeBootstrap
- * pour le transport JDK — voir {@link Main} pour les détails).</p>
+ * <p>Manual bootstrap via {@link CassiniStack#builder()} (no SeBootstrap for the
+ * JDK transport — see {@link Main} for details).</p>
  */
 public class ExampleServer implements AutoCloseable {
 

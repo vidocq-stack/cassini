@@ -12,19 +12,20 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Implémentation de {@link AsyncResponse} (§8.2) pour Cassini.
+ * {@link AsyncResponse} (§8.2) implementation for Cassini.
  *
- * <p>Chaque requête asynchrone ({@code @Suspended AsyncResponse}) reçoit
- * une instance de cette classe. La resource method appelle {@link #resume(Object)}
- * (depuis n'importe quel thread) pour envoyer la réponse ; l'Invoker bloque le
- * virtual thread courant sur {@link #completionFuture()} jusqu'à cet appel.
+ * <p>Each asynchronous request ({@code @Suspended AsyncResponse}) receives
+ * an instance of this class. The resource method calls {@link #resume(Object)}
+ * (from any thread) to send the response; the Invoker blocks the current
+ * virtual thread on {@link #completionFuture()} until that call.
  *
- * <p>Le blocage sur virtual thread est intentionnel (M2h) : il libère le
- * carrier thread sans starvation, conformément au modèle virtual-threads JDK 25.
+ * <p>Blocking on a virtual thread is intentional (M2h): it releases the
+ * carrier thread without starvation, in line with the JDK 25 virtual-threads
+ * model.
  */
 public final class CassiniAsyncResponseImpl implements AsyncResponse {
 
-    /** Clé d'attribut exchange pour que ParamExtractor retrouve l'instance. */
+    /** Exchange attribute key so ParamExtractor can find the instance. */
     public static final String ATTR_KEY = "cassini.async_response";
 
     private static final ScheduledExecutorService SCHEDULER;
@@ -42,7 +43,7 @@ public final class CassiniAsyncResponseImpl implements AsyncResponse {
     private volatile ScheduledFuture<?> timeoutTask;
     private volatile TimeoutHandler timeoutHandler;
 
-    /** Stage complété quand {@link #resume} ou {@link #cancel} est appelé. */
+    /** Stage completed when {@link #resume} or {@link #cancel} is called. */
     public CompletableFuture<Object> completionFuture() { return future; }
 
     @Override

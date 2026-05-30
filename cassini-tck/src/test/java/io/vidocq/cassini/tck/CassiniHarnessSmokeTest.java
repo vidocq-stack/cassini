@@ -15,8 +15,8 @@ import java.time.Duration;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Smoke test du {@link CassiniTestHarness} — vérifie qu'il démarre
- * Chappe + Cassini et répond à une requête GET avant de s'arrêter.
+ * Smoke test for {@link CassiniTestHarness} — verifies that it boots
+ * Chappe + Cassini and answers a GET request before shutting down.
  */
 class CassiniHarnessSmokeTest {
 

@@ -6,13 +6,13 @@ import jakarta.ws.rs.core.FeatureContext;
 import org.glassfish.jersey.internal.spi.AutoDiscoverable;
 
 /**
- * §3.5.4 / Jersey AutoDiscoverable : enregistre le MBR/MBW multipart
- * {@link MultipartFormDataProvider} dès qu'un Jersey {@link jakarta.ws.rs.client.Client}
- * est créé via {@link jakarta.ws.rs.client.ClientBuilder}. Sans cela, le
- * client Jersey ne sait pas sérialiser/désérialiser {@code List<EntityPart>}
- * (il chercherait son type interne {@code BodyPart}).
+ * §3.5.4 / Jersey AutoDiscoverable: registers the multipart MBR/MBW
+ * {@link MultipartFormDataProvider} as soon as a Jersey {@link jakarta.ws.rs.client.Client}
+ * is created via {@link jakarta.ws.rs.client.ClientBuilder}. Without this, the
+ * Jersey client cannot serialize/deserialize {@code List<EntityPart>}
+ * (it would look up its internal {@code BodyPart} type).
  *
- * <p>Activé via {@code META-INF/services/org.glassfish.jersey.internal.spi.AutoDiscoverable}.</p>
+ * <p>Activated via {@code META-INF/services/org.glassfish.jersey.internal.spi.AutoDiscoverable}.</p>
  */
 public final class CassiniMultipartAutoDiscover implements AutoDiscoverable {
 

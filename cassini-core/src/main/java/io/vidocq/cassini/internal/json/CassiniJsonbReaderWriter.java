@@ -20,12 +20,13 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
 
 /**
- * §4.2.3 / Core Profile : MBR/MBW pour {@code application/json} (et compatible
- * suffix {@code application/*+json}) basé sur Jakarta JSON Binding (Yasson).
+ * §4.2.3 / Core Profile: MBR/MBW for {@code application/json} (and the
+ * compatible suffix {@code application/*+json}) backed by Jakarta JSON
+ * Binding (Yasson).
  *
- * <p>§9.2 : si l'application fournit un {@link ContextResolver}{@code <Jsonb>}
- * pour le type cible, son {@link Jsonb} est utilisé. Sinon, on utilise une
- * instance par défaut créée avec {@link JsonbBuilder#create()}.</p>
+ * <p>§9.2: if the application provides a {@link ContextResolver}{@code <Jsonb>}
+ * for the target type, its {@link Jsonb} is used. Otherwise, a default instance
+ * created via {@link JsonbBuilder#create()} is used.</p>
  */
 @Consumes({"application/json", "application/*+json", "text/json"})
 @Produces({"application/json", "application/*+json", "text/json"})
@@ -61,9 +62,9 @@ public final class CassiniJsonbReaderWriter
     }
 
     private Jsonb resolveJsonb(Class<?> type, MediaType mt) {
-        // Lookup direct via le ThreadLocal Providers exposé par ParamExtractor —
-        // évite la dépendance au cycle d'injection @Context (qui peut ne pas
-        // avoir lieu pour certains chemins, notamment writeFromContext).
+        // Direct lookup via the ThreadLocal Providers exposed by ParamExtractor —
+        // avoids depending on the @Context injection cycle (which may not
+        // occur on some code paths, notably writeFromContext).
         Providers providers = ParamExtractor.currentProviders();
         if (providers != null) {
             try {
@@ -79,21 +80,21 @@ public final class CassiniJsonbReaderWriter
 
     private static boolean isJson(MediaType mt) {
         if (mt == null) return false;
-        // Refuse les wildcards (*/* ou type/*) : §4.2.3 Core Profile, le MBR/MBW
-        // JSON-B builtin ne doit s'engager que sur des media types JSON explicites,
-        // pour ne pas masquer les MBW user-provided sans @Produces (= wildcard).
+        // Reject wildcards (*/* or type/*): §4.2.3 Core Profile, the built-in
+        // JSON-B MBR/MBW must only engage on explicit JSON media types so it
+        // does not shadow user-provided MBWs without @Produces (= wildcard).
         if (mt.isWildcardType() || mt.isWildcardSubtype()) return false;
         if (mt.isCompatible(MediaType.APPLICATION_JSON_TYPE)) return true;
-        // Suffix +json (RFC 6839) : application/foo+json, etc.
+        // +json suffix (RFC 6839): application/foo+json, etc.
         String sub = mt.getSubtype();
         return sub != null && sub.toLowerCase().endsWith("+json");
     }
 
-    /** Évite de capter les types qui ont leur MBR/MBW dédié — sinon le scan
-     *  Cassini risque de prioriser ce JSON sur les builtins (String, byte[],
-     *  InputStream, etc) à cause de @Consumes/@Produces matching.
-     *  §4.2.4 : on utilise isAssignableFrom pour couvrir aussi les sous-types
-     *  (ex. ByteArrayInputStream, FileInputStream...). */
+    /** Avoid capturing types that have a dedicated MBR/MBW — otherwise the
+     *  Cassini scan could prioritize this JSON over built-ins (String, byte[],
+     *  InputStream, etc.) due to @Consumes/@Produces matching.
+     *  §4.2.4: use isAssignableFrom to also cover subtypes
+     *  (e.g. ByteArrayInputStream, FileInputStream...). */
     private static boolean isExcluded(Class<?> type) {
         if (type == null) return true;
         if (type == byte[].class) return true;
@@ -103,7 +104,7 @@ public final class CassiniJsonbReaderWriter
         if (jakarta.ws.rs.core.StreamingOutput.class.isAssignableFrom(type)) return true;
         if (java.io.File.class.isAssignableFrom(type)) return true;
         if (javax.xml.transform.Source.class.isAssignableFrom(type)) return true;
-        // §4.2.3 : DataSource a son MBR/MBW dédié.
+        // §4.2.3: DataSource has its own dedicated MBR/MBW.
         try {
             Class<?> dataSource = Class.forName("jakarta.activation.DataSource");
             if (dataSource.isAssignableFrom(type)) return true;

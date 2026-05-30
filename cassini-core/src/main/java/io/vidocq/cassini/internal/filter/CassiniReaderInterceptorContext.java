@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Chaîne {@link ReaderInterceptor} → MBR.readFrom terminale §7.2.
+ * {@link ReaderInterceptor} chain → terminal MBR.readFrom §7.2.
  */
 public final class CassiniReaderInterceptorContext implements ReaderInterceptorContext {
 
@@ -66,17 +66,17 @@ public final class CassiniReaderInterceptorContext implements ReaderInterceptorC
             ReaderInterceptor i = interceptors.get(index++).instance();
             return i.aroundReadFrom(this);
         }
-        // §7.2 : setType peut avoir changé le type cible ; re-sélectionner
-        // un MBR compatible avec les paramètres courants. Le terminal initial
-        // peut être null si aucun MBR n'a été trouvé au scan initial — auquel
-        // cas on s'appuie entièrement sur le registry (les interceptors ont
-        // potentiellement réécrit type/mediaType pour matcher un MBR différent).
+        // §7.2: setType may have changed the target type; re-select an MBR
+        // compatible with the current parameters. The initial terminal may
+        // be null if no MBR was found at initial scan — in that case we
+        // rely entirely on the registry (interceptors may have rewritten
+        // type/mediaType to match a different MBR).
         MessageBodyReader r = terminal;
         if (r == null || (registry != null && !r.isReadable(type, genericType, annotations, mediaType))) {
             if (registry == null) {
                 if (r == null) throw new jakarta.ws.rs.WebApplicationException(
                         "No MessageBodyReader and no registry available", 415);
-                // Pas de registry pour fallback ; on tente le terminal initial quand même.
+                // No fallback registry; try the initial terminal anyway.
             } else {
                 r = registry.findReader(type, genericType, annotations, mediaType)
                         .orElse(terminal);

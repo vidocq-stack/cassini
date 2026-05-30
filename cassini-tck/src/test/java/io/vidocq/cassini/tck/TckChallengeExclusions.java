@@ -8,58 +8,58 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * §1.3 / TCK Process 1.4.1 challenges : permet de désactiver des tests TCK
- * jugés non-portables ou en conflit avec la spécification, en attendant que
- * le challenge soit accepté par le maintenance lead.
+ * §1.3 / TCK Process 1.4.1 challenges: disables TCK tests deemed
+ * non-portable or in conflict with the specification, pending acceptance
+ * of the challenge by the maintenance lead.
  *
- * <p>Enregistré globalement via {@code META-INF/services/} et activé par
+ * <p>Registered globally via {@code META-INF/services/} and activated by
  * {@code junit-platform.properties} (autodetection).</p>
  *
- * <p>Tests challengés :</p>
+ * <p>Challenged tests:</p>
  * <ul>
  *   <li>{@code spec.resource.requestmatching.JAXRSClientIT#locatorNameTooLongAgainTest}
- *       — envoie {@code GET /resource/locator/locator/locator} et attend 404.
- *       Or la ressource déclare {@code @GET @Path("locator/locator/locator")}
- *       qui matche exactement l'URI selon §3.7.2 step 2(g) : la regex
- *       {@code R("locator/locator/locator")} consomme totalement l'URI restante,
- *       la méthode HTTP {@code @GET} matche, donc 200 est conforme à la spec.
- *       Le test impose une interprétation segment-par-segment non-portable
- *       (Jersey/RESTEasy l'implémentent ainsi mais §3.7.2 ne le requiert pas).</li>
- *   <li>{@code signaturetest.jaxrs.JAXRSSigTestIT#signatureTest} — utilise
- *       {@code com.sun.tdk.signaturetest} (TDK 2.5) qui exige un layout TCK
- *       complet (sig-test.map, sig-test-pkg-list.txt sur ts_home + résolution
- *       du sigTestClasspath). §A.1 vérifie l'API jakarta.ws.rs déjà fournie
- *       par la dépendance {@code jakarta.ws.rs:jakarta.ws.rs-api:4.0.0} sur
- *       le classpath — l'API n'est pas modifiée par Cassini, donc ce test
- *       n'évalue pas la conformance Cassini mais l'environnement TCK. Le
- *       run standalone n'instancie pas l'infrastructure ts_home complète
- *       attendue par le SignatureTestDriver. Challenge documenté.</li>
+ *       — sends {@code GET /resource/locator/locator/locator} and expects 404.
+ *       However, the resource declares {@code @GET @Path("locator/locator/locator")}
+ *       which exactly matches the URI per §3.7.2 step 2(g): the regex
+ *       {@code R("locator/locator/locator")} fully consumes the remaining URI,
+ *       the HTTP method {@code @GET} matches, so 200 is spec-compliant.
+ *       The test enforces a non-portable segment-by-segment interpretation
+ *       (Jersey/RESTEasy implement it that way but §3.7.2 does not require it).</li>
+ *   <li>{@code signaturetest.jaxrs.JAXRSSigTestIT#signatureTest} — uses
+ *       {@code com.sun.tdk.signaturetest} (TDK 2.5) which requires a full TCK
+ *       layout (sig-test.map, sig-test-pkg-list.txt under ts_home + resolution
+ *       of sigTestClasspath). §A.1 verifies the jakarta.ws.rs API already
+ *       provided by the {@code jakarta.ws.rs:jakarta.ws.rs-api:4.0.0}
+ *       dependency on the classpath — the API is not modified by Cassini, so
+ *       this test does not evaluate Cassini conformance but the TCK
+ *       environment. The standalone run does not instantiate the full ts_home
+ *       infrastructure expected by SignatureTestDriver. Challenge documented.</li>
  *   <li>{@code jaxrs31.ee.multipart.MultipartSupportIT#basicTest},
- *       {@code multiFormParamTest} — Cassini implémente §3.5.4 EntityPart
- *       (CassiniEntityPartBuilder + MultipartFormDataProvider parser/writer
- *       RFC 7578) côté SERVEUR. Côté CLIENT, le test utilise Jersey Client
- *       qui ré-écrit le Content-Type via son MBW interne et n'honore pas
- *       le boundary que notre ClientRequestFilter injecte (mediaType ré-écrit
- *       après filter, avant writeTo). Test bloqué par le comportement Jersey
- *       Client, pas par Cassini ; Cassini SERVEUR sait parser les multiparts
- *       reçus quand le wire Content-Type a un boundary correct (testé via
- *       les autres tests qui POSTent multipart manuellement).</li>
+ *       {@code multiFormParamTest} — Cassini implements §3.5.4 EntityPart
+ *       (CassiniEntityPartBuilder + MultipartFormDataProvider RFC 7578
+ *       parser/writer) on the SERVER side. On the CLIENT side, the test uses
+ *       Jersey Client which rewrites the Content-Type via its internal MBW
+ *       and does not honor the boundary that our ClientRequestFilter injects
+ *       (mediaType is rewritten after filter, before writeTo). Test blocked
+ *       by Jersey Client behavior, not by Cassini; Cassini SERVER correctly
+ *       parses incoming multiparts when the wire Content-Type carries a valid
+ *       boundary (covered by other tests that POST multipart manually).</li>
  *   <li>{@code jaxrs21.ee.sse.ssebroadcaster.JAXRSClientIT#sseBroadcastTest},
  *       {@code jaxrs21.ee.sse.sseeventsink.JAXRSClientIT#closeTest},
  *       {@code jaxrs21.ee.sse.sseeventsource.JAXRSClientIT#closeTest} —
- *       §11 SSE streaming réel. Notre {@code CassiniSseEventSink} bufferise
- *       les événements puis émet la réponse en bloc à la fin de la méthode
- *       resource. Pour passer ces tests, le {@code SseEventSink} doit pousser
- *       les events sur le wire au fur et à mesure (chunked transfer streaming),
- *       et la connexion HTTP doit rester ouverte après {@code resource.method}
- *       jusqu'à {@code sink.close()}. Cela demande un refactor majeur du
- *       moteur Chappe (handler async + streaming chunked). Hors scope MVP,
- *       challenge documenté.</li>
+ *       §11 real SSE streaming. Our {@code CassiniSseEventSink} buffers
+ *       events then emits the response in one block at the end of the
+ *       resource method. To pass these tests, {@code SseEventSink} must push
+ *       events on the wire incrementally (chunked transfer streaming), and
+ *       the HTTP connection must stay open after {@code resource.method}
+ *       until {@code sink.close()}. This requires a major refactor of the
+ *       Chappe engine (async handler + chunked streaming). Out of MVP scope,
+ *       challenge documented.</li>
  * </ul>
  */
 public final class TckChallengeExclusions implements ExecutionCondition {
 
-    /** Class fully-qualified name → set of method names challengés. */
+    /** Class fully-qualified name → set of challenged method names. */
     private static final Map<String, Set<String>> CHALLENGES = Map.of(
             "ee.jakarta.tck.ws.rs.spec.resource.requestmatching.JAXRSClientIT",
                     Set.of("locatorNameTooLongAgainTest"),
@@ -86,7 +86,7 @@ public final class TckChallengeExclusions implements ExecutionCondition {
         Set<String> excluded = CHALLENGES.get(cls);
         if (excluded != null && excluded.contains(method)) {
             return ConditionEvaluationResult.disabled(
-                    "TCK challenge : " + cls + "#" + method);
+                    "TCK challenge: " + cls + "#" + method);
         }
         return ENABLED;
     }

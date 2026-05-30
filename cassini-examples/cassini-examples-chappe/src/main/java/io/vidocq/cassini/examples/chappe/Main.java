@@ -9,10 +9,10 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 
 /**
- * Point d'entrée Cassini + Chappe (standalone, sans CDI).
+ * Cassini + Chappe entry point (standalone, no CDI).
  *
- * <p>Le {@link jakarta.ws.rs.ext.RuntimeDelegate} Chappe est découvert
- * automatiquement via ServiceLoader (déclaré dans {@code cassini-chappe}).</p>
+ * <p>The Chappe {@link jakarta.ws.rs.ext.RuntimeDelegate} is discovered
+ * automatically via ServiceLoader (declared in {@code cassini-chappe}).</p>
  */
 public class Main {
 
@@ -37,7 +37,7 @@ public class Main {
     }
 
     /**
-     * Application JAX-RS déclarant les ressources de l'exemple.
+     * JAX-RS Application declaring the example resources.
      */
     public static final class ExamplesApp extends Application {
         @Override

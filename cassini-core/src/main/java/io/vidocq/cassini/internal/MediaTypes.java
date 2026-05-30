@@ -11,8 +11,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Helpers pour {@link MediaType} : parsing, matching par wildcard, tri par
- * qualité et sélection best-match (§3.8 Content Negotiation).
+ * Helpers for {@link MediaType}: parsing, wildcard matching, quality sorting
+ * and best-match selection (§3.8 Content Negotiation).
  */
 public final class MediaTypes {
 
@@ -20,7 +20,7 @@ public final class MediaTypes {
 
     private MediaTypes() {}
 
-    /** Parse "type/subtype;p1=v1;q=0.8" en {@link MediaType}. Défaut wildcard. */
+    /** Parses "type/subtype;p1=v1;q=0.8" into a {@link MediaType}. Defaults to wildcard. */
     public static MediaType parse(String raw) {
         if (raw == null || raw.isBlank()) return WILDCARD;
         String[] parts = raw.split(";");
@@ -30,8 +30,8 @@ public final class MediaTypes {
         }
         String type = ts[0].trim().isEmpty() ? "*" : ts[0].trim();
         String subtype = ts[1].trim().isEmpty() ? "*" : ts[1].trim();
-        // RFC 7231 token : lettres, chiffres, et quelques symboles. On rejette
-        // les caractères clairement invalides (backslash, espace, etc.).
+        // RFC 7231 token: letters, digits, and a few symbols. Reject
+        // clearly invalid characters (backslash, space, etc.).
         if (!isValidMediaTypeToken(type) || !isValidMediaTypeToken(subtype)) {
             throw new IllegalArgumentException("Invalid media type: " + raw);
         }
@@ -67,7 +67,7 @@ public final class MediaTypes {
         return out;
     }
 
-    /** Vrai si {@code a} et {@code b} sont compatibles (wildcard inclus). */
+    /** True if {@code a} and {@code b} are compatible (wildcard included). */
     public static boolean matches(MediaType a, MediaType b) {
         if (a == null || b == null) return false;
         if (!a.isWildcardType() && !b.isWildcardType() && !a.getType().equalsIgnoreCase(b.getType())) return false;
@@ -75,7 +75,7 @@ public final class MediaTypes {
                 || a.getSubtype().equalsIgnoreCase(b.getSubtype());
     }
 
-    /** Prend Accept client + @Produces method, renvoie le best-match (le plus spécifique). */
+    /** Takes client Accept + method @Produces, returns the best-match (most specific). */
     public static Optional<MediaType> pickProduced(List<MediaType> accepts,
                                                    List<MediaType> produces) {
         boolean producesExplicit = !produces.isEmpty();
@@ -92,7 +92,7 @@ public final class MediaTypes {
                 MediaType candidate = p.isWildcardSubtype() || p.isWildcardType() ? a : p;
                 double sq = sourceQuality(p);
                 int spec = specificity(candidate);
-                // Prioriser qs plus élevé, puis spécificité.
+                // Prefer higher qs, then specificity.
                 if (sq > bestSourceQ || (sq == bestSourceQ && spec > bestSpec)) {
                     best = candidate;
                     bestSourceQ = sq;
@@ -112,7 +112,7 @@ public final class MediaTypes {
         try { return Double.parseDouble(qs); } catch (NumberFormatException e) { return 1.0; }
     }
 
-    /** Content-Type requête vs @Consumes method. */
+    /** Request Content-Type vs method @Consumes. */
     public static boolean consumesMatches(MediaType contentType, List<MediaType> consumes) {
         if (consumes.isEmpty()) return true;
         for (MediaType c : consumes) if (matches(contentType, c)) return true;
@@ -143,8 +143,8 @@ public final class MediaTypes {
         if (raws == null || raws.isEmpty()) return List.of();
         List<MediaType> out = new ArrayList<>(raws.size());
         for (String r : raws) {
-            // Jersey/RestEasy tolèrent @Consumes/@Produces("a,b") — un seul
-            // String contenant plusieurs media-types séparés par virgule.
+            // Jersey/RestEasy tolerate @Consumes/@Produces("a,b") — a single
+            // String containing multiple comma-separated media-types.
             if (r != null && r.indexOf(',') >= 0 && r.indexOf(';') < 0) {
                 for (String tok : r.split(",")) if (!tok.isBlank()) out.add(parse(tok));
             } else {
@@ -155,9 +155,9 @@ public final class MediaTypes {
     }
 
     /**
-     * Sérialise un {@link MediaType} sans passer par
-     * {@link jakarta.ws.rs.ext.RuntimeDelegate} (que Cassini ne fournit
-     * pas avant M2e).
+     * Serializes a {@link MediaType} without going through
+     * {@link jakarta.ws.rs.ext.RuntimeDelegate} (which Cassini does not
+     * provide before M2e).
      */
     public static String format(MediaType mt) {
         if (mt == null) return "*/*";

@@ -6,19 +6,19 @@ import jakarta.ws.rs.core.SecurityContext;
 import java.security.Principal;
 
 /**
- * Contexte de sécurité par défaut : anonyme, non sécurisé (HTTP).
- * Si un {@link AuthInfo} a été placé en ThreadLocal (par un filtre BASIC
- * en amont), on l'utilise pour exposer userPrincipal / userInRole / scheme.
+ * Default security context: anonymous, not secure (HTTP).
+ * If an {@link AuthInfo} was placed in the ThreadLocal (by an upstream
+ * BASIC filter), it is used to expose userPrincipal / userInRole / scheme.
  */
 public final class CassiniSecurityContext implements SecurityContext {
 
     /**
-     * Information d'authentification per-request, posée par le bridge de
-     * test BASIC ({@code BasicAuthHandler}) ou tout adaptateur amont.
+     * Per-request authentication information, set by the BASIC test bridge
+     * ({@code BasicAuthHandler}) or any upstream adapter.
      */
     public record AuthInfo(String username, String authScheme, java.util.Set<String> roles) {}
 
-    // InheritableThreadLocal : hérité par les virtual threads créés dans l'adapter (M2h).
+    // InheritableThreadLocal: inherited by virtual threads created in the adapter (M2h).
     public static final ThreadLocal<AuthInfo> CURRENT_AUTH = new InheritableThreadLocal<>();
 
     private final CassiniHttpExchange exchange;

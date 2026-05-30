@@ -13,10 +13,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * §6.1 BASIC auth pour les TCK qui déploient un web.xml avec
+ * §6.1 BASIC auth for TCK archives that deploy a web.xml with
  * {@code <login-config><auth-method>BASIC</auth-method></login-config>}.
- * <p>Mapping principal → roles dérivé du sun-web.xml de la TCK :
- * j2ee/j2ee → DIRECTOR ; javajoe/javajoe → OTHERROLE.</p>
+ * <p>Principal → roles mapping derived from the TCK sun-web.xml:
+ * j2ee/j2ee → DIRECTOR; javajoe/javajoe → OTHERROLE.</p>
  */
 final class BasicAuthHandler implements Handler {
 

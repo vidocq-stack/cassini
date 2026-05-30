@@ -5,21 +5,21 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Modèle d'une méthode de ressource JAX-RS découverte côté Cassini.
+ * Model of a JAX-RS resource method discovered by Cassini.
  *
- * @param beanClass       classe portant la méthode finale (sous-ressource)
- * @param javaMethod      méthode Java (déjà rendue accessible) — null si dynamicLocator
- * @param httpMethod      verbe HTTP (GET, POST, …)
- * @param template        template URI combiné (classe + méthode)
- * @param produces        media types déclarés via {@code @Produces}
- * @param consumes        media types déclarés via {@code @Consumes}
- * @param rootBeanClass   classe racine instanciée en premier (§3.4.1)
- * @param locatorChain    chaîne ordonnée de méthodes locator à invoquer sur la
- *                        racine pour atteindre l'instance de {@code beanClass}
- * @param dynamicLocator  §3.4.1 : route catch-all émise quand un sub-resource
- *                        locator retourne {@code Object} ou un type non-scannable.
- *                        Au runtime, l'Invoker exécute la chaîne et scanne la
- *                        classe effective de l'instance retournée pour le dispatch.
+ * @param beanClass       class carrying the final method (sub-resource)
+ * @param javaMethod      Java method (already made accessible) — null if dynamicLocator
+ * @param httpMethod      HTTP verb (GET, POST, …)
+ * @param template        combined URI template (class + method)
+ * @param produces        media types declared via {@code @Produces}
+ * @param consumes        media types declared via {@code @Consumes}
+ * @param rootBeanClass   root class instantiated first (§3.4.1)
+ * @param locatorChain    ordered chain of locator methods to invoke on the
+ *                        root to reach the {@code beanClass} instance
+ * @param dynamicLocator  §3.4.1: catch-all route emitted when a sub-resource
+ *                        locator returns {@code Object} or a non-scannable type.
+ *                        At runtime, the Invoker executes the chain and scans
+ *                        the effective class of the returned instance for dispatch.
  */
 public record ResourceMethod(
         Class<?> beanClass,
@@ -45,7 +45,7 @@ public record ResourceMethod(
         this(beanClass, javaMethod, httpMethod, template, produces, consumes, null, null, 0, false);
     }
 
-    /** Compatibilité : locator unique (chaîne de longueur 1). */
+    /** Compatibility: single locator (chain of length 1). */
     public ResourceMethod(Class<?> beanClass, Method javaMethod, String httpMethod,
                           UriTemplate template, Set<String> produces, Set<String> consumes,
                           Class<?> rootBeanClass, Method locator) {
@@ -57,7 +57,7 @@ public record ResourceMethod(
         return template.template();
     }
 
-    /** Vrai si cette route est issue d'un sub-resource locator §3.4.1. */
+    /** True if this route comes from a sub-resource locator §3.4.1. */
     public boolean isLocated() {
         return locatorChain != null && !locatorChain.isEmpty() && rootBeanClass != null;
     }

@@ -4,11 +4,11 @@ import io.vidocq.cassini.spi.bean.BeanProvider;
 import io.vidocq.vauban.core.container.VaubanContainer;
 
 /**
- * Factory ServiceLoader pour {@link VaubanBeanProvider}.
+ * ServiceLoader factory for {@link VaubanBeanProvider}.
  *
- * <p>Découverte par {@code CassiniStack.builder()} : si Vauban est sur le
- * classpath et qu'un container est démarré, l'instance courante est utilisée
- * comme {@link BeanProvider} par défaut.</p>
+ * <p>Discovered by {@code CassiniStack.builder()}: if Vauban is on the classpath
+ * and a container is running, the current instance is used as the default
+ * {@link BeanProvider}.</p>
  */
 public final class VaubanBeanProviderFactory implements BeanProvider.Factory {
 
@@ -17,7 +17,7 @@ public final class VaubanBeanProviderFactory implements BeanProvider.Factory {
         var container = VaubanContainer.current();
         if (container == null) {
             throw new IllegalStateException(
-                    "No Vauban CDI container is running — call VaubanContainer.builder().build() first");
+                    "No Vauban CDI container is running - call VaubanContainer.builder().build() first");
         }
         return new VaubanBeanProvider(container);
     }

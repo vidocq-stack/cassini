@@ -9,9 +9,9 @@ import java.lang.reflect.Method;
 import java.util.Map;
 
 /**
- * §6.5.5 — FeatureContext passé à DynamicFeature.configure(resourceInfo, ctx).
- * register(Class) instancie la classe et l'ajoute au registre comme entry
- * dynamique liée à {@code targetMethod}.
+ * §6.5.5 — FeatureContext passed to DynamicFeature.configure(resourceInfo, ctx).
+ * register(Class) instantiates the class and adds it to the registry as a
+ * dynamic entry bound to {@code targetMethod}.
  */
 public final class CassiniDynamicFeatureContext implements FeatureContext {
 

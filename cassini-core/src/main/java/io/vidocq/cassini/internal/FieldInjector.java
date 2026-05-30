@@ -30,16 +30,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Injecte dans les champs d'une instance de ressource les valeurs
+ * Injects into the fields of a resource instance the values for
  * {@link PathParam}/{@link QueryParam}/{@link HeaderParam}/{@link CookieParam}/
- * {@link FormParam}/{@link MatrixParam} ainsi que les injections {@link Context}
- * (UriInfo, HttpHeaders, Request, SecurityContext) déclarées au niveau
- * champ (§3.2 / §9).
+ * {@link FormParam}/{@link MatrixParam} as well as {@link Context} injections
+ * (UriInfo, HttpHeaders, Request, SecurityContext) declared at field
+ * level (§3.2 / §9).
  *
- * <p>Pour chaque requête, on parcourt les champs déclarés et on set
- * leur valeur via reflection. Les instances JAX-RS étant typiquement
- * {@code @RequestScoped} (donc une nouvelle instance de backing par
- * requête côté CDI), cette ré-injection est sûre.</p>
+ * <p>For each request, declared fields are walked and their value is set
+ * via reflection. Since JAX-RS instances are typically {@code @RequestScoped}
+ * (so a new backing instance per request on the CDI side), this re-injection
+ * is safe.</p>
  */
 public final class FieldInjector {
 
@@ -49,12 +49,12 @@ public final class FieldInjector {
         inject(target, match, request, true);
     }
 
-    /** §3.4.1 / JAXRS:SPEC:4 : "Objects returned by sub-resource locators are
+    /** §3.4.1 / JAXRS:SPEC:4: "Objects returned by sub-resource locators are
      *  expected to be initialized by their creator and field and bean
-     *  properties are not modified by the implementation runtime." Pour les
-     *  sub-resources retournées par locator, on n'injecte que les @Context
-     *  fields (injectParams=false) — les @*Param sont préservés à leur
-     *  valeur initiale (typiquement null). */
+     *  properties are not modified by the implementation runtime." For
+     *  sub-resources returned by locators, only @Context fields are injected
+     *  (injectParams=false) — @*Param fields are preserved at their
+     *  initial value (typically null). */
     public static void inject(Object target, MatchResult match, CassiniHttpExchange request, boolean injectParams) {
         if (target == null) return;
         Class<?> cls = target.getClass();
@@ -156,8 +156,8 @@ public final class FieldInjector {
             return rctx;
         }
         if (type == jakarta.ws.rs.container.ResourceContext.class) {
-            // §6.5.2 stub minimal : getResource(class) instancie via constructor
-            // no-arg + injection de fields (per-request).
+            // §6.5.2 minimal stub: getResource(class) instantiates via no-arg
+            // constructor + field injection (per-request).
             return new jakarta.ws.rs.container.ResourceContext() {
                 @Override public <T> T getResource(Class<T> resourceClass) {
                     try {
@@ -175,7 +175,7 @@ public final class FieldInjector {
             };
         }
         if (type == jakarta.ws.rs.core.Configuration.class) {
-            // Stub minimal §10.1 : pas de Properties / Features dynamiques.
+            // Minimal stub §10.1: no dynamic Properties / Features.
             return new jakarta.ws.rs.core.Configuration() {
                 @Override public jakarta.ws.rs.RuntimeType getRuntimeType() {
                     return jakarta.ws.rs.RuntimeType.SERVER;
@@ -206,7 +206,7 @@ public final class FieldInjector {
                 || f.getAnnotation(QueryParam.class) != null;
         try { return ParamValueConverter.coerce(raw, element, raws); }
         catch (WebApplicationException wae) {
-            // §3.2 : @PathParam/@QueryParam/@MatrixParam conversion failure → 404.
+            // §3.2: @PathParam/@QueryParam/@MatrixParam conversion failure → 404.
             if (notFound && wae.getResponse() != null && wae.getResponse().getStatus() == 400) {
                 throw new WebApplicationException(wae.getMessage(), wae.getCause(),
                         jakarta.ws.rs.core.Response.status(404).build());
@@ -297,10 +297,10 @@ public final class FieldInjector {
         return out;
     }
 
-    // Clés d'attributs exchange pour les caches per-request (M2h — remplace ThreadLocals).
+    // Exchange attribute keys for per-request caches (M2h — replaces ThreadLocals).
     static final String ATTR_FORM_CACHE         = "cassini.form_cache";
     static final String ATTR_FORM_CACHE_ENCODED = "cassini.form_cache_encoded";
-    /** Clé exchange pour le cache des bytes du body (partagé entre @FormParam et MBR). */
+    /** Exchange key for the body bytes cache (shared between @FormParam and MBR). */
     public static final String ATTR_BODY_CACHE  = "cassini.body_cache";
 
     /** Internal: used by {@code InjectionSupportImpl}. */
@@ -338,6 +338,6 @@ public final class FieldInjector {
         }
     }
 
-    /** No-op depuis M2h : les caches vivent dans les attributs de l'exchange. */
+    /** No-op since M2h: caches live in exchange attributes. */
     public static void clearFormCache() {}
 }

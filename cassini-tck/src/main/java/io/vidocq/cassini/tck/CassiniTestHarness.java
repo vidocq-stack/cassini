@@ -23,17 +23,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Harness de test minimal pour monter un runtime Cassini complet devant
- * Chappe sur un port éphémère. Utilisé par l'adaptateur Arquillian TCK
+ * Minimal test harness that mounts a full Cassini runtime in front of Chappe
+ * on an ephemeral port. Used by the Arquillian TCK adapter
  * ({@code VidocqCassiniDeployableContainer}).
  *
- * <p>Construit :</p>
+ * <p>Builds:</p>
  * <ul>
- *   <li>un {@link UriRouter} à partir des classes {@code @Path} fournies ;</li>
- *   <li>un {@link Invoker} avec resolver basé sur instanciation par
- *     constructeur sans argument (le TCK déploie des ressources simples) ;</li>
- *   <li>un {@link ChappeHttpAdapter} et le monte sur un {@link Server}
- *     Chappe local.</li>
+ *   <li>a {@link UriRouter} from the supplied {@code @Path} classes;</li>
+ *   <li>an {@link Invoker} with a resolver based on no-arg constructor
+ *     instantiation (the TCK deploys simple resources);</li>
+ *   <li>a {@link ChappeHttpAdapter} mounted on a local Chappe
+ *     {@link Server}.</li>
  * </ul>
  */
 public final class CassiniTestHarness implements AutoCloseable {
@@ -54,9 +54,9 @@ public final class CassiniTestHarness implements AutoCloseable {
     public static Builder builder() { return new Builder(); }
 
     public static final class Builder {
-        /** Instances fournies explicitement (résolues à l'identique par requête). */
+        /** Explicitly supplied instances (resolved as-is per request). */
         private final Map<Class<?>, Object> beans = new HashMap<>();
-        /** Classes à instancier par-requête (JAX-RS §3.1.1). */
+        /** Classes to instantiate per request (JAX-RS §3.1.1). */
         private final java.util.Set<Class<?>> perRequestClasses = new java.util.LinkedHashSet<>();
         private final FilterRegistry filters = new FilterRegistry();
         private final ExceptionMapperRegistry exceptionMappers = new ExceptionMapperRegistry();
@@ -65,9 +65,9 @@ public final class CassiniTestHarness implements AutoCloseable {
         private Integer fixedPort;
         private jakarta.ws.rs.core.Application application;
 
-        /** Publie l'instance Application user-level : injectée via @Context
-         *  {@link jakarta.ws.rs.core.Application} dans les méthodes/champs
-         *  de ressource (§9.4). */
+        /** Publishes the user-level Application instance: injected via @Context
+         *  {@link jakarta.ws.rs.core.Application} into resource methods/fields
+         *  (§9.4). */
         public Builder application(jakarta.ws.rs.core.Application app) {
             this.application = app;
             return this;
@@ -103,9 +103,9 @@ public final class CassiniTestHarness implements AutoCloseable {
         }
 
         public Builder resourceClass(Class<?> cls) {
-            // §3.1.1 : seule une classe publique et non abstraite peut être
-            // une ressource root. Les constructeurs non-public → la classe
-            // est ignorée (→ 404 visible depuis le TCK).
+            // §3.1.1: only a public, non-abstract class can be a root
+            // resource. Non-public constructors → the class is ignored
+            // (→ 404 visible from the TCK).
             if (!java.lang.reflect.Modifier.isPublic(cls.getModifiers())) {
                 return this;
             }
@@ -119,9 +119,9 @@ public final class CassiniTestHarness implements AutoCloseable {
             return this;
         }
 
-        /** §3.1.1 : choisit le constructeur public avec le plus de paramètres
-         *  injectables (@Context, @*Param). Retourne {@code null} si aucun
-         *  constructeur public approprié n'existe. */
+        /** §3.1.1: picks the public constructor with the most injectable
+         *  parameters (@Context, @*Param). Returns {@code null} if no
+         *  suitable public constructor exists. */
         private static java.lang.reflect.Constructor<?> pickConstructor(Class<?> cls) {
             java.lang.reflect.Constructor<?> best = null;
             int bestScore = -1;
@@ -146,7 +146,7 @@ public final class CassiniTestHarness implements AutoCloseable {
             if (p.getAnnotation(jakarta.ws.rs.MatrixParam.class) != null) return true;
             if (p.getAnnotation(jakarta.ws.rs.FormParam.class) != null) return true;
             if (p.getAnnotation(jakarta.ws.rs.BeanParam.class) != null) return true;
-            // Un constructeur no-arg est trivialement "tous injectables".
+            // A no-arg constructor is trivially "all injectable".
             return false;
         }
 
@@ -157,17 +157,17 @@ public final class CassiniTestHarness implements AutoCloseable {
 
         public Builder port(int port) { this.fixedPort = port; return this; }
 
-        /** Construit le bridge + handler sans démarrer de serveur.
-         *  Utilisé par {@link io.vidocq.cassini.tck.arquillian.VidocqCassiniDeployableContainer}
-         *  pour le serveur partagé multi-contextes. */
+        /** Builds the bridge + handler without starting a server.
+         *  Used by {@link io.vidocq.cassini.tck.arquillian.VidocqCassiniDeployableContainer}
+         *  for the multi-context shared server. */
         public record BuiltHandler(Handler bridgeHandler, String prefix) {}
 
         public BuiltHandler buildHandler() {
             java.util.Set<Class<?>> allClasses = new java.util.LinkedHashSet<>(beans.keySet());
             allClasses.addAll(perRequestClasses);
             List<ResourceMethod> routes = ResourceScanner.discover(allClasses.toArray(Class<?>[]::new));
-            // §6.5.5 : DynamicFeatures s'exécutent une fois par resource method,
-            // après le scan, pour binder filtres/intercepteurs spécifiques.
+            // §6.5.5: DynamicFeatures run once per resource method, after
+            // the scan, to bind method-specific filters/interceptors.
             filters.applyDynamicFeatures(routes);
             UriRouter router = new UriRouter(routes);
             java.util.function.Function<Class<?>, Object> resolver = cls -> {
@@ -207,8 +207,8 @@ public final class CassiniTestHarness implements AutoCloseable {
                     : new ContextStrippingHandler(bh.prefix(), bh.bridgeHandler());
 
             RuntimeException last = null;
-            // Retry plus agressif sur port fixe (port 8080 peut rester en
-            // TIME_WAIT entre deux tests). 10 tentatives avec 100 ms.
+            // More aggressive retry on fixed port (port 8080 may linger in
+            // TIME_WAIT between tests). 10 attempts with 100 ms delay.
             int attempts = fixedPort != null ? 10 : 5;
             for (int attempt = 0; attempt < attempts; attempt++) {
                 int port;
@@ -243,18 +243,18 @@ public final class CassiniTestHarness implements AutoCloseable {
     }
 
     /**
-     * Handler racine qui strippe le contextPath avant de déléguer au bridge
-     * Cassini. Reproduit ce que {@code ChappeMountPoint.mount(prefix, ...)}
-     * fait dans l'intégration Vidocq normale, mais sans dépendre du moteur
-     * complet (le harness embarque juste un Chappe Server nu).
+     * Root handler that strips the contextPath before delegating to the
+     * Cassini bridge. Mirrors what {@code ChappeMountPoint.mount(prefix, ...)}
+     * does in the normal Vidocq integration, but without pulling in the full
+     * engine (the harness only embeds a bare Chappe Server).
      */
     private record ContextStrippingHandler(String prefix, Handler delegate) implements Handler {
         @Override public Response handle(Request request) throws Exception {
             String path = request.path();
             if (path == null) path = "/";
             if (!path.startsWith(prefix)) {
-                // Hors du contexte déployé — 404 direct pour éviter de matcher
-                // l'arbre Cassini sur des chemins sans rapport.
+                // Outside the deployed context — direct 404 to avoid matching
+                // the Cassini tree against unrelated paths.
                 return Response.builder()
                         .status(io.vidocq.chappe.api.StatusCode.NOT_FOUND)
                         .body(io.vidocq.chappe.api.Body.empty())

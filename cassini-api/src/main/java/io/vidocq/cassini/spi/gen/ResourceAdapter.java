@@ -23,7 +23,7 @@ public interface ResourceAdapter {
      * per §3.4.1 of the JAX-RS spec.</p>
      *
      * @param target       the resource instance (already unwrapped from CDI proxy by {@code injectionTarget})
-     * @param support      the per-request {@link InjectionSupport} façade
+     * @param support      the per-request {@link InjectionSupport} facade
      * @param injectParams whether to inject {@code @*Param} fields (false for sub-resource roots)
      */
     void injectFields(Object target, InjectionSupport support, boolean injectParams);

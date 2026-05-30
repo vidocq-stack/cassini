@@ -17,10 +17,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /**
- * Implémentation Cassini de {@link SseEventSink} : bufferise les events
- * SSE puis expose le contenu sérialisé via {@link #toByteArray()}.
+ * Cassini implementation of {@link SseEventSink}: buffers SSE events then
+ * exposes the serialized content via {@link #toByteArray()}.
  *
- * <p>Format SSE (RFC §11.1.5) :</p>
+ * <p>SSE format (RFC §11.1.5):</p>
  * <pre>
  * id: &lt;id&gt;
  * event: &lt;name&gt;
@@ -33,9 +33,9 @@ import java.util.concurrent.CompletionStage;
 public final class CassiniSseEventSink implements SseEventSink {
 
     private final MessageBodyRegistry registry;
-    /** Mode bufferisé (Chappe ou transport sans streaming). */
+    /** Buffered mode (Chappe or transport without streaming). */
     private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-    /** Mode streaming (JDK ou transport chunked-capable), {@code null} = mode bufferisé. */
+    /** Streaming mode (JDK or chunked-capable transport), {@code null} = buffered mode. */
     private final CassiniStreamingSink streamingSink;
     private volatile boolean closed = false;
     private final java.util.concurrent.CompletableFuture<Void> closeFuture =
@@ -116,13 +116,13 @@ public final class CassiniSseEventSink implements SseEventSink {
         closeFuture.complete(null);
     }
 
-    /** Vrai si ce sink pousse les events directement sur le wire (pas de buffer). */
+    /** True if this sink pushes events directly to the wire (no buffering). */
     public boolean isStreaming() { return streamingSink != null; }
 
     /**
-     * Bloque le virtual thread courant jusqu'à ce que {@link #close()} soit appelé.
-     * No-op si le sink est déjà fermé. Permet aux resource methods SSE de fermer
-     * le sink de façon asynchrone (depuis un background thread).
+     * Blocks the current virtual thread until {@link #close()} is called.
+     * No-op if the sink is already closed. Lets SSE resource methods close
+     * the sink asynchronously (from a background thread).
      */
     public void awaitClose() {
         if (closed) return;

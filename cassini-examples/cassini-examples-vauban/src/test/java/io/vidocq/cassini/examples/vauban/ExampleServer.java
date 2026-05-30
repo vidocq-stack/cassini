@@ -6,8 +6,8 @@ import io.vidocq.vauban.core.container.VaubanContainer;
 import java.net.ServerSocket;
 
 /**
- * Serveur de test — démarre Vauban CDI + handler composite Chappe (statique
- * sur {@code /} + Cassini sur {@code /api/*}) sur un port aléatoire.
+ * Test server — starts Vauban CDI + composite Chappe handler (static on
+ * {@code /} + Cassini on {@code /api/*}) on a random port.
  */
 public class ExampleServer implements AutoCloseable {
 

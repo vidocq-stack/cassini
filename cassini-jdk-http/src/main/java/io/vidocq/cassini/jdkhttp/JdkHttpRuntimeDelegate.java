@@ -10,17 +10,17 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /**
- * {@link jakarta.ws.rs.ext.RuntimeDelegate} pour transport JDK HttpServer.
+ * {@link jakarta.ws.rs.ext.RuntimeDelegate} for JDK HttpServer transport.
  *
- * <p>Hérite de {@link CassiniRuntimeDelegate} (boilerplate UriBuilder /
- * ResponseBuilder / HeaderDelegate) et implémente {@code bootstrap()}
- * pour démarrer un {@link HttpServer} JDK.</p>
+ * <p>Inherits from {@link CassiniRuntimeDelegate} (UriBuilder / ResponseBuilder /
+ * HeaderDelegate boilerplate) and implements {@code bootstrap()} to start a JDK
+ * {@link HttpServer}.</p>
  *
- * <p>Sélectionnée via ServiceLoader : {@code provides RuntimeDelegate with ...}
- * dans {@code module-info.java}. <b>Conflit possible</b> si {@code cassini-chappe}
- * est aussi sur le classpath — utiliser
+ * <p>Selected via ServiceLoader: {@code provides RuntimeDelegate with ...} in
+ * {@code module-info.java}. <b>Possible conflict</b> if {@code cassini-chappe}
+ * is also on the classpath — use
  * {@code -Djakarta.ws.rs.ext.RuntimeDelegate=io.vidocq.cassini.jdkhttp.JdkHttpRuntimeDelegate}
- * pour forcer le choix.</p>
+ * to force the choice.</p>
  */
 public final class JdkHttpRuntimeDelegate extends CassiniRuntimeDelegate {
 

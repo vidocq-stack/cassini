@@ -8,11 +8,11 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Entrée du registre : un filtre/intercepteur + ses métadonnées
- * (priorité, pre-matching, bindings par annotation de nom).
+ * Registry entry: a filter/interceptor + its metadata (priority,
+ * pre-matching, name-binding annotations).
  *
- * <p>§6 : la priorité par défaut est {@code Priorities.USER = 5000}. Un
- * filtre sans {@link Priority} utilise cette valeur.</p>
+ * <p>§6: the default priority is {@code Priorities.USER = 5000}. A
+ * filter without {@link Priority} uses this value.</p>
  */
 public record FilterEntry<T>(
         T instance,
@@ -25,11 +25,11 @@ public record FilterEntry<T>(
     public static final int DEFAULT_PRIORITY = 5000;
 
     public static <T> FilterEntry<T> of(T instance) {
-        // §6 : un filtre fourni par un BeanProvider CDI est un client proxy (ex.
+        // §6: a filter supplied by a CDI BeanProvider is a client proxy (e.g.
         // JwtAuthenticationFilter_ClientProxy extends JwtAuthenticationFilter). @Provider /
-        // @PreMatching / @Priority / @NameBinding ne sont pas @Inherited, donc on remonte la
-        // hiérarchie jusqu'à la classe @Provider (cf. CassiniStackBuilderImpl.jaxrsAnnotatedClass)
-        // pour les lire — sinon @PreMatching est lu false et le filtre est classé post-matching.
+        // @PreMatching / @Priority / @NameBinding are not @Inherited, so walk up the
+        // hierarchy to the @Provider class (see CassiniStackBuilderImpl.jaxrsAnnotatedClass)
+        // to read them — otherwise @PreMatching is read as false and the filter is classified post-matching.
         Class<?> cls = providerClass(instance.getClass());
         int prio = DEFAULT_PRIORITY;
         Priority p = cls.getAnnotation(Priority.class);
@@ -39,7 +39,7 @@ public record FilterEntry<T>(
         return new FilterEntry<>(instance, cls, prio, pre, bindings, null);
     }
 
-    /** §6.5.5 : crée une entrée bornée à une méthode cible (DynamicFeature). */
+    /** §6.5.5: creates an entry scoped to a target method (DynamicFeature). */
     public static <T> FilterEntry<T> dynamicFor(T instance, java.lang.reflect.Method target) {
         Class<?> cls = providerClass(instance.getClass());
         int prio = DEFAULT_PRIORITY;
@@ -49,9 +49,9 @@ public record FilterEntry<T>(
     }
 
     /**
-     * Remonte la hiérarchie jusqu'à la classe portant {@code @Provider} (la classe réelle du
-     * filtre derrière un éventuel client proxy CDI). Repli sur la classe d'origine si aucune
-     * superclasse n'est annotée {@code @Provider} (ex. filtre enregistré programmatiquement).
+     * Walks up the hierarchy to the class carrying {@code @Provider} (the real filter class
+     * behind any CDI client proxy). Falls back to the original class if no superclass is
+     * annotated {@code @Provider} (e.g. filter registered programmatically).
      */
     private static Class<?> providerClass(Class<?> c) {
         Class<?> cur = c;
@@ -64,19 +64,19 @@ public record FilterEntry<T>(
         return c;
     }
 
-    /** Vrai si le filtre s'applique à la méthode cible (name-bindings + dynamic target). */
+    /** True if the filter applies to the target method (name-bindings + dynamic target). */
     public boolean appliesTo(AnnotatedElement method, AnnotatedElement declaringClass) {
-        // §6.5.5 : binding dynamique — applique strictement à la méthode cible.
+        // §6.5.5: dynamic binding — strictly applies to the target method.
         if (dynamicTarget != null) {
             return method instanceof java.lang.reflect.Method m && m.equals(dynamicTarget);
         }
-        if (nameBindings.isEmpty()) return true; // pas de binding → global
+        if (nameBindings.isEmpty()) return true; // no binding → global
         Set<Class<? extends Annotation>> owned = new HashSet<>();
         collectAnnotationsOfType(declaringClass, owned);
         collectAnnotationsOfType(method, owned);
-        // §6.5.2 : une @NameBinding sur la sous-classe Application
-        // (récupérée via ParamExtractor.currentApplication) s'applique à
-        // toutes les ressources et tous les filtres → bindings globaux.
+        // §6.5.2: a @NameBinding on the Application subclass (retrieved via
+        // ParamExtractor.currentApplication) applies to all resources and
+        // all filters → global bindings.
         var app = io.vidocq.cassini.internal.ParamExtractor.currentApplication();
         if (app != null) {
             collectAnnotationsOfType(app.getClass(), owned);

@@ -3,10 +3,10 @@ module io.vidocq.cassini.examples.chappe {
     requires jakarta.json.bind;
     requires java.net.http;
 
-    // JAX-RS injection / param resolution : reflection sur ressources.
+    // JAX-RS injection / param resolution: reflection on resources.
     opens io.vidocq.cassini.examples.chappe.resource;
-    // §R-3 — model n'a PAS besoin d'opens : Champollion résout les records
-    // via MethodHandles.publicLookup() + getRecordComponents(). On exporte
-    // juste le package pour que Champollion puisse charger la classe.
+    // §R-3 — model does NOT need opens: Champollion resolves records
+    // via MethodHandles.publicLookup() + getRecordComponents(). We just
+    // export the package so Champollion can load the class.
     exports io.vidocq.cassini.examples.chappe.model;
 }

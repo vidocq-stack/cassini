@@ -19,36 +19,35 @@ import jakarta.ws.rs.container.PreMatching;
 import jakarta.ws.rs.ext.Provider;
 
 /**
- * Active le {@link io.vidocq.vauban.core.context.RequestContext} Vauban autour de
- * chaque requête HTTP Cassini, puis le désactive en réponse. Indispensable pour que
- * les ressources JAX-RS {@code @RequestScoped} (= toute classe {@code @Path} après la
- * BCE {@link CassiniScopeExtension}) soient instanciables — sans ça, le proxy CDI
- * throws {@code ContextNotActiveException: RequestScope is not active}.
+ * Activates the Vauban {@link io.vidocq.vauban.core.context.RequestContext} around
+ * each Cassini HTTP request and deactivates it on response. Required for JAX-RS
+ * {@code @RequestScoped} resources (= every {@code @Path} class after the
+ * {@link CassiniScopeExtension} BCE runs) to be instantiable — otherwise the CDI
+ * proxy throws {@code ContextNotActiveException: RequestScope is not active}.
  *
- * <p>Enregistré automatiquement par {@link VaubanBeanProvider#getResourceClasses()}
- * et instancié comme singleton via {@link VaubanBeanProvider#getBean(Class)} —
- * transparent pour l'utilisateur : tout {@code CassiniStack} construit au-dessus
- * d'un container Vauban courant a le filter actif.</p>
+ * <p>Auto-registered by {@link VaubanBeanProvider#getResourceClasses()} and
+ * instantiated as a singleton via {@link VaubanBeanProvider#getBean(Class)} —
+ * transparent for the user: every {@code CassiniStack} built on top of a current
+ * Vauban container has this filter active.</p>
  *
- * <p>Priorités :</p>
+ * <p>Priorities:</p>
  * <ul>
- *   <li>{@link ContainerRequestFilter} {@code @PreMatching} + {@code Integer.MIN_VALUE} :
- *       s'exécute avant tout autre filter (auth, tracing, etc.) — le scope doit être
- *       actif AVANT que les autres filters puissent injecter des beans
- *       {@code @RequestScoped}.</li>
- *   <li>{@link ContainerResponseFilter} {@code Integer.MAX_VALUE} : s'exécute en
- *       dernier — désactive le scope une fois que tous les response filters ont
- *       eu l'occasion d'accéder aux beans request-scoped.</li>
+ *   <li>{@link ContainerRequestFilter} {@code @PreMatching} + {@code Integer.MIN_VALUE}:
+ *       runs before every other filter (auth, tracing, etc.) — the scope must be
+ *       active BEFORE other filters can inject {@code @RequestScoped} beans.</li>
+ *   <li>{@link ContainerResponseFilter} {@code Integer.MAX_VALUE}: runs last —
+ *       deactivates the scope once every response filter had the chance to access
+ *       request-scoped beans.</li>
  * </ul>
  *
- * <p><strong>Note flush exception</strong> : si une exception remonte hors de la
- * resource ET n'est pas mappée par un {@code ExceptionMapper} qui retourne une
- * Response, le response filter peut ne pas être appelé selon le container.
- * Cassini Invoker garantit l'appel des response filters même via ExceptionMapper
- * (cf. M6d.6 / HumboldtSpanFinalizer), donc le {@code deactivate()} est toujours
- * exécuté en pratique. Si jamais ce contrat est violé, le RequestContext reste
- * "actif" sur le virtual thread courant — comme les VT sont créés par requête, le
- * leak est borné à la durée du VT (terminé après la requête).</p>
+ * <p><strong>Flush exception note</strong>: if an exception escapes the resource
+ * AND is not mapped by an {@code ExceptionMapper} returning a Response, the response
+ * filter may not be invoked depending on the container. Cassini's Invoker guarantees
+ * response filters are called even via ExceptionMapper (cf. M6d.6 /
+ * HumboldtSpanFinalizer), so {@code deactivate()} is always executed in practice.
+ * Should that contract ever be violated, the RequestContext remains "active" on the
+ * current virtual thread — since VTs are per-request, the leak is bounded to the
+ * VT's lifetime (terminated after the request).</p>
  */
 @Provider
 @PreMatching
@@ -60,13 +59,13 @@ public final class VaubanRequestScopeFilter implements ContainerRequestFilter, C
     private final VaubanContainer container;
 
     /**
-     * Singleton — instancié par {@link VaubanBeanProvider#getBean(Class)} en passant
-     * le {@code VaubanContainer} courant. Constructor public pour permettre aux
-     * harness de test (cf. humboldt-tck/CassiniHarness) qui n'utilisent pas
-     * {@code CassiniStackBuilder.beanProvider(...)} d'enregistrer manuellement le
-     * filtre via {@code .provider(new VaubanRequestScopeFilter(container))}.
-     * Vauban ne le considère pas comme bean managé (constructor avec argument
-     * non-default → pas instanciable par le BCE pipeline standard).
+     * Singleton — instantiated by {@link VaubanBeanProvider#getBean(Class)} which
+     * passes the current {@code VaubanContainer}. The public constructor lets test
+     * harnesses (cf. humboldt-tck/CassiniHarness) that do not use
+     * {@code CassiniStackBuilder.beanProvider(...)} register the filter manually
+     * via {@code .provider(new VaubanRequestScopeFilter(container))}.
+     * Vauban does not treat it as a managed bean (constructor with a non-default
+     * argument → not instantiable by the standard BCE pipeline).
      */
     public VaubanRequestScopeFilter(VaubanContainer container) {
         this.container = container;

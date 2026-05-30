@@ -1,41 +1,41 @@
 package io.vidocq.cassini.spi.resource;
 
 /**
- * SPI de fabrique de ressources JAX-RS — abstrait l'instanciation des classes
- * annotées {@code @Path} et des providers.
+ * JAX-RS resource factory SPI — abstracts the instantiation of {@code @Path}-
+ * annotated classes and providers.
  *
- * <p>Deux modes d'utilisation :
+ * <p>Two usage modes:
  * <ul>
- *   <li><b>Mode A (Cassini "pur")</b> — la fabrique par défaut
- *       {@link #defaultFactory()} crée une nouvelle instance par requête via
- *       le constructeur sans argument. Pas d'injection.</li>
- *   <li><b>Mode B (Cassini + DI managé)</b> — préférer la SPI
- *       {@link io.vidocq.cassini.spi.bean.BeanProvider} et son adapter
- *       {@code cassini-cdi-vauban} (ou tout autre BeanProvider) pour déléguer
- *       l'instanciation à un container DI.</li>
+ *   <li><b>Mode A ("pure" Cassini)</b> — the default factory
+ *       {@link #defaultFactory()} creates a fresh instance per request via the
+ *       no-arg constructor. No injection.</li>
+ *   <li><b>Mode B (Cassini + managed DI)</b> — prefer the
+ *       {@link io.vidocq.cassini.spi.bean.BeanProvider} SPI and its
+ *       {@code cassini-cdi-vauban} adapter (or any other BeanProvider) to
+ *       delegate instantiation to a DI container.</li>
  * </ul>
  */
 public interface ResourceFactory {
 
     /**
-     * Crée (ou récupère depuis le scope) une instance de {@code resourceClass}.
+     * Creates (or fetches from the scope) an instance of {@code resourceClass}.
      *
-     * @param resourceClass classe ressource ou provider JAX-RS
-     * @return instance prête à être invoquée
+     * @param resourceClass JAX-RS resource or provider class
+     * @return an instance ready to be invoked
      */
     <T> T create(Class<T> resourceClass);
 
     /**
-     * Libère une instance créée par {@link #create(Class)}. Implémentation par
-     * défaut : no-op (le GC s'en occupe pour le Mode A).
+     * Releases an instance created by {@link #create(Class)}. Default
+     * implementation: no-op (GC handles it in Mode A).
      */
     default void destroy(Object resource) {
         // no-op
     }
 
     /**
-     * Fabrique par défaut : nouvelle instance par appel via constructeur sans
-     * argument. Aucune injection. Utilisée en Mode A.
+     * Default factory: a new instance per call via the no-arg constructor.
+     * No injection. Used in Mode A.
      *
      * <p>M6a: if a generated adapter with {@code newInstance()} is available (i.e. the class
      * has an accessible no-arg constructor), it is preferred over reflection. Falls back to

@@ -15,10 +15,10 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
- * Implémentation {@link BeanProvider} pour le container CDI Vauban.
+ * {@link BeanProvider} implementation for the Vauban CDI container.
  *
- * <p>Récupère les instances managées via {@link VaubanContainer#select(Class)}
- * et expose les classes {@code @Path}/{@code @Provider} connues du
+ * <p>Fetches managed instances via {@link VaubanContainer#select(Class)} and
+ * exposes the {@code @Path}/{@code @Provider} classes known to the
  * {@link jakarta.enterprise.inject.spi.BeanManager}.</p>
  */
 public final class VaubanBeanProvider implements BeanProvider {
@@ -26,7 +26,7 @@ public final class VaubanBeanProvider implements BeanProvider {
     private static final AnnotationLiteral<Any> ANY = new AnnotationLiteral<Any>() {};
 
     private final VaubanContainer container;
-    /** Singleton — activera/désactivera le RequestContext autour de chaque dispatch HTTP. */
+    /** Singleton — activates/deactivates the RequestContext around each HTTP dispatch. */
     private final VaubanRequestScopeFilter requestScopeFilter;
 
     public VaubanBeanProvider(VaubanContainer container) {
@@ -48,15 +48,16 @@ public final class VaubanBeanProvider implements BeanProvider {
     }
 
     /**
-     * Déproxifie : pour un bean normal-scoped, retourne l'instance contextuelle réelle vers
-     * laquelle le client proxy délègue dans le scope actif, afin que l'injection {@code @Context}
-     * de Cassini écrive dans les champs vus par le corps de la méthode resource. Pour les
-     * pseudo-scopes ({@code @Dependent}), {@link #getBean(Class)} a déjà renvoyé l'instance réelle
-     * → on la conserve telle quelle.
+     * Unwraps the proxy: for a normal-scoped bean, returns the real contextual instance to
+     * which the client proxy delegates in the active scope, so Cassini's {@code @Context}
+     * injection writes into the fields seen by the resource method body. For pseudo-scopes
+     * ({@code @Dependent}), {@link #getBean(Class)} already returned the real instance, so
+     * we keep it as-is.
      *
-     * <p>Utilise l'API CDI standard ({@link jakarta.enterprise.inject.spi.BeanManager}) — aucun
-     * couplage aux internes du proxy Vauban. Le scope request est garanti actif pendant le dispatch
-     * par {@link VaubanRequestScopeFilter} ({@code @PreMatching}, priorité {@code MIN_VALUE}).</p>
+     * <p>Uses the standard CDI API ({@link jakarta.enterprise.inject.spi.BeanManager}) —
+     * no coupling to Vauban's proxy internals. The request scope is guaranteed active during
+     * the dispatch by {@link VaubanRequestScopeFilter} ({@code @PreMatching}, priority
+     * {@code MIN_VALUE}).</p>
      */
     @Override
     public Object contextualInstance(Class<?> type, Object bean) {
@@ -68,20 +69,20 @@ public final class VaubanBeanProvider implements BeanProvider {
             Bean<?> resolved = bm.resolve(candidates);
             if (resolved == null) return bean;
             Class<? extends Annotation> scope = resolved.getScope();
-            // Seuls les beans normal-scoped sont proxifiés (cf. VAU-INJ-001). Pour @Dependent et
-            // autres pseudo-scopes, getBean() renvoie déjà l'instance réelle.
+            // Only normal-scoped beans are proxied (cf. VAU-INJ-001). For @Dependent and
+            // other pseudo-scopes, getBean() already returns the real instance.
             if (scope == null || !scope.isAnnotationPresent(NormalScope.class)) return bean;
             Object contextual = fromContext(bm.getContext(scope), resolved, bm);
             return contextual != null ? contextual : bean;
         } catch (RuntimeException e) {
-            // scope inactif ou bean non résolu → conserver l'objet d'origine (le proxy).
+            // inactive scope or unresolved bean → keep the original object (the proxy).
             return bean;
         }
     }
 
-    /** Capture {@code T} depuis {@code Bean<T>} pour satisfaire la signature générique de
+    /** Captures {@code T} from {@code Bean<T>} to satisfy the generic signature of
      *  {@link Context#get(jakarta.enterprise.context.spi.Contextual, jakarta.enterprise.context.spi.CreationalContext)}.
-     *  Retourne l'instance contextuelle existante du scope, ou la crée si absente. */
+     *  Returns the existing contextual instance from the scope, or creates one if absent. */
     private static <T> Object fromContext(Context ctx, Bean<T> bean, jakarta.enterprise.inject.spi.BeanManager bm) {
         T existing = ctx.get(bean);
         if (existing != null) return existing;
@@ -100,9 +101,9 @@ public final class VaubanBeanProvider implements BeanProvider {
                 result.add(beanClass);
             }
         }
-        // Auto-injecte le filter d'activation du RequestContext — Cassini l'enregistrera
-        // comme provider (annoté @Provider @PreMatching) et le résoudra via getBean() qui
-        // retourne le singleton interne. L'utilisateur n'a rien à enregistrer manuellement.
+        // Auto-injects the RequestContext activation filter — Cassini registers it as a
+        // provider (annotated @Provider @PreMatching) and resolves it via getBean(), which
+        // returns the internal singleton. The user has nothing to register manually.
         result.add(VaubanRequestScopeFilter.class);
         return result;
     }

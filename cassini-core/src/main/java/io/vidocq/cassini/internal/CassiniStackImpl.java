@@ -4,7 +4,7 @@ import io.vidocq.cassini.spi.http.CassiniHttpAdapter;
 import io.vidocq.cassini.spi.http.CassiniStack;
 
 /**
- * Implémentation de {@link CassiniStack} — wraps un {@link DefaultCassiniHttpAdapter}.
+ * {@link CassiniStack} implementation — wraps a {@link DefaultCassiniHttpAdapter}.
  */
 final class CassiniStackImpl implements CassiniStack {
 

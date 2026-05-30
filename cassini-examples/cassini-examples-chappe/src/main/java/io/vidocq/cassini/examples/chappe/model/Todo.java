@@ -1,12 +1,12 @@
 package io.vidocq.cassini.examples.chappe.model;
 
 /**
- * Modèle Todo — record immuable JSON-serializable.
+ * Todo model — immutable JSON-serializable record.
  */
 public record Todo(long id, String title, boolean done) {
 
     /**
-     * Crée un Todo mis à jour avec un nouveau titre et statut.
+     * Creates an updated Todo with a new title and status.
      */
     public Todo withUpdate(String newTitle, boolean newDone) {
         return new Todo(this.id, newTitle, newDone);

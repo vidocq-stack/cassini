@@ -31,10 +31,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Implémentation de {@link Response} côté Client — wrap un body byte[] et expose
- * {@code readEntity(Class<T>)} pour {@code String}, {@code byte[]}, {@code InputStream}.
- * Les types complexes (JSON-B, XML…) viendront avec l'intégration de
- * {@code MessageBodyRegistry} en commit #3.
+ * Client-side {@link Response} implementation — wraps a {@code byte[]} body and exposes
+ * {@code readEntity(Class<T>)} for {@code String}, {@code byte[]}, {@code InputStream}.
+ * Complex types (JSON-B, XML…) will arrive with the {@code MessageBodyRegistry}
+ * integration in commit #3.
  */
 final class CassiniClientResponse extends Response {
 
@@ -66,10 +66,10 @@ final class CassiniClientResponse extends Response {
     }
 
     /**
-     * Construit une {@code CassiniClientResponse} à partir des données d'un
-     * {@link CassiniClientResponseContext} après application de la chaîne de
-     * {@code ClientResponseFilter}. Les headers sont déjà sous forme String et
-     * peuvent avoir été mutés par les filtres.
+     * Builds a {@code CassiniClientResponse} from the data of a
+     * {@link CassiniClientResponseContext} after the {@code ClientResponseFilter}
+     * chain has been applied. Headers are already in String form and may have
+     * been mutated by the filters.
      */
     static CassiniClientResponse fromBufferedBody(int status, byte[] body,
                                                     MultivaluedMap<String, String> stringHeaders) {
@@ -109,7 +109,7 @@ final class CassiniClientResponse extends Response {
     @Override public <T> T readEntity(GenericType<T> type, Annotation[] annotations) { return readEntity(type); }
 
     @Override public boolean hasEntity() { return body != null && body.length > 0; }
-    @Override public boolean bufferEntity() { return true; /* déjà buffered */ }
+    @Override public boolean bufferEntity() { return true; /* already buffered */ }
     @Override public void close() { closed = true; }
 
     @Override

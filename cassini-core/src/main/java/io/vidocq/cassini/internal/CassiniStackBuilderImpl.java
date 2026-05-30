@@ -16,10 +16,10 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * Implémentation de {@link CassiniStack.Builder} — assemble router, invoker et
- * registries depuis une {@link Application} JAX-RS et un {@link ResourceFactory}.
+ * Implementation of {@link CassiniStack.Builder} — assembles router, invoker and
+ * registries from a JAX-RS {@link Application} and a {@link ResourceFactory}.
  *
- * <p>Réplique la logique de bootstrap précédemment inline dans
+ * <p>Replicates the bootstrap logic previously inlined in
  * {@code ChappeRuntimeDelegate.ChappeSeBootstrapInstance}.</p>
  */
 final class CassiniStackBuilderImpl implements CassiniStack.Builder {
@@ -69,7 +69,7 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
             }
         }
 
-        // Fusionner les classes connues du BeanProvider (annotées @Path/@Provider).
+        // Merge classes known by the BeanProvider (annotated with @Path/@Provider).
         if (beanProvider != null) {
             for (Class<?> c : beanProvider.getResourceClasses()) {
                 resourceClasses.add(jaxrsAnnotatedClass(c));
@@ -85,12 +85,12 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
             if (c.isAnnotationPresent(jakarta.ws.rs.Path.class)) pathClasses.add(c);
             if (c.isAnnotationPresent(jakarta.ws.rs.ext.Provider.class)) {
                 Object inst = resourceSingletons.computeIfAbsent(c, k -> {
-                    // Préférer le BeanProvider si la classe y est managée.
+                    // Prefer the BeanProvider if the class is managed there.
                     if (beanProvider != null) {
                         try {
                             return beanProvider.getBean(k);
                         } catch (IllegalArgumentException ignored) {
-                            // fallback ci-dessous
+                            // fallback below
                         }
                     }
                     try { return k.getDeclaredConstructor().newInstance(); }
@@ -117,10 +117,10 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
         }
 
         var routes = RouteRegistry.discover(pathClasses.toArray(Class<?>[]::new));
-        // §6.5.5 : exécuter les DynamicFeature sur chaque resource method — elles enregistrent
-        // leurs filtres/interceptors bornés à la méthode (ex. RolesAllowedDynamicFeature →
-        // @RolesAllowed/@DenyAll/@PermitAll). Sans cet appel, les features étaient collectées mais
-        // jamais appliquées : l'autorisation n'était pas câblée.
+        // §6.5.5: run DynamicFeatures on each resource method — they register
+        // their filters/interceptors scoped to the method (e.g. RolesAllowedDynamicFeature →
+        // @RolesAllowed/@DenyAll/@PermitAll). Without this call, features were collected but
+        // never applied: authorization was not wired up.
         filters.applyDynamicFeatures(routes);
         var router = new UriRouter(routes);
 
@@ -135,7 +135,7 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
                 try {
                     return bp.getBean(cls);
                 } catch (IllegalArgumentException ignored) {
-                    // fallback : factory ou newInstance
+                    // fallback: factory or newInstance
                 }
             }
             if (factory != null) {
@@ -158,8 +158,8 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
 
         var invoker = new Invoker(resolver, bodies, mappers);
         invoker.setFilters(filters);
-        // §9 : permet à l'Invoker de déproxifier un bean CDI (instance contextuelle réelle)
-        // pour l'injection @Context dans les ressources @RequestScoped (cf. BeanProvider).
+        // §9: lets the Invoker unwrap a CDI bean (real contextual instance)
+        // for @Context injection in @RequestScoped resources (see BeanProvider).
         invoker.setBeanProvider(bp);
 
         var adapter = new DefaultCassiniHttpAdapter(router, invoker);
@@ -167,8 +167,8 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
     }
 
     /**
-     * Remonte la hiérarchie de classes pour trouver celle portant {@code @Path}
-     * ou {@code @Provider}. Nécessaire pour les proxies CDI.
+     * Walks up the class hierarchy to find the one carrying {@code @Path}
+     * or {@code @Provider}. Required for CDI proxies.
      */
     static Class<?> jaxrsAnnotatedClass(Class<?> c) {
         Class<?> cur = c;
