@@ -12,7 +12,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 /**
- * Chappe to Cassini HTTP adapter.
+ * Chappe → Cassini HTTP adapter.
  *
  * <p>For each HTTP request received by Chappe:</p>
  * <ol>
@@ -25,7 +25,7 @@ public final class ChappeHttpAdapter implements Handler {
 
     private static final System.Logger LOG = System.getLogger(ChappeHttpAdapter.class.getName());
 
-    /** Lifecycle hook: enters/exits the CDI scope ({@code @RequestScoped}) if provided. */
+    /** Lifecycle hook: enters/leaves the CDI scope ({@code @RequestScoped}) if provided. */
     @FunctionalInterface
     public interface Scoped {
         void runInScope(Runnable action);
@@ -48,7 +48,7 @@ public final class ChappeHttpAdapter implements Handler {
      * Each request is handled on a dedicated virtual thread (M2h).
      * This guarantees: (1) isolation of request-scope ScopedValues,
      * (2) no platform-thread starvation if the resource method blocks
-     * on I/O or waits on a CompletionStage.
+     * on I/O or waits for a CompletionStage.
      */
     @Override
     public Response handle(Request request) throws Exception {

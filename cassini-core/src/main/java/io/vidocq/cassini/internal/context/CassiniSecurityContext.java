@@ -6,14 +6,14 @@ import jakarta.ws.rs.core.SecurityContext;
 import java.security.Principal;
 
 /**
- * Default security context: anonymous, not secure (HTTP).
- * If an {@link AuthInfo} was placed in the ThreadLocal (by an upstream
- * BASIC filter), it is used to expose userPrincipal / userInRole / scheme.
+ * Default security context: anonymous, unsecured (HTTP).
+ * If an {@link AuthInfo} has been placed in a ThreadLocal (by an upstream BASIC filter),
+ * it is used to expose userPrincipal / userInRole / scheme.
  */
 public final class CassiniSecurityContext implements SecurityContext {
 
     /**
-     * Per-request authentication information, set by the BASIC test bridge
+     * Per-request authentication information, set by the test BASIC bridge
      * ({@code BasicAuthHandler}) or any upstream adapter.
      */
     public record AuthInfo(String username, String authScheme, java.util.Set<String> roles) {}

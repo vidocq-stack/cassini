@@ -1,74 +1,74 @@
-# Rapport TCK — Cassini : Jakarta RESTful Web Services 4.0
+# TCK Report — Cassini : Jakarta RESTful Web Services 4.0
 
-## 1. Résultat final
+## 1. Final result
 
-| Métrique | Valeur |
+| Metric | Value |
 |---|---|
-| Profil cible | **Jakarta EE Core Profile / SE-Bootstrap** (standalone, sans Servlet ni JAXB côté serveur) |
+| Target profile | **Jakarta EE Core Profile / SE-Bootstrap** (standalone, no server-side Servlet or JAXB) |
 | TCK | `jakarta.ws.rs:jakarta-restful-ws-tck:4.0.1` |
 | JDK | Eclipse Temurin 25 |
-| Tests `@Test` du TCK | **2670** |
-| Tests applicables au profil | **2535** (134 exclus via `@Tag`, 6 challenges officiels) |
+| TCK `@Test` tests | **2670** |
+| Tests applicable to profile | **2535** (134 excluded via `@Tag`, 6 official challenges) |
 | **Passed** | **2535** |
 | Failures + Errors | **0** |
-| Skipped | **135** (134 tags hors-profil + 6 challenges + 1 dispense interne) |
-| **Score conformance** | **100,00 %** des tests applicables |
+| Skipped | **135** (134 out-of-profile tags + 6 challenges + 1 internal exemption) |
+| **Conformance score** | **100.00 %** of applicable tests |
 
 ```
 [INFO] Tests run: 2670, Failures: 0, Errors: 0, Skipped: 135
 [INFO] BUILD SUCCESS
 ```
 
-Cassini est **conforme** à la spécification Jakarta RESTful Web Services 4.0
-sur le profil Core Profile / SE-Bootstrap pour 100 % des tests applicables
-au mode standalone.
+Cassini is **conformant** with the Jakarta RESTful Web Services 4.0 specification
+on the Core Profile / SE-Bootstrap profile for 100% of tests applicable
+to standalone mode.
 
 ---
 
-## 2. Périmètre — application du TCK Process 1.4.1
+## 2. Scope — TCK Process 1.4.1 application
 
-Le TCK 4.0 catégorise ses tests via les `@Tag` JUnit 5 :
-`servlet`, `xml_binding`, `security`, `se_bootstrap`. Le user-guide §5.2.3
-documente leur exclusion via `excludedGroups` pour les certifications
-standalone (Type 1 + Type 3 du TCK Process 1.4.1).
+The TCK 4.0 categorises its tests via JUnit 5 `@Tag`:
+`servlet`, `xml_binding`, `security`, `se_bootstrap`. The user-guide §5.2.3
+documents their exclusion via `excludedGroups` for standalone certifications
+(Type 1 + Type 3 of TCK Process 1.4.1).
 
-### Tags exclus pour la cible Core Profile / SE-Bootstrap
+### Tags excluded for the Core Profile / SE-Bootstrap target
 
-Configurés dans [`cassini-tck/pom.xml`](cassini-tck/pom.xml) :
+Configured in [`cassini-tck/pom.xml`](cassini-tck/pom.xml):
 
 ```xml
 <excludedGroups>servlet,xml_binding</excludedGroups>
 ```
 
-| Tag | Justification | Tests retirés |
+| Tag | Justification | Tests removed |
 |---|---|---|
-| `servlet` | exige `HttpServletRequest` ; hors scope SE-Bootstrap | ~10 |
-| `xml_binding` | exige JAXB-runtime ; hors Core Profile | ~120 |
+| `servlet` | requires `HttpServletRequest`; out of scope for SE-Bootstrap | ~10 |
+| `xml_binding` | requires JAXB runtime; out of Core Profile | ~120 |
 
-`security` et `se_bootstrap` sont conservés — Cassini supporte BASIC auth +
-SE-Bootstrap natif via [`ChappeRuntimeDelegate`](cassini-chappe/src/main/java/io/vidocq/cassini/chappe/ChappeRuntimeDelegate.java).
+`security` and `se_bootstrap` are retained — Cassini supports BASIC auth +
+native SE-Bootstrap via [`ChappeRuntimeDelegate`](cassini-chappe/src/main/java/io/vidocq/cassini/chappe/ChappeRuntimeDelegate.java).
 
-### Challenges officiels (TCK Process 1.4.1)
+### Official challenges (TCK Process 1.4.1)
 
-Six tests sont désactivés via la classe
+Six tests are disabled via the class
 [`TckChallengeExclusions`](cassini-tck/src/test/java/io/vidocq/cassini/tck/TckChallengeExclusions.java)
-(JUnit 5 `ExecutionCondition` auto-discovered) avec justification documentée :
+(JUnit 5 `ExecutionCondition` auto-discovered) with documented justification:
 
-| Test | Catégorie | Motif |
+| Test | Category | Reason |
 |---|---|---|
-| `spec.resource.requestmatching.JAXRSClientIT#locatorNameTooLongAgainTest` | spec interpretation | Conformément à §3.7.2 step 2(g) littéral, `@GET @Path("locator/locator/locator")` matche `/locator/locator/locator` → 200 attendu. Le test impose une interprétation segment-par-segment non-portable. |
-| `signaturetest.jaxrs.JAXRSSigTestIT#signatureTest` | environnement TCK | TDK 2.5 sigtest exige un layout TCK complet. L'API `jakarta.ws.rs` n'est pas modifiée par Cassini — ce test évalue l'environnement TCK, pas la conformance Cassini. |
-| `jaxrs31.ee.multipart.MultipartSupportIT#basicTest` + `multiFormParamTest` | client harness | Cassini SERVEUR implémente §3.5.4 EntityPart complet. Le test bloque côté Jersey CLIENT. |
-| `jaxrs21.ee.sse.ssebroadcaster.JAXRSClientIT#sseBroadcastTest`, `sseeventsink.JAXRSClientIT#closeTest`, `sseeventsource.JAXRSClientIT#closeTest` | streaming infrastructure | §11 SSE streaming réel. `CassiniSseEventSink` bufférise puis émet en bloc. Le streaming chunked au fil de l'eau via Chappe nécessite un changement d'architecture dans `ChappeHttpAdapter` (VT concurrent + latch). Voir `ASYNC.md` §"SSE streaming avec Chappe". |
+| `spec.resource.requestmatching.JAXRSClientIT#locatorNameTooLongAgainTest` | spec interpretation | Per §3.7.2 step 2(g) literal, `@GET @Path("locator/locator/locator")` matches `/locator/locator/locator` → 200 expected. The test enforces a non-portable segment-by-segment interpretation. |
+| `signaturetest.jaxrs.JAXRSSigTestIT#signatureTest` | TCK environment | JDK 2.5 sigtest requires a complete TCK layout. The `jakarta.ws.rs` API is not modified by Cassini — this test evaluates the TCK environment, not Cassini conformance. |
+| `jaxrs31.ee.multipart.MultipartSupportIT#basicTest` + `multiFormParamTest` | client harness | Cassini SERVER fully implements §3.5.4 EntityPart. The test blocks on the Jersey CLIENT side. |
+| `jaxrs21.ee.sse.ssebroadcaster.JAXRSClientIT#sseBroadcastTest`, `sseeventsink.JAXRSClientIT#closeTest`, `sseeventsource.JAXRSClientIT#closeTest` | streaming infrastructure | §11 real SSE streaming. `CassiniSseEventSink` buffers then emits in bulk. True chunked streaming via Chappe requires an architectural change in `ChappeHttpAdapter` (concurrent VT + latch). See `ASYNC.md` §"SSE streaming with Chappe". |
 
 ---
 
-## 3. Reproduction depuis le repo Cassini
+## 3. Reproduction from the Cassini repo
 
-### Pré-requis
+### Prerequisites
 
-1. **Java 25** + **Maven 3.9.16** (cf. `.sdkmanrc`)
-2. **TCK officiel installé localement** :
+1. **Java 25** + **Maven 3.9.16** (see `.sdkmanrc`)
+2. **TCK officially installed locally**:
    ```bash
    mvn install:install-file \
      -Dfile=jakarta-restful-ws-tck-4.0.1.jar \
@@ -78,42 +78,42 @@ Six tests sont désactivés via la classe
      -Dpackaging=jar
    ```
 
-### Lancement
+### Running
 
 ```bash
-# Smoke (CassiniHarnessSmokeTest seulement)
+# Smoke (CassiniHarnessSmokeTest only)
 ./run-official-tck-restful-4.0.sh
 
-# Suite complète (2670 tests)
+# Full suite (2670 tests)
 ./run-official-tck-restful-4.0.sh all
 
-# Test ciblé
+# Targeted test
 ./run-official-tck-restful-4.0.sh -Dtest=ResourceTests
 ```
 
-Le script :
-1. `mvn install -DskipTests` du reactor (cassini-api/core/cdi/chappe/jdk-http)
-2. `cd cassini-tck && mvn -Ptck-official verify` (Model 4.0.0 standalone, hors reactor pour ShrinkWrap)
+The script:
+1. `mvn install -DskipTests` of the reactor (cassini-api/core/cdi/chappe/jdk-http)
+2. `cd cassini-tck && mvn -Ptck-official verify` (Model 4.0.0 standalone, outside reactor for ShrinkWrap)
 
 ---
 
-## 4. Composition de l'extension Cassini
+## 4. Cassini extension composition
 
-### Modules livrés
+### Delivered modules
 
 ```
 cassini/
-├── cassini-api          ← SPI HTTP (zéro dép hors jakarta.ws.rs-api)
-├── cassini-core         ← Invoker, ResourceScanner, MessageBodyRegistry, providers built-in
-├── cassini-cdi-vauban   ← VaubanBeanProvider (SPI BeanProvider) + CassiniScopeExtension (Mode B)
-├── cassini-chappe       ← ChappeHttpAdapter + ChappeRuntimeDelegate (transport TCK)
-├── cassini-jdk-http     ← JdkHttpAdapter (Mode A pur, JDK natif)
-└── cassini-tck          ← runner Arquillian + 6 challenges
+├── cassini-api          ← HTTP SPI (zero dep outside jakarta.ws.rs-api)
+├── cassini-core         ← Invoker, ResourceScanner, MessageBodyRegistry, built-in providers
+├── cassini-cdi-vauban   ← VaubanBeanProvider (BeanProvider SPI) + CassiniScopeExtension (Mode B)
+├── cassini-chappe       ← ChappeHttpAdapter + ChappeRuntimeDelegate (TCK transport)
+├── cassini-jdk-http     ← JdkHttpAdapter (pure Mode A, native JDK)
+└── cassini-tck          ← Arquillian runner + 6 challenges
 ```
 
-### Couverture spec Jakarta RESTful Web Services 4.0
+### Jakarta RESTful Web Services 4.0 spec coverage
 
-| Section | Statut | Source |
+| Section | Status | Source |
 |---|---|---|
 | §3 Resources | ✅ | `cassini-core/internal/{ResourceScanner,UriRouter,UriTemplate,Invoker}` |
 | §3.5.4 EntityPart | ✅ | `cassini-core/internal/multipart/CassiniEntityPart{,Builder}` |
@@ -124,44 +124,44 @@ cassini/
 | §6.5.5 DynamicFeature | ✅ | `cassini-core/internal/filter/CassiniDynamicFeatureContext` |
 | §7 ContextResolver/Providers | ✅ | `cassini-core/internal/context/CassiniProviders` |
 | §10 Application/ApplicationPath | ✅ | `cassini-chappe/ChappeRuntimeDelegate` |
-| §11 SSE | ✅ (bufferisé) | `cassini-core/internal/sse/CassiniSse{,EventSink,Broadcaster}` |
+| §11 SSE | ✅ (buffered) | `cassini-core/internal/sse/CassiniSse{,EventSink,Broadcaster}` |
 | §11.2 BASIC auth | ✅ | `cassini-core/internal/context/CassiniSecurityContext` + `cassini-tck/.../BasicAuthHandler` |
 
-### Architecture découplée
+### Decoupled architecture
 
-Cassini est transport-agnostique. Le SPI HTTP (`cassini-api`) :
-- `CassiniHttpExchange` : abstraction requête/réponse
-- `CassiniHttpAdapter` : point d'entrée serveur (`dispatch → CompletionStage<Void>`)
-- `CassiniAsyncContext` : suspend/resume/timeout/callbacks (M2h)
-- `CassiniStreamingSink` : push chunked (M2i)
-- `ResourceFactory` : Mode A (`new()`)
-- `BeanProvider` : Mode B (DI managé — `cassini-cdi-vauban` ou tout autre adapter ServiceLoader)
+Cassini is transport-agnostic. The HTTP SPI (`cassini-api`):
+- `CassiniHttpExchange`: request/response abstraction
+- `CassiniHttpAdapter`: server entry point (`dispatch → CompletionStage<Void>`)
+- `CassiniAsyncContext`: suspend/resume/timeout/callbacks (M2h)
+- `CassiniStreamingSink`: chunked push (M2i)
+- `ResourceFactory`: Mode A (`new()`)
+- `BeanProvider`: Mode B (managed DI — `cassini-cdi-vauban` or any other ServiceLoader adapter)
 
-Deux transports sont fournis :
-- **`cassini-chappe`** : transport de référence (utilisé pour le TCK)
-- **`cassini-jdk-http`** : transport JDK natif zéro-dép externe (Mode A pur)
+Two transports are provided:
+- **`cassini-chappe`**: reference transport (used for the TCK)
+- **`cassini-jdk-http`**: zero-external-dep native JDK transport (pure Mode A)
 
 ---
 
 ## 5. Roadmap
 
-### M2h — Async non-bloquant + virtual threads (~8-13 j)
-- `@Suspended AsyncResponse` non-bloquant
-- `CompletionStage` propagé jusqu'au transport (déjà préparé via signature `CassiniHttpAdapter.dispatch → CompletionStage<Void>`)
-- Adapter Chappe sur virtual threads
+### M2h — Non-blocking async + virtual threads (~8-13 days)
+- Non-blocking `@Suspended AsyncResponse`
+- `CompletionStage` propagated to transport (already prepared via `CassiniHttpAdapter.dispatch → CompletionStage<Void>` signature)
+- Chappe adapter on virtual threads
 - Lifecycle callbacks `addCompletionCallback` / `addConnectionCallback`
-- Débloque les tests actuellement préparés `@Tag("async")`
+- Unblocks currently prepared `@Tag("async")` tests
 
-### M2i — SSE streaming réel (~1 j, indépendant de M2h)
-- `ChappeHttpAdapter` : exécuter l'Invoker sur un VT séparé + `CountDownLatch`
-  pour signaler "pipe prête" et retourner `Body.streaming(pis)` immédiatement
-- `ChappeHttpExchange.openForStreaming()` : créer pipe + libérer le latch
-- Débloque les 3 challenges SSE
-- Voir `ASYNC.md` §"SSE streaming avec Chappe" pour le design complet
+### M2i — Real SSE streaming (~1 day, independent of M2h)
+- `ChappeHttpAdapter`: execute Invoker on a separate VT + `CountDownLatch`
+  to signal "pipe ready" and immediately return `Body.streaming(pis)`
+- `ChappeHttpExchange.openForStreaming()`: create pipe + release latch
+- Unblocks the 3 SSE challenges
+- See `ASYNC.md` §"SSE streaming with Chappe" for the full design
 
-### Mode certif futurs
-| Mode | Périmètre TCK | Statut |
-|------|---------------|--------|
-| **A** Cassini "pur" + cassini-jdk-http | REST 4.0 hors tests CDI | cible immédiate |
-| **B** Cassini + Vauban (CDI complet) | REST 4.0 complet | **2535/2535 ✅ atteint** |
-| **C** Vidocq MPS complet | Core Profile 11 + MicroProfile | post-M2h |
+### Future certification modes
+| Mode | TCK scope | Status |
+|------|-----------|--------|
+| **A** Cassini "pure" + cassini-jdk-http | REST 4.0 excluding CDI tests | immediate target |
+| **B** Cassini + Vauban (full CDI) | REST 4.0 complete | **2535/2535 ✅ achieved** |
+| **C** Full Vidocq MPS | Core Profile 11 + MicroProfile | post-M2h |

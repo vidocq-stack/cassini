@@ -7,11 +7,11 @@ import java.util.Map;
 /**
  * Transport-neutral HTTP response (no transport dependency).
  *
- * <p>Built by the {@code Invoker} from a JAX-RS resource method, then copied
- * to a {@link io.vidocq.cassini.spi.http.CassiniHttpExchange} by the adapter
- * (Chappe, JDK HttpServer, ...).
+ * <p>Built by the {@code Invoker} from a JAX-RS resource method result,
+ * then written to a {@link io.vidocq.cassini.spi.http.CassiniHttpExchange}
+ * by the adapter (Chappe, JDK HttpServer, ...).
  *
- * <p>The body is a pre-serialized {@code byte[]}. For streaming (SSE,
+ * <p>The body is a pre-serialised {@code byte[]}. For streaming (SSE,
  * StreamingOutput), a dedicated type will be added later (M2i).
  */
 public final class CassiniHttpResponse {
@@ -54,7 +54,7 @@ public final class CassiniHttpResponse {
     public byte[] body() { return body; }
 
     /**
-     * Copies this result onto a {@link io.vidocq.cassini.spi.http.CassiniHttpExchange} —
+     * Copies this result to a {@link io.vidocq.cassini.spi.http.CassiniHttpExchange} —
      * used by transport adapters to write the final HTTP response.
      */
     public void writeTo(io.vidocq.cassini.spi.http.CassiniHttpExchange exchange) throws java.io.IOException {

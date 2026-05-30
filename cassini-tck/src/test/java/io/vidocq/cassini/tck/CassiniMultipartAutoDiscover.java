@@ -10,9 +10,9 @@ import org.glassfish.jersey.internal.spi.AutoDiscoverable;
  * {@link MultipartFormDataProvider} as soon as a Jersey {@link jakarta.ws.rs.client.Client}
  * is created via {@link jakarta.ws.rs.client.ClientBuilder}. Without this, the
  * Jersey client cannot serialize/deserialize {@code List<EntityPart>}
- * (it would look up its internal {@code BodyPart} type).
+ * (it would look for its internal {@code BodyPart} type).
  *
- * <p>Activated via {@code META-INF/services/org.glassfish.jersey.internal.spi.AutoDiscoverable}.</p>
+ * <p>Activé via {@code META-INF/services/org.glassfish.jersey.internal.spi.AutoDiscoverable}.</p>
  */
 public final class CassiniMultipartAutoDiscover implements AutoDiscoverable {
 

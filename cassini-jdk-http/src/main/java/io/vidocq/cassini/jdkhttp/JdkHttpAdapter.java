@@ -12,14 +12,14 @@ import java.util.ArrayList;
 /**
  * HTTP adapter based on {@link HttpServer} (pure JDK).
  *
- * <p>Serves as a standalone Mode A transport for Cassini, with no external
- * dependency. Used for Cassini-pure unit tests and as a reference transport
- * when users do not want to depend on Chappe.
+ * <p>Acts as a standalone transport for Cassini in Mode A, with no external
+ * dependency. Used for pure Cassini unit tests and as the reference transport
+ * when the user does not want to depend on Chappe.
  *
- * <p>Each request is executed on a virtual thread via
+ * <p>Each request runs on a virtual thread via
  * {@link java.util.concurrent.Executors#newVirtualThreadPerTaskExecutor()} —
  * configure the {@link HttpServer} executor accordingly (or use
- * {@link #serve(int)} which does it automatically).
+ * {@link #serve(int)}, which does it automatically).
  */
 public final class JdkHttpAdapter {
 
@@ -77,7 +77,7 @@ public final class JdkHttpAdapter {
     }
 
     /**
-     * Starts a server with a JAX-RS {@link Application} bootstrapped via
+     * Starts a server with a JAX-RS {@link Application} bootstrapped through
      * {@link CassiniStack}.
      */
     public static HttpServer serve(int port, jakarta.ws.rs.core.Application app)

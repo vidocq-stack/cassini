@@ -26,17 +26,16 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * {@link ContainerRequestContext} implementation backed by a Chappe
- * {@link Request}. Filters can mutate headers, entity stream, method, and
- * abort the request via {@link #abortWith(Response)}.
+ * {@link ContainerRequestContext} implementation backed by a
+ * Chappe {@link Request}. Filters can mutate headers, entity stream,
+ * method and abort the request via {@link #abortWith(Response)}.
  */
 public final class CassiniRequestContext implements ContainerRequestContext {
 
     /**
      * Exchange attribute key carrying the {@link SecurityContext} set by a
-     * {@code @PreMatching} filter via {@link #setSecurityContext}. Read by
-     * {@code FieldInjector} and {@code ParamExtractor} for
-     * {@code @Context SecurityContext} injection into resources.
+     * {@code @PreMatching} filter via {@link #setSecurityContext}. Read by {@code FieldInjector} and
+     * {@code ParamExtractor} for {@code @Context SecurityContext} injection into resources.
      */
     public static final String ATTR_SECURITY_CONTEXT = "io.vidocq.cassini.securityContext";
 
@@ -51,20 +50,21 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     private SecurityContext securityContext;
     private UriInfo uriInfo;
     private Response aborted;
-    /** §6.6: true once matching has happened — prevents setMethod /
+    /** §6.6: true once matching has occurred — prevents setMethod /
      *  setRequestUri / setSecurityContext / setEntityStream / abortWith
-     *  from a @PostMatching filter for illegal mutations. */
+     *  from being called in a @PostMatching filter for illegal mutations. */
     private boolean postMatching = false;
-    /** §6.6: response filter pass — abortWith must throw
-     *  IllegalStateException. Enabled via {@link #runDuringResponsePhase}. */
+    /** §6.6: during the response-filter pass — abortWith must throw
+     *  IllegalStateException. Activated via {@link #runDuringResponsePhase}. */
     private boolean responsePhase = false;
 
     public void markPostMatching() { this.postMatching = true; }
     /**
-     * Runs {@code action} with the {@code responsePhase} flag active — so
-     * a response filter calling {@code abortWith} triggers
-     * IllegalStateException, while programmatic abortWith outside of the
-     * response chain (e.g. exception mapper internal flow) remains allowed.
+     * Runs {@code action} with the {@code responsePhase} flag active —
+     * so a response filter that calls {@code abortWith} triggers
+     * IllegalStateException, but a programmatic call to abortWith
+     * outside the response chain (e.g. exception mapper internal flow)
+     * remains allowed.
      */
     public void runDuringResponsePhase(Runnable action) {
         boolean prev = responsePhase;
@@ -83,8 +83,8 @@ public final class CassiniRequestContext implements ContainerRequestContext {
                 : exchange.requestBody();
         // §6: a @PreMatching filter may have set a SecurityContext (stored on the exchange).
         // Any subsequent context instance (e.g. the one in the post-matching chain where
-        // RolesAllowedRequestFilter runs) must reflect it; otherwise getSecurityContext()
-        // returns the default and authorization does not see the JWT principal.
+        // RolesAllowedRequestFilter runs) must reflect it, otherwise getSecurityContext()
+        // returns the default and authorisation does not see the JWT principal.
         Object filterSc = exchange.getAttribute(ATTR_SECURITY_CONTEXT);
         this.securityContext = filterSc instanceof SecurityContext sc ? sc : new CassiniSecurityContext(exchange);
         this.uriInfo = uriInfo;
@@ -112,7 +112,7 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     @Override public void removeProperty(String name) { properties.remove(name); }
 
     @Override public UriInfo getUriInfo() {
-        // §6.6.1: if setRequestUri was called, the UriInfo must reflect the
+        // §6.6.1: if setRequestUri was called, UriInfo must reflect the
         // new baseUri/requestUri values without rebuilding the whole chain.
         return new MutableUriInfoView(uriInfo, baseUri, requestUri);
     }
@@ -144,7 +144,7 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     }
 
     @Override public boolean containsHeaderString(String n, String sep, java.util.function.Predicate<String> p) {
-        // §6.7.4: case-insensitive lookup (RFC 7230).
+        // §6.7.4 : recherche case-insensitive (RFC 7230).
         List<String> vs = headers.get(n);
         if (vs == null) {
             for (var e : headers.entrySet()) {
@@ -182,24 +182,24 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     @Override public void setSecurityContext(SecurityContext context) {
         if (postMatching) throw new IllegalStateException("setSecurityContext cannot be called in post-matching filters (§6.6)");
         this.securityContext = context;
-        // §6: a @PreMatching filter may replace the SecurityContext. Propagate it on the exchange
-        // so that @Context SecurityContext injection in a resource (FieldInjector /
-        // ParamExtractor) reflects this value — otherwise they rebuild a fresh
-        // CassiniSecurityContext and ignore the context set by the filter (MicroProfile JWT case).
+        // §6: a @PreMatching filter may replace the SecurityContext. Propagate it to the
+        // exchange so that @Context SecurityContext injection in a resource (FieldInjector /
+        // ParamExtractor) reflects this value — otherwise they reconstruct a fresh
+        // CassiniSecurityContext and ignore the context set by the filter (e.g. MicroProfile JWT).
         exchange.setAttribute(ATTR_SECURITY_CONTEXT, context);
     }
 
     @Override public void abortWith(Response response) {
-        // §6.6: abortWith is allowed in both pre-matching AND post-matching filters.
+        // §6.6: abortWith is allowed in pre-matching AND post-matching filters.
         // Forbidden when the context is injected into a resource method/field
-        // (postResource), or during the response filter phase (responsePhase,
-        // scoped via runDuringResponsePhase).
+        // (postResource), or during the response-filter phase
+        // (responsePhase, scoped via runDuringResponsePhase).
         if (postResource) throw new IllegalStateException("abortWith cannot be called from resource methods (§6.6)");
         if (responsePhase) throw new IllegalStateException("abortWith cannot be called from response filters (§6.6)");
         this.aborted = response;
     }
 
-    /** Separate flag: true only when injecting the context into the
+    /** Separate flag: true only when the context is injected into the
      *  resource method (not into filters). */
     private boolean postResource = false;
     public void markPostResource() { this.postResource = true; }
@@ -208,14 +208,14 @@ public final class CassiniRequestContext implements ContainerRequestContext {
         return MediaTypes.parse(getHeaderString("Content-Type"));
     }
 
-    // Used by ParamExtractor / Invoker when the headers have been mutated.
+    // Used by ParamExtractor / Invoker when headers have been mutated.
     public static CassiniRequestContext create(CassiniHttpExchange exchange, UriInfo uriInfo) {
         return new CassiniRequestContext(exchange, uriInfo);
     }
 
     /**
-     * {@link UriInfo} view that reflects the baseUri/requestUri modifications
-     * made via setRequestUri. Delegates to the source UriInfo for other
+     * {@link UriInfo} view that reflects baseUri/requestUri modifications
+     * made via setRequestUri. Delegates to the source UriInfo for all other
      * properties (PathSegments, parameters, matchedResources, etc.).
      */
     private static final class MutableUriInfoView implements UriInfo {

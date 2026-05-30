@@ -11,9 +11,9 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.util.Optional;
 
 /**
- * Demo resource showcasing the Ravel + @ConfigProperty integration in Cassini.
+ * Demonstration resource for Ravel + @ConfigProperty integration in Cassini.
  *
- * <p>Illustrates injection of MicroProfile Config 3.1 (§6.1) configuration
+ * <p>Illustrates the injection of MicroProfile Config 3.1 (§6.1) configuration
  * properties into a JAX-RS resource via Vauban CDI + Ravel.</p>
  *
  * <p>Expected configuration in {@code META-INF/microprofile-config.properties}:</p>
@@ -42,7 +42,7 @@ public class ConfigDemoResource {
     /**
      * Returns a greeting message configured via @ConfigProperty.
      *
-     * @return greeting + version from configuration
+     * @return greeting + version from the configuration
      */
     @GET
     @Produces(MediaType.TEXT_PLAIN)
@@ -52,7 +52,7 @@ public class ConfigDemoResource {
     }
 
     /**
-     * Returns the configuration values as JSON.
+     * Returns configuration values as JSON.
      */
     @GET
     @Path("/details")

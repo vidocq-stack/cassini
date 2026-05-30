@@ -1,41 +1,41 @@
 # vidocq-rest-cassini-extension
 
-Implémentation **Jakarta RESTful Web Services 4.0** pour Vidocq, montée sur le
-moteur HTTP maison **Chappe** (via `ChappeMountPoint`). 
+**Jakarta RESTful Web Services 4.0** implementation for Vidocq, built on the
+in-house HTTP engine **Chappe** (via `ChappeMountPoint`). 
 
-## Cassini — d'où vient le nom ?
+## Cassini — where does the name come from?
 
-La dynastie **Cassini** (1625-1845, quatre générations) a dressé la
-**première carte complète de France par triangulation géodésique** — chaque
-point du royaume rattaché à un réseau hiérarchique de triangles, puis à des
-chemins, puis à des lieux nommés.
+The **Cassini** dynasty (1625-1845, four generations) produced the
+**first complete map of France through geodetic triangulation** — every
+point in the kingdom connected to a hierarchical network of triangles, then to
+roads, then to named places.
 
-C'est exactement ce que fait un routeur JAX-RS :
+That is exactly what a JAX-RS router does:
 
-| Cassini (cartographie) | Cassini (runtime) |
+| Cassini (mapping) | Cassini (runtime) |
 |---|---|
-| Triangles géodésiques | URI templates `@Path("/a/{b}/c")` |
-| Toisés de précision | Match exact vs regex (`{id:\\d+}`) |
-| Mesh hiérarchique France → province → ville | Root resource → sub-resource locator → sub-resource method |
-| Méridien de référence | `UriInfo.getBaseUri()` |
-| Triangulation : point unique par 3 angles | Best-match : méthode unique par (path, verb, media-type) |
+| Geodetic triangles | URI templates `@Path("/a/{b}/c")` |
+| Precision surveying | Exact match vs regex (`{id:\\d+}`) |
+| Hierarchical mesh France → province → city | Root resource → sub-resource locator → sub-resource method |
+| Reference meridian | `UriInfo.getBaseUri()` |
+| Triangulation: unique point from 3 angles | Best match: unique method by (path, verb, media-type) |
 
-L'arborescence des ressources REST est une **carte**. Cassini est le runtime
-qui la dresse et y route chaque requête — et il le fait sur les lignes de
-signalisation tracées par Chappe (le télégraphe optique, transport HTTP).
+The REST resource tree is a **map**. Cassini is the runtime that draws it and
+routes each request through it — and it does so on the signaling lines drawn by
+Chappe (the optical telegraph, HTTP transport).
 
-## Statut
+## Status
 
-| Jalon | Contenu | État |
+| Milestone | Content | Status |
 |---|---|---|
-| Phase 0 | Squelette module, POM, BCE `@RequestScoped` | Fait |
-| M1 | Bridge `ChappeMountPoint` + routing minimal | Prévu |
-| M2a..j | Core JAX-RS (URI, params, body, @Context, Response, Filters, Features, Async, SSE, CDI) | Prévu |
-| M3 | TCK Jakarta REST 4.0 | Prévu |
+| Phase 0 | Module skeleton, POM, BCE `@RequestScoped` | Done |
+| M1 | `ChappeMountPoint` bridge + minimal routing | Planned |
+| M2a..j | JAX-RS core (URI, params, body, @Context, Response, Filters, Features, Async, SSE, CDI) | Planned |
+| M3 | Jakarta REST 4.0 TCK | Planned |
 
 ## Configuration
 
-| Propriété | Défaut | Description |
+| Property | Default | Description |
 |---|---|---|
-| `vidocq.rest.context-path` | `/` | Préfixe de montage JAX-RS |
-| `vidocq.rest.listener` | `default` | Listener Chappe cible |
+| `vidocq.rest.context-path` | `/` | JAX-RS mount prefix |
+| `vidocq.rest.listener` | `default` | Target Chappe listener |

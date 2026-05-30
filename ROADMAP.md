@@ -1,174 +1,173 @@
 # Cassini — Roadmap
 
-Implémentation Jakarta RESTful Web Services 4.0 (JAX-RS) transport-agnostique,
-zéro dépendance hors specs Jakarta. Adapters de transport pluggables (chappe,
-jdk-http). DI optionnelle via SPI `BeanProvider` (adapter Vauban fourni).
+Jakarta RESTful Web Services 4.0 (JAX-RS) implementation — transport-agnostic,
+zero dependency outside Jakarta specs. Pluggable transport adapters (chappe,
+jdk-http). Optional DI via `BeanProvider` SPI (Vauban adapter provided).
 
-> Vue produit : voir [`README.md`](README.md). Détails techniques : [`CLAUDE.md`](CLAUDE.md).
+> Product overview: see [`README.md`](README.md). Technical details: [`CLAUDE.md`](CLAUDE.md).
 
-## Statut TCK Jakarta REST 4.0
+## Jakarta REST 4.0 TCK status
 
-| Métrique | Valeur |
+| Metric | Value |
 |---|---|
-| Profil cible | **Core Profile / SE-Bootstrap** (standalone, sans Servlet ni JAXB serveur) |
+| Target profile | **Core Profile / SE-Bootstrap** (standalone, no Servlet or JAXB server-side) |
 | TCK | `jakarta.ws.rs:jakarta-restful-ws-tck:4.0.1` |
 | JDK | Temurin 25 |
-| Tests `@Test` du TCK | **2670** |
-| Tests applicables au profil | **2535** |
+| TCK `@Test` tests | **2670** |
+| Tests applicable to profile | **2535** |
 | **PASS** | **2535** (100 %) |
 | Failures + Errors | **0** |
-| Skipped | **135** (134 tags hors-profil + 6 challenges + 1 dispense interne) |
+| Skipped | **135** (134 out-of-profile tags + 6 challenges + 1 internal exemption) |
 
-✅ **Conforme** sur le profil Core Profile / SE-Bootstrap. Détail des exclusions
-et challenges officiels : voir [`TCK.md`](TCK.md).
+✅ **Conformant** on the Core Profile / SE-Bootstrap profile. Details on exclusions
+and official challenges: see [`TCK.md`](TCK.md).
 
-## Phases livrées
+## Delivered phases
 
-### M1 — Fondations ✅
-- API publique `cassini-api` : `CassiniHttpExchange`, `CassiniHttpAdapter`, `ResourceFactory`, `BeanProvider`
-- Implémentation `cassini-core` : Invoker, ResourceScanner, MessageBodyRegistry, RuntimeDelegate
-- Routage par annotations `@Path`/`@GET`/`@POST`/etc., paramètres `@PathParam`/`@QueryParam`/`@HeaderParam`/`@FormParam`/`@MatrixParam`
+### M1 — Foundations ✅
+- Public API `cassini-api`: `CassiniHttpExchange`, `CassiniHttpAdapter`, `ResourceFactory`, `BeanProvider`
+- `cassini-core` implementation: Invoker, ResourceScanner, MessageBodyRegistry, RuntimeDelegate
+- Routing via annotations `@Path`/`@GET`/`@POST`/etc., parameters `@PathParam`/`@QueryParam`/`@HeaderParam`/`@FormParam`/`@MatrixParam`
 - Sub-resources, sub-resource locators, content negotiation `@Produces`/`@Consumes`
 
 ### M2 — Transport + adapters ✅
-- Adapter `cassini-chappe` (transport de référence, utilisé pour le TCK)
-- Adapter `cassini-jdk-http` (zéro dep externe, `com.sun.net.httpserver`)
-- Adapter `cassini-cdi-vauban` (DI optionnelle via Vauban)
+- `cassini-chappe` adapter (reference transport, used for the TCK)
+- `cassini-jdk-http` adapter (zero external dep, `com.sun.net.httpserver`)
+- `cassini-cdi-vauban` adapter (optional DI via Vauban)
 
 ### M2a — Exception mapping + filters ✅
 - `ExceptionMapper`, `ContainerRequestFilter`, `ContainerResponseFilter`
-- `NameBinding` + ordre de filtres respecté
+- `NameBinding` + filter ordering respected
 
-### M2b — Providers MessageBody ✅
-- Built-in : `String`, `byte[]`, `InputStream`, `Reader`, `Form`, `MultivaluedMap`, `File`
-- Discovery via `@Provider` + ServiceLoader pour les extensions tierces
+### M2b — MessageBody providers ✅
+- Built-in: `String`, `byte[]`, `InputStream`, `Reader`, `Form`, `MultivaluedMap`, `File`
+- Discovery via `@Provider` + ServiceLoader for third-party extensions
 
 ### M2c — UriInfo + Links ✅
-- `UriBuilder`, `Link`, `Link.Builder`, headers `Link:`
+- `UriBuilder`, `Link`, `Link.Builder`, `Link:` headers
 
-### M2d — Client API _(en cours — déclenché par humboldt M7c.6 le 2026-05-23)_
+### M2d — Client API _(in progress — triggered by humboldt M7c.6 on 2026-05-23)_
 
-> **Note historique** : ce jalon avait été marqué ✅ par erreur dans une version
-> antérieure de la roadmap. Le code Client API n'a jamais été implémenté ; le TCK
-> Jakarta REST 4.0 passait à 2535/2535 sans grâce à l'usage de Jersey comme client
-> dans `cassini-tck` (cf. `CassiniMultipartAutoDiscover.java`). L'implémentation
-> commence aujourd'hui pour débloquer le TCK MP Telemetry 2.1 d'humboldt qui exige
-> un provider `jakarta.ws.rs.client.ClientBuilder` sur le classpath.
+> **Historical note**: this milestone was mistakenly marked ✅ in a previous version
+> of the roadmap. The Client API code was never implemented; the Jakarta REST 4.0 TCK
+> was passing at 2535/2535 thanks to Jersey being used as the client
+> in `cassini-tck` (cf. `CassiniMultipartAutoDiscover.java`). Implementation
+> starts today to unblock the humboldt MP Telemetry 2.1 TCK, which requires
+> a `jakarta.ws.rs.client.ClientBuilder` provider on the classpath.
 
-- [ ] `cassini-client` (nouveau module) — backend `java.net.http.HttpClient` + virtual threads
-- [ ] `Client`, `WebTarget`, `Invocation.Builder`, `Invocation` synchrones (GET/POST/PUT/DELETE)
-- [ ] Filtres CLIENT (`ClientRequestFilter`/`ClientResponseFilter`) — prépare humboldt M7c.12
-- [ ] Sérialisation request/response body via `MessageBodyRegistry` (réutilise les builtins de cassini-core)
+- [ ] `cassini-client` (new module) — `java.net.http.HttpClient` backend + virtual threads
+- [ ] Synchronous `Client`, `WebTarget`, `Invocation.Builder`, `Invocation` (GET/POST/PUT/DELETE)
+- [ ] Client filters (`ClientRequestFilter`/`ClientResponseFilter`) — prepares humboldt M7c.12
+- [ ] Request/response body serialization via `MessageBodyRegistry` (reuses cassini-core builtins)
 - [ ] Discovery via `META-INF/services/jakarta.ws.rs.client.ClientBuilder` + JPMS `provides`
-- [ ] Tests E2E avec `com.sun.net.httpserver.HttpServer` éphémère in-process
-- [ ] Validation : remplacer Jersey par cassini-client dans cassini-tck (gate : 2535/2535 PASS conservé)
-- [ ] Async (`InvocationCallback`, `CompletionStage`) reporté en M2d.2 si non requis par les TCK consommateurs
+- [ ] E2E tests with ephemeral in-process `com.sun.net.httpserver.HttpServer`
+- [ ] Validation: replace Jersey with cassini-client in cassini-tck (gate: 2535/2535 PASS preserved)
+- [ ] Async (`InvocationCallback`, `CompletionStage`) deferred to M2d.2 if not required by TCK consumers
 
-### M2e — Validation + Bean Validation pont ✅
-- `@Valid` sur ressources, retour 400/422 avec messages
+### M2e — Validation + Bean Validation bridge ✅
+- `@Valid` on resources, returns 400/422 with messages
 
 ### M2f — SSE base ✅
 - `Sse`, `SseEventSource`, `SseBroadcaster`, `OutboundSseEvent`
-- API conforme spec, streaming réel à finaliser (M2i)
+- Spec-conformant API, real streaming to be finalized (M2i)
 
-### M2g — Multipart minimal ✅
-- Support `multipart/form-data` pour les ressources qui le déclarent
+### M2g — Minimal multipart ✅
+- `multipart/form-data` support for resources that declare it
 
-## Phases en cours / à venir
+## Phases in progress / upcoming
 
-### M2h — Async non-bloquant + virtual threads
+### M2h — Non-blocking async + virtual threads
 
-**Statut** : invariants préparés, tests `@Tag("async")` désactivés en attendant.
+**Status**: invariants prepared, `@Tag("async")` tests disabled pending this work.
 
-- [ ] `@Suspended AsyncResponse` propage jusqu'au transport sans block
-- [ ] `CompletionStage<Response>` resource methods, callbacks lifecycle
-- [ ] Validation : pas de pinning sur les virtual threads, `ScopedValue` pour le contexte requête
-- [ ] Activation des `@Tag("async")` du TCK + suite custom de regression
+- [ ] `@Suspended AsyncResponse` propagated to transport without blocking
+- [ ] `CompletionStage<Response>` resource methods, lifecycle callbacks
+- [ ] Validation: no pinning on virtual threads, `ScopedValue` for request context
+- [ ] Enable `@Tag("async")` TCK tests + custom regression suite
 
-Fichiers concernés :
+Files affected:
 - `cassini-core/src/main/java/io/vidocq/cassini/internal/Async.java`
 - `cassini-core/src/main/java/io/vidocq/cassini/spi/CassiniAsyncContext.java`
 
-### M2i — SSE streaming réel
+### M2i — Real SSE streaming
 
-**Dépend de M2h** (push asynchrone côté transport).
+**Depends on M2h** (asynchronous push on the transport side).
 
-- [ ] Refactor `CassiniSseEventSink` pour push chunked au fil de l'eau (pas de
-      buffering complet en mémoire)
-- [ ] Heartbeat configurable (keep-alive HTTP/1.1)
-- [ ] Tests : client SSE consomme events incrémentalement, deconnexion propre
+- [ ] Refactor `CassiniSseEventSink` for incremental chunked push (no full in-memory buffering)
+- [ ] Configurable heartbeat (HTTP/1.1 keep-alive)
+- [ ] Tests: SSE client consumes events incrementally, clean disconnection
 
-### M3 — Extensions Vidocq ✅ (livré dans le runtime)
-- Extension `vidocq-runtime-cassini-rest-extension` chargée via ServiceLoader
-- Cf. [vidocq runtime ROADMAP](../vidocq/ROADMAP.md)
+### M3 — Vidocq extensions ✅ (delivered in the runtime)
+- `vidocq-runtime-cassini-rest-extension` extension loaded via ServiceLoader
+- See [vidocq runtime ROADMAP](../vidocq/ROADMAP.md)
 
-### M4 — Performance & footprint (en cours)
+### M4 — Performance & footprint (in progress)
 
-#### M4 P0+P1a — Façade InjectionSupport + adapters runtime (Class-File API) ✅
-- `InjectionSupport` SPI façade dans `cassini-api/spi/gen`
+#### M4 P0+P1a — InjectionSupport facade + runtime adapters (Class-File API) ✅
+- `InjectionSupport` SPI facade in `cassini-api/spi/gen`
 - `ResourceAdapter` SPI interface
-- `AdapterRegistry` registre dual-path + fallback réflexif
-- `RuntimeAdapterGenerator` (Class-File API JEP 484) — génère des adapters à la volée,
-  VarHandle constants pour champs privés, supprime `Method.invoke` et le scan
-  par requête — gain principal sur le hot-path.
+- `AdapterRegistry` dual-path registry + reflective fallback
+- `RuntimeAdapterGenerator` (Class-File API JEP 484) — generates adapters on the fly,
+  VarHandle constants for private fields, eliminates `Method.invoke` and per-request
+  scanning — primary gain on the hot path.
 
-#### M4 P1b — Direct method dispatch (direct invocation) ✅
-- `invoke(int methodId, Object target, Object[] args)` — switch/tableswitch direct,
-  plus de `Method.invoke` sur le hot-path.
+#### M4 P1b — Direct method dispatch ✅
+- `invoke(int methodId, Object target, Object[] args)` — direct switch/tableswitch,
+  no more `Method.invoke` on the hot path.
 
 #### M4 P2 — APT processor (`cassini-processor`) ✅
-- `CassiniResourceProcessor` génère les adapters à la compilation pour les classes
-  sources du build courant ; `AdapterRegistry` préfère l'adapter APT (AOT-ready).
+- `CassiniResourceProcessor` generates adapters at compile time for source classes
+  in the current build; `AdapterRegistry` prefers the APT adapter (AOT-ready).
 
 #### M4 P3 — Maven plugin (`cassini-maven-plugin`) ✅
-- `cassini-maven-plugin:generate` (phase `process-classes`) pré-génère les
-  `$$CassiniAdapter` pour les classes arrivant comme `.class` pré-compilés dans
-  des archives externes (JARs de dépendances : TCK jar, legacy).
-- Scopes : `project` (défaut) et `dependencies` (configurable includeArtifacts/excludeArtifacts).
-- Règle JPMS named-module : fail-build avec message actionnable si un JAR JPMS nommé
-  contient des ressources `@Path`/`@Provider` (option `repackageModularDependencies=true`
-  pour repackager le JAR avec les adapters tissés).
-- Wired dans `cassini-tck` pour les classes du TCK jar — ferme la couverture AOT.
-- `RuntimeAdapterGenerator.toBytecode(Class<?>) → byte[]` extraite (bytecode-only,
-  sans `defineClass`) — même logique que le chemin runtime, adapters identiques.
-- Compteurs `AdapterRegistry.preGeneratedHits()`/`runtimeGeneratedHits()` pour
-  observabilité et tests.
+- `cassini-maven-plugin:generate` (phase `process-classes`) pre-generates
+  `$$CassiniAdapter` classes for pre-compiled `.class` files arriving in
+  external archives (dependency JARs: TCK jar, legacy).
+- Scopes: `project` (default) and `dependencies` (configurable includeArtifacts/excludeArtifacts).
+- JPMS named-module rule: fail-build with an actionable message if a named JPMS JAR
+  contains `@Path`/`@Provider` resources (option `repackageModularDependencies=true`
+  to repackage the JAR with the woven adapters).
+- Wired into `cassini-tck` for TCK jar classes — closes AOT coverage.
+- `RuntimeAdapterGenerator.toBytecode(Class<?>) → byte[]` extracted (bytecode-only,
+  without `defineClass`) — same logic as the runtime path, identical adapters.
+- `AdapterRegistry.preGeneratedHits()`/`runtimeGeneratedHits()` counters for
+  observability and tests.
 
-#### M4 P4 — Edge cases + doc dérogation ✅
-- [x] `@BeanParam` via adapters per-bean : `InjectionSupportImpl.beanParam()` route l'injection
-  à travers l'adapter du bean (généré dans le package du bean via `privateLookupIn`) — élimine
-  les `IllegalAccessException` cross-package sur les champs privés du bean.
-- [x] `@BeanParam` imbriqué : récursion naturelle via `support.beanParam(nestedType)` depuis
-  l'`injectFields` du bean outer.
-- [x] Fallback SENTINEL conservé pour classes non-générables (superclasse privée, module fermé) —
-  `FieldInjector.inject` reste le filet de sécurité.
-- [x] Réflexion résiduelle documentée (dérogation assumée) : startup `ResourceScanner`, instanciation
-  `newInstance()`, injection providers singletons, coercition types, locators dynamiques (`Object`).
-- [ ] Locator dynamique (`Object`) via adapter : génération runtime dès que la classe est connue
-  au premier appel — non réalisé (locators restent réflexifs ; le TCK reste à 2535/0/0 sans ce fix).
+#### M4 P4 — Edge cases + exemption doc ✅
+- [x] `@BeanParam` via per-bean adapters: `InjectionSupportImpl.beanParam()` routes injection
+  through the bean's adapter (generated in the bean's package via `privateLookupIn`) — eliminates
+  `IllegalAccessException` cross-package on private bean fields.
+- [x] Nested `@BeanParam`: natural recursion via `support.beanParam(nestedType)` from
+  the outer bean's `injectFields`.
+- [x] SENTINEL fallback preserved for non-generatable classes (private superclass, closed module) —
+  `FieldInjector.inject` remains the safety net.
+- [x] Residual reflection documented (assumed exemption): startup `ResourceScanner`, `newInstance()`
+  instantiation, singleton provider injection, type coercion, dynamic locators (`Object`).
+- [ ] Dynamic locator (`Object`) via adapter: runtime generation as soon as the class is known
+  at the first call — not implemented (locators remain reflective; TCK stays at 2535/0/0 without this fix).
 
-#### Gates M4 atteints
-- [ ] Benchmarks JMH end-to-end vs RestEasy/Jersey (entrée `BENCH.md`)
-- [ ] Réduction allocation hot path (réutilisation contextes)
-- [x] AOT GraalVM native-image : couverture assurée par APT + plugin ; runtime generator
-      reste fallback JVM seulement
+#### M4 gates reached
+- [ ] JMH end-to-end benchmarks vs RestEasy/Jersey (`BENCH.md` entry)
+- [ ] Hot-path allocation reduction (context reuse)
+- [x] GraalVM native-image AOT: coverage ensured by APT + plugin; runtime generator
+      remains JVM-only fallback
 
-## Backlog technique
+## Technical backlog
 
-- [ ] `cassini-migration.md` à jour avec retours d'expérience ports d'apps existantes
-- [ ] Examples enrichis (`cassini-examples`) : OAuth2 resource server, file upload
-      streaming, validation custom
-- [ ] Évaluer support natif HTTP/2 server-side via chappe (push de ressources liées)
+- [ ] `cassini-migration.md` updated with real-world app porting experience
+- [ ] Enriched examples (`cassini-examples`): OAuth2 resource server, file upload
+      streaming, custom validation
+- [ ] Evaluate native HTTP/2 server-side support via chappe (linked resource push)
 
 ## Bugs
 
-Pas de `BUG.md` dédié — les bugs ouverts sont tracés directement dans les commits
-et les tests qui les couvrent. Ouvrir un `BUG.md` si une régression non triviale
-apparaît.
+No dedicated `BUG.md` — open bugs are tracked directly in the commits
+and the tests that cover them. Open a `BUG.md` if a non-trivial regression
+appears.
 
-## Conventions de tracking
+## Tracking conventions
 
-- **Cette roadmap** : milestones M-x, vision moyen/long terme.
-- **`TCK.md`** : statut conformité, exclusions justifiées, challenges officiels.
-- **`CLAUDE.md`** : conventions code/architecture pour la session AI.
-- **`cassini-migration.md`** : notes d'aide au port d'apps Jersey/RestEasy.
+- **This roadmap**: M-x milestones, medium/long-term vision.
+- **`TCK.md`**: conformance status, justified exclusions, official challenges.
+- **`CLAUDE.md`**: code/architecture conventions for the AI session.
+- **`cassini-migration.md`**: notes for porting apps from Jersey/RestEasy.

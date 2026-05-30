@@ -15,9 +15,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /**
- * Minimal {@link RuntimeDelegate} implementation to unblock
- * {@code Response.ok()}, {@code MediaType.toString()} and
- * {@link UriBuilder} on the user-code side.
+ * Implémentation minimale de {@link RuntimeDelegate} pour débloquer
+ * {@code Response.ok()}, {@code MediaType.toString()} et
+ * {@link UriBuilder} côté code utilisateur.
  */
 public class CassiniRuntimeDelegate extends RuntimeDelegate {
 
@@ -92,7 +92,7 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
             props.put(name, value); return this;
         }
         @Override public <T> SeBootstrap.Configuration.Builder from(java.util.function.BiFunction<String, Class<T>, java.util.Optional<T>> src) {
-            // §3.10: query the external function for the standard keys.
+             // §3.10 : queries the external function for standard keys.
             tryRead(src, SeBootstrap.Configuration.PROTOCOL, String.class);
             tryRead(src, SeBootstrap.Configuration.HOST, String.class);
             tryRead(src, SeBootstrap.Configuration.PORT, Integer.class);
@@ -146,7 +146,7 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
     private static final class NewCookieDelegate implements HeaderDelegate<jakarta.ws.rs.core.NewCookie> {
         @Override public jakarta.ws.rs.core.NewCookie fromString(String s) {
             if (s == null) throw new IllegalArgumentException("value is null");
-            // Basic parsing name=value; attr=val; ...
+            // Parsing basique name=value; attr=val; ...
             String[] parts = s.split(";");
             String name = null, value = null, path = null, domain = null, comment = null;
             int maxAge = -1; boolean secure = false, httpOnly = false;
@@ -189,8 +189,8 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
     private static final class CookieDelegate implements HeaderDelegate<jakarta.ws.rs.core.Cookie> {
         @Override public jakarta.ws.rs.core.Cookie fromString(String s) {
             if (s == null) throw new IllegalArgumentException("value is null");
-            // RFC 2965 / 6265 parsing: $Version=1; NAME=VALUE; $Path="/"; $Domain=".."
-            // §4.3: preserves the case of name and value (the test
+            // Parsing RFC 2965 / 6265 : $Version=1; NAME=VALUE; $Path="/"; $Domain=".."
+            // §4.3 : preserves the case of name and value (the test
             // checkCreatedHeaderDelegateCookieTest does a round-trip).
             String name = null, value = null, path = null, domain = null;
             int version = 0;
@@ -364,8 +364,8 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
         return v;
     }
 
-    /** Stub {@link Variant.VariantListBuilder} — collects media types/langs/encodings
-     *  and produces the cartesian product via {@link #build()}. */
+    /** Stub {@link Variant.VariantListBuilder} — collecte media types/langs/encodings
+     *  et produit le produit cartésien via {@link #build()}. */
     private static final class StubVariantListBuilder extends Variant.VariantListBuilder {
         private final java.util.List<Variant> variants = new java.util.ArrayList<>();
         private final java.util.List<MediaType> mediaTypes = new java.util.ArrayList<>();
@@ -402,9 +402,9 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
         }
     }
 
-    /** Minimal stub {@link Link.Builder}: captures uri / rel / params and builds
-     *  a Link that simply returns what it was told. Enough for TCKs that build
-     *  a Link without checking its serialization. */
+    /** Stub {@link Link.Builder} minimal: captures uri / rel / params, builds
+     *  a Link returning exactly what was given. Sufficient for TCK tests that
+     *  build a Link without checking its serialization to pass. */
     private static final class StubLinkBuilder implements Link.Builder {
         private java.net.URI uri;
         private jakarta.ws.rs.core.UriBuilder uriBuilder;
@@ -418,14 +418,14 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
             return this;
         }
         @Override public Link.Builder link(String link) {
-            // §4.3.4: parses a Link-format header (<uri>;rel=...;title=...).
+            // §4.3.4 : parse un Link-format header (<uri>;rel=...;title=...).
             if (link == null) throw new IllegalArgumentException("link");
             String s = link.trim();
             params.clear();
             int gt = s.indexOf('>');
             if (s.startsWith("<") && gt > 0) {
-                // Format: <uri>; ... — uri must be non-empty; characters
-                // after '>' must not contain any other '<' or '>'.
+                // Format: <uri>; ... — URI must be non-empty; characters
+                // after '>' must not contain other '<' or '>'.
                 if (gt == 1) throw new IllegalArgumentException("empty URI in Link: " + link);
                 if (s.indexOf('<', 1) >= 0 || s.indexOf('>', gt + 1) >= 0) {
                     throw new IllegalArgumentException("malformed Link header: " + link);
@@ -451,16 +451,16 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
         }
         @Override public Link.Builder uri(java.net.URI uri) {
             if (uri == null) throw new IllegalArgumentException("uri");
-            // Validation deferred to build() so that malformed URIs
-            // raise UriBuilderException (§4.3.4) instead of IAE.
+            // Validation deferred to build() so malformed URIs
+            // throw UriBuilderException (§4.3.4) instead of IAE.
             this.uri = uri;
             return this;
         }
         @Override public Link.Builder uri(String uri) {
             if (uri == null) throw new IllegalArgumentException("uri");
-            // JAX-RS {name} templates are not valid for java.net.URI.
-            // Encode them as %7Bname%7D while parsing, then restore the
-            // original form in the stored URI if it remains templated.
+            // JAX-RS templates {name} are not valid for java.net.URI.
+            // Encode them as %7Bname%7D while parsing, then restore
+            // the original form in the stored URI if it remains templated.
             if (uri.indexOf('{') >= 0 || uri.indexOf('}') >= 0) {
                 String encoded = uri.replace("{", "%7B").replace("}", "%7D");
                 try {
@@ -497,12 +497,12 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
             else if (uriBuilder != null) uriStr = uriBuilder.build(values).toString();
             else uriStr = "";
             String decoded = uriStr.replace("%7B", "{").replace("%7D", "}")
-                    .replace("%7b", "{").replace("%7d", "}");
+                .replace("%7b", "{").replace("%7d", "}");
             String substituted = substituteTemplates(decoded, values);
             // §4.3.4: unresolved template → IAE (not UriBuilderException).
             if (substituted.indexOf('{') >= 0) {
                 throw new IllegalArgumentException(
-                        "value not supplied for template in link uri: " + decoded);
+                    "value not supplied for template in link uri: " + decoded);
             }
             // §4.3.4: malformed URI → UriBuilderException.
             java.net.URI effective;
@@ -513,13 +513,13 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
             }
             if (baseUri != null) effective = baseUri.resolve(effective);
             if (effective.getScheme() != null && effective.getAuthority() != null
-                    && effective.getHost() == null && !effective.getRawAuthority().isEmpty()) {
+                && effective.getHost() == null && !effective.getRawAuthority().isEmpty()) {
                 throw new jakarta.ws.rs.core.UriBuilderException("malformed URI: " + effective);
             }
             // LinkedHashMap: preserves the insertion order of params
             // (unlike Map.copyOf which does not guarantee it).
             return new StubLink(effective, java.util.Collections.unmodifiableMap(
-                    new java.util.LinkedHashMap<>(params)));
+                new java.util.LinkedHashMap<>(params)));
         }
 
         @Override public Link buildRelativized(java.net.URI base, Object... values) {
@@ -581,10 +581,14 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
             if (this == o) return true;
             if (!(o instanceof Link l)) return false;
             return java.util.Objects.equals(uri, l.getUri())
-                    && java.util.Objects.equals(params, l.getParams());
+                && java.util.Objects.equals(params, l.getParams());
         }
         @Override public int hashCode() {
             return java.util.Objects.hash(uri, params);
         }
     }
 }
+// JAX-RS templates {name} are not valid for java.net.URI.
+// Encode them as %7Bname%7D while parsing, then restore
+// the original form in the stored URI if it remains templated.
+

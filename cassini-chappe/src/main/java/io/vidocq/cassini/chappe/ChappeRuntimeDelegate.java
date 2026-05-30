@@ -20,13 +20,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /**
- * Cassini {@link RuntimeDelegate} that provides SE bootstrap via Chappe.
+ * Cassini {@link RuntimeDelegate} providing SE bootstrap through Chappe.
  *
- * <p>Selected via the system property:
+ * <p>Selected through the system property:
  * {@code -Djakarta.ws.rs.ext.RuntimeDelegate=io.vidocq.cassini.chappe.ChappeRuntimeDelegate}
  *
- * <p>Standalone implementation (no inheritance from cassini-core): all the
- * {@code CassiniRuntimeDelegate} logic is duplicated here so that
+ * <p>Standalone implementation (without inheriting from cassini-core): all logic
+ * from {@code CassiniRuntimeDelegate} is duplicated here so that
  * {@code cassini-chappe} does not depend on {@code cassini-core}.
  */
 public final class ChappeRuntimeDelegate extends RuntimeDelegate {
@@ -192,7 +192,7 @@ public final class ChappeRuntimeDelegate extends RuntimeDelegate {
             this.config = new CassiniBootstrapConfig(java.util.Map.copyOf(effective));
 
             try {
-                // Bootstrap via the public SPI — no direct access to internals
+                // Bootstrap through the public SPI — no direct access to internals.
                 var stack = CassiniStack.builder().application(application).build();
                 var bridge = new ChappeHttpAdapter(stack.adapter());
 
@@ -572,7 +572,7 @@ public final class ChappeRuntimeDelegate extends RuntimeDelegate {
     // ── UriBuilder shim ───────────────────────────────────────────────────────
 
     /**
-     * Minimal UriBuilder for the needs of ChappeRuntimeDelegate.
+     * Minimal UriBuilder for ChappeRuntimeDelegate's needs.
      * Delegates to the cassini-core implementation via reflection if available,
      * otherwise provides a basic fallback implementation.
      */

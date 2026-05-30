@@ -12,20 +12,20 @@ package io.vidocq.cassini.client.internal;
 import java.lang.reflect.Method;
 
 /**
- * Propagates the {@code io.opentelemetry.context.Context} between the caller thread
- * and the async thread of a {@link CassiniAsyncInvoker} invocation — without forcing
- * an OTel dependency onto cassini-client.
+ * Propagates the {@code io.opentelemetry.context.Context} between the caller thread and the
+ * async thread of a {@link CassiniAsyncInvoker} invocation — without imposing an OTel
+ * dependency on cassini-client.
  *
- * <p>If the {@code io.opentelemetry.context.Context} class is on the classpath,
- * {@link #capture()} returns the current Context and {@link #activate(Object)}
- * re-attaches it to the async thread. Otherwise (cassini-client used without OTel),
- * the methods are no-ops and the async invocation works normally.</p>
+ * <p>If the class {@code io.opentelemetry.context.Context} is on the classpath,
+ * {@link #capture()} returns the current Context and {@link #activate(Object)} re-attaches it
+ * to the async thread. Otherwise (cassini-client used without OTel), the methods are no-ops
+ * and async invocation works normally.</p>
  *
  * <p>Why: without this propagation, the CLIENT span created by
- * {@code HumboldtClientRequestFilter} inside the async thread would have no current
- * SERVER span as parent — the span chain would break. Pattern aligned with
- * {@code io.opentelemetry.context.Context.taskWrapping(Executor)} but via
- * reflection to keep cassini decoupled.</p>
+ * {@code HumboldtClientRequestFilter} in the async thread would not have the current SERVER span
+ * as parent — the span chain would be broken. Pattern aligned with
+ * {@code io.opentelemetry.context.Context.taskWrapping(Executor)} but using reflection to
+ * decouple cassini.</p>
  */
 final class AsyncContextPropagator {
 
@@ -39,7 +39,7 @@ final class AsyncContextPropagator {
             current = ctxClass.getMethod("current");
             makeCurrent = ctxClass.getMethod("makeCurrent");
         } catch (Throwable ignored) {
-            // OTel context unavailable — propagation is a no-op
+            // OTel context not available — propagation no-op
         }
         CONTEXT_CURRENT = current;
         CONTEXT_MAKE_CURRENT = makeCurrent;
@@ -56,9 +56,9 @@ final class AsyncContextPropagator {
 
     /**
      * Re-activates a captured Context on the current thread. Returns an AutoCloseable
-     * to close inside {@code try-with-resources} to restore the previous Context.
-     * If {@code captured} is {@code null} or OTel is not loaded, returns a no-op
-     * closeable.
+     * to be closed in {@code try-with-resources} to restore the previous Context.
+     * If {@code captured} is {@code null} or if OTel is not loaded, returns
+     * a no-op closeable.
      */
     static AutoCloseable activate(Object captured) {
         if (captured == null || CONTEXT_MAKE_CURRENT == null) return NOOP;

@@ -13,9 +13,10 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
 
 /**
- * {@link Providers} §10.2 implementation — facade over Cassini's internal
- * registries for MBR/MBW and ExceptionMapper providers.
- * ContextResolvers are not yet registered (getContextResolver returns null).
+ * {@link Providers} §10.2 implementation — facade over the internal Cassini
+ * registries for MBR/MBW providers and ExceptionMapper.
+ * ContextResolvers are not yet registered (getContextResolver
+ * returns null).
  */
 public final class CassiniProviders implements Providers {
 
@@ -55,9 +56,9 @@ public final class CassiniProviders implements Providers {
     @SuppressWarnings({"rawtypes", "unchecked"})
     public <T> ContextResolver<T> getContextResolver(Class<T> contextType, MediaType mediaType) {
         // §4.3: select the ContextResolver whose @Produces matches the
-        // requested media type. If several match, pick the most specific
-        // (concrete > wildcard subtype > wildcard type). A CR without
-        // @Produces is equivalent to @Produces("*&#47;*").
+        // requested media type. If multiple match, pick the most specific
+        // (concrete > wildcard subtype > wildcard type). A CR without @Produces
+        // is equivalent to @Produces("*&#47;*").
         ContextResolver<?> best = null;
         int bestScore = -1;
         for (ContextResolver<?> cr : contextResolvers) {

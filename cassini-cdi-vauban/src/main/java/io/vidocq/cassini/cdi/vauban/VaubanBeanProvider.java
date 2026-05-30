@@ -15,10 +15,10 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
- * {@link BeanProvider} implementation for the Vauban CDI container.
+ * Implementation of {@link BeanProvider} for the Vauban CDI container.
  *
- * <p>Fetches managed instances via {@link VaubanContainer#select(Class)} and
- * exposes the {@code @Path}/{@code @Provider} classes known to the
+ * <p>Retrieves managed instances via {@link VaubanContainer#select(Class)}
+ * and exposes the {@code @Path}/{@code @Provider} classes known to the
  * {@link jakarta.enterprise.inject.spi.BeanManager}.</p>
  */
 public final class VaubanBeanProvider implements BeanProvider {
@@ -26,7 +26,7 @@ public final class VaubanBeanProvider implements BeanProvider {
     private static final AnnotationLiteral<Any> ANY = new AnnotationLiteral<Any>() {};
 
     private final VaubanContainer container;
-    /** Singleton — activates/deactivates the RequestContext around each HTTP dispatch. */
+    /** Singleton — will activate/deactivate the RequestContext around each HTTP dispatch. */
     private final VaubanRequestScopeFilter requestScopeFilter;
 
     public VaubanBeanProvider(VaubanContainer container) {
@@ -48,16 +48,15 @@ public final class VaubanBeanProvider implements BeanProvider {
     }
 
     /**
-     * Unwraps the proxy: for a normal-scoped bean, returns the real contextual instance to
-     * which the client proxy delegates in the active scope, so Cassini's {@code @Context}
-     * injection writes into the fields seen by the resource method body. For pseudo-scopes
-     * ({@code @Dependent}), {@link #getBean(Class)} already returned the real instance, so
-     * we keep it as-is.
+     * De-proxies: for a normal-scoped bean, returns the real contextual instance to which
+     * the client proxy delegates in the active scope, so that Cassini's {@code @Context}
+     * injection writes to the fields seen by the resource method body. For pseudo-scopes
+     * ({@code @Dependent}), {@link #getBean(Class)} already returned the real instance
+     * → it is kept as-is.
      *
-     * <p>Uses the standard CDI API ({@link jakarta.enterprise.inject.spi.BeanManager}) —
-     * no coupling to Vauban's proxy internals. The request scope is guaranteed active during
-     * the dispatch by {@link VaubanRequestScopeFilter} ({@code @PreMatching}, priority
-     * {@code MIN_VALUE}).</p>
+     * <p>Uses the standard CDI API ({@link jakarta.enterprise.inject.spi.BeanManager}) — no
+     * coupling to Vauban proxy internals. The request scope is guaranteed active during dispatch
+     * by {@link VaubanRequestScopeFilter} ({@code @PreMatching}, priority {@code MIN_VALUE}).</p>
      */
     @Override
     public Object contextualInstance(Class<?> type, Object bean) {
@@ -82,7 +81,7 @@ public final class VaubanBeanProvider implements BeanProvider {
 
     /** Captures {@code T} from {@code Bean<T>} to satisfy the generic signature of
      *  {@link Context#get(jakarta.enterprise.context.spi.Contextual, jakarta.enterprise.context.spi.CreationalContext)}.
-     *  Returns the existing contextual instance from the scope, or creates one if absent. */
+     *  Returns the existing contextual instance from the scope, or creates it if absent. */
     private static <T> Object fromContext(Context ctx, Bean<T> bean, jakarta.enterprise.inject.spi.BeanManager bm) {
         T existing = ctx.get(bean);
         if (existing != null) return existing;
@@ -101,9 +100,9 @@ public final class VaubanBeanProvider implements BeanProvider {
                 result.add(beanClass);
             }
         }
-        // Auto-injects the RequestContext activation filter — Cassini registers it as a
-        // provider (annotated @Provider @PreMatching) and resolves it via getBean(), which
-        // returns the internal singleton. The user has nothing to register manually.
+        // Auto-injects the RequestContext activation filter — Cassini will register it
+        // as a provider (annotated @Provider @PreMatching) and resolve it via getBean(),
+        // which returns the internal singleton. The user has nothing to register manually.
         result.add(VaubanRequestScopeFilter.class);
         return result;
     }

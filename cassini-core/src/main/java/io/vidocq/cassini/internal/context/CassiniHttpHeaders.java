@@ -16,7 +16,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * {@link HttpHeaders} implementation backed by a {@link CassiniHttpExchange}.
+ * Implémentation {@link HttpHeaders} adossée à un {@link CassiniHttpExchange}.
  */
 public final class CassiniHttpHeaders implements HttpHeaders {
 
@@ -53,7 +53,7 @@ public final class CassiniHttpHeaders implements HttpHeaders {
     }
 
     @Override public List<MediaType> getAcceptableMediaTypes() {
-        // §6.7.4.7: returned list is sorted by descending q-value.
+        // §6.7.4.7: the returned list is sorted by descending q-value.
         List<MediaType> list = MediaTypes.parseList(exchange.firstHeader("Accept"));
         java.util.List<MediaType> mut = new java.util.ArrayList<>(list);
         mut.sort((a, b) -> Double.compare(qValue(b), qValue(a)));
@@ -94,7 +94,7 @@ public final class CassiniHttpHeaders implements HttpHeaders {
 
     @Override public MediaType getMediaType() {
         // §3.6.4 / §6.7.4: null if no Content-Type
-        // (do NOT fall back to WILDCARD like MediaTypes.parse).
+        // (do NOT fall back to WILDCARD as MediaTypes.parse does).
         String raw = exchange.firstHeader("Content-Type");
         if (raw == null || raw.isBlank()) return null;
         return MediaTypes.parse(raw);
@@ -103,16 +103,16 @@ public final class CassiniHttpHeaders implements HttpHeaders {
     @Override public Locale getLanguage() {
         String raw = exchange.firstHeader("Content-Language");
         if (raw == null) return null;
-        // §4.3: also accept the Java convention "en_US" in addition to
+        // §4.3: we also accept the Java convention "en_US" in addition to
         // RFC 5646 "en-US" — Locale.forLanguageTag expects dashes,
-        // otherwise it falls back to Locale.ROOT.
+        // otherwise it returns Locale.ROOT.
         return Locale.forLanguageTag(raw.replace('_', '-'));
     }
 
     @Override public Map<String, Cookie> getCookies() {
-        // §4.3.2 / RFC 2109: a Cookie header may combine several cookies
+        // §4.3.2 / RFC 2109: a Cookie header may combine multiple cookies
         // separated by ';' with $Version/$Path/$Domain attributes that apply
-        // to the next cookie ($Version) or the previous one ($Path/$Domain).
+        // to the following ($Version) or preceding ($Path/$Domain) cookie.
         Map<String, Cookie> out = new HashMap<>();
         for (String header : exchange.headers("Cookie")) {
             int currentVersion = 0;

@@ -16,9 +16,10 @@ import jakarta.ws.rs.core.FeatureContext;
 import java.util.Map;
 
 /**
- * {@link FeatureContext} adapter that forwards every {@code register}/{@code property}
- * operation to the target {@link Client} — used by {@link CassiniClient#build()} to
- * invoke {@link jakarta.ws.rs.core.Feature#configure(FeatureContext)} on every Feature
+ * {@link FeatureContext} adapter that delegates all
+ * {@code register}/{@code property} operations to the target {@link Client} — used by
+ * {@link CassiniClient#build()} to invoke
+ * {@link jakarta.ws.rs.core.Feature#configure(FeatureContext)} on each Feature
  * discovered via {@link java.util.ServiceLoader}.
  */
 final class CassiniClientFeatureContext implements FeatureContext {

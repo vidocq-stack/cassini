@@ -17,10 +17,9 @@ import java.util.Map;
 
 /**
  * {@link WriterInterceptor} chain → terminal MBW.writeTo §7.2.
- * Each interceptor receives this context, mutates it as needed, then
- * calls {@link #proceed()} which advances the index. When the index
- * reaches the end of the list, the final {@link MessageBodyWriter}
- * is invoked.
+ * Each interceptor receives this context, mutates it if needed, then
+ * calls {@link #proceed()}, which advances the index. When the index reaches
+ * the end of the list, the final {@link MessageBodyWriter} is called.
  */
 public final class CassiniWriterInterceptorContext implements WriterInterceptorContext {
 
@@ -74,8 +73,8 @@ public final class CassiniWriterInterceptorContext implements WriterInterceptorC
             i.aroundWriteTo(this);
         } else {
             // §7.2: setEntity/setType may have changed the type during the
-            // chain; re-select a compatible MBW if the initial terminal is
-            // no longer suitable.
+            // chain; re-select a compatible MBW if the initial
+            // terminal no longer fits.
             MessageBodyWriter w = terminal;
             if (entity != null && registry != null && !w.isWriteable(type, genericType, annotations, mediaType)) {
                 w = registry.findWriter(type, genericType, annotations, mediaType).orElse(terminal);

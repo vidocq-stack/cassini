@@ -1,29 +1,29 @@
 # cassini-examples-jdkhttp
 
-**Mode A pur** — Cassini + transport JDK natif (`com.sun.net.httpserver`), sans dépendance externe.
+**Pure Mode A** — Cassini + native JDK transport (`com.sun.net.httpserver`), without any external dependency.
 
-Cas d'usage : application JAX-RS embarquée minimale (CLI tool, microservice, container léger). Le seul transport HTTP est celui fourni par le JDK lui-même — zéro dépendance Maven hors `cassini-*` et `jakarta.ws.rs-api`.
+Use case: minimal embedded JAX-RS application (CLI tool, microservice, lightweight container). The only HTTP transport is the one provided by the JDK itself — zero Maven dependency outside `cassini-*` and `jakarta.ws.rs-api`.
 
-## Lancer
+## Run
 
 ```bash
 mvn -pl cassini-examples/cassini-examples-jdkhttp \
     exec:java -Dexec.mainClass=io.vidocq.cassini.examples.jdkhttp.Main
 ```
 
-ou `Main.java` depuis IntelliJ. Le serveur démarre sur `http://localhost:8080`.
+or `Main.java` from IntelliJ. The server starts on `http://localhost:8080`.
 
 ## Endpoints
 
-Identiques à `cassini-examples-chappe` : `/greetings`, `/greetings/{name}`, CRUD `/todos`.
+Identical to `cassini-examples-chappe`: `/greetings`, `/greetings/{name}`, CRUD `/todos`.
 
-Voir `src/test/resources/http/jdkhttp-examples.http` pour les requêtes IntelliJ.
+See `src/test/resources/http/jdkhttp-examples.http` for IntelliJ HTTP Client requests.
 
-## Comment ça marche
+## How it works
 
-### Bootstrap manuel via `CassiniStack`
+### Manual bootstrap via `CassiniStack`
 
-Contrairement à l'exemple Chappe, **on ne passe pas par `SeBootstrap`**. À la place, on bootstrap manuellement via la SPI `CassiniStack` :
+Unlike the Chappe example, **`SeBootstrap` is not used**. Instead, the stack is bootstrapped manually via the `CassiniStack` SPI:
 
 ```java
 var stack = CassiniStack.builder()
@@ -33,39 +33,39 @@ var stack = CassiniStack.builder()
 var server = new JdkHttpAdapter(stack.adapter()).serve(8080);
 ```
 
-C'est l'API "bas-niveau" qui démontre comment intégrer Cassini dans n'importe quel transport tiers : on récupère un `CassiniHttpAdapter`, on le branche sur le transport.
+This is the "low-level" API demonstrating how to integrate Cassini into any third-party transport: obtain a `CassiniHttpAdapter` and plug it into the transport.
 
-### Sous le capot — `JdkHttpAdapter`
+### Under the hood — `JdkHttpAdapter`
 
-1. **`JdkHttpAdapter.serve(port)`** crée un `HttpServer` JDK avec un executor virtual-thread (un VT par requête).
-2. Pour chaque requête entrante, le `HttpHandler` :
-   - Construit un `JdkHttpExchange` (impl de `CassiniHttpExchange`) à partir du `com.sun.net.httpserver.HttpExchange`.
-   - Appelle `engine.dispatch(exchange)` (`CassiniHttpAdapter` produit par `CassiniStack`).
-   - Lit la réponse depuis l'exchange (`collectedStatus`, `collectedHeaders`, `collectedBody`).
-   - Écrit dans le `HttpExchange` JDK via `sendResponseHeaders()` + `responseBody().write()`.
+1. **`JdkHttpAdapter.serve(port)`** creates a JDK `HttpServer` with a virtual-thread executor (one VT per request).
+2. For each incoming request, the `HttpHandler`:
+   - Builds a `JdkHttpExchange` (impl of `CassiniHttpExchange`) from the `com.sun.net.httpserver.HttpExchange`.
+   - Calls `engine.dispatch(exchange)` (the `CassiniHttpAdapter` produced by `CassiniStack`).
+   - Reads the response from the exchange (`collectedStatus`, `collectedHeaders`, `collectedBody`).
+   - Writes to the JDK `HttpExchange` via `sendResponseHeaders()` + `responseBody().write()`.
 
-### Et `SeBootstrap` ?
+### What about `SeBootstrap`?
 
-`cassini-jdk-http` fournit aussi un `JdkHttpRuntimeDelegate` via ServiceLoader, donc `SeBootstrap.start()` fonctionnerait aussi. Mais l'exemple démontre l'API directe pour montrer le découplage.
+`cassini-jdk-http` also provides a `JdkHttpRuntimeDelegate` via ServiceLoader, so `SeBootstrap.start()` would work too. However, this example demonstrates the direct API to showcase the decoupling.
 
-**Attention conflit** : si `cassini-chappe` ET `cassini-jdk-http` sont tous deux sur le module path, `RuntimeDelegate.getInstance()` retourne le premier trouvé (non-déterministe). Forcer le choix via :
+**Conflict warning**: if both `cassini-chappe` and `cassini-jdk-http` are on the module path, `RuntimeDelegate.getInstance()` returns the first one found (non-deterministic). Force the choice via:
 
 ```bash
 java -Djakarta.ws.rs.ext.RuntimeDelegate=io.vidocq.cassini.jdkhttp.JdkHttpRuntimeDelegate ...
 ```
 
-En pratique, une application n'inclut qu'**un seul** transport dans son `pom.xml`.
+In practice, an application includes only **one** transport in its `pom.xml`.
 
-### Comparaison Chappe vs JDK natif
+### Chappe vs native JDK — comparison
 
-| Aspect | Chappe | JDK natif |
+| Aspect | Chappe | Native JDK |
 |---|---|---|
 | HTTP/1.1 keep-alive | ✅ | ✅ |
 | HTTP/2 | ✅ | ❌ |
-| Streaming chunked | ✅ via `Body.streaming(InputStream)` | ✅ via `sendResponseHeaders(0)` |
-| Performance | optimisée (zero-copy file, pool buffers) | basique (JDK stock) |
-| Dépendance | `chappe-core` (~xx KB) | aucune (incluse dans le JDK) |
-| Use-case | applications haute perf | tools, embedded, distroless |
+| Chunked streaming | ✅ via `Body.streaming(InputStream)` | ✅ via `sendResponseHeaders(0)` |
+| Performance | optimized (zero-copy file, buffer pool) | basic (JDK stock) |
+| Dependency | `chappe-core` (~xx KB) | none (bundled in the JDK) |
+| Use-case | high-perf applications | tools, embedded, distroless |
 
 ## Tests
 
@@ -73,10 +73,10 @@ En pratique, une application n'inclut qu'**un seul** transport dans son `pom.xml
 mvn -pl cassini-examples/cassini-examples-jdkhttp test
 ```
 
-10 tests, identiques structurellement à ceux de Chappe — preuve que l'abstraction fonctionne.
+10 tests, structurally identical to the Chappe ones — proof that the abstraction works.
 
-## Voir aussi
+## See also
 
-- [`cassini-examples/README.md`](../README.md) — vue d'ensemble et mécanisme `RuntimeDelegate`.
-- [`cassini-examples-chappe`](../cassini-examples-chappe) — version avec transport Chappe.
-- [`cassini-examples-vauban`](../cassini-examples-vauban) — Mode B (CDI) + UI statique.
+- [`cassini-examples/README.md`](../README.md) — overview and `RuntimeDelegate` mechanism.
+- [`cassini-examples-chappe`](../cassini-examples-chappe) — version with Chappe transport.
+- [`cassini-examples-vauban`](../cassini-examples-vauban) — Mode B (CDI) + static UI.

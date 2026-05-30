@@ -19,8 +19,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Executors;
 
 /**
- * Ephemeral JDK-based HTTP server ({@link com.sun.net.httpserver.HttpServer}) used by
- * the JAX-RS Client integration tests without starting Chappe. Random port (0).
+ * Ephemeral JDK-based HTTP server ({@link com.sun.net.httpserver.HttpServer}) for
+ * integration tests of the JAX-RS Client without starting Chappe. Random port (0).
  */
 public final class FakeHttpServer implements AutoCloseable {
 

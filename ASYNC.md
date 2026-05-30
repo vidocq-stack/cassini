@@ -1,30 +1,30 @@
-# Async, SSE et streaming dans Cassini
+# Async, SSE and streaming in Cassini
 
-## État actuel (post-commit `4ca6b0e`)
+## Current state (post-commit `4ca6b0e`)
 
-### Ce qui fonctionne
+### What works
 
-| Fonctionnalité | Transport | Comportement | TCK |
+| Functionality | Transport | Behavior | TCK |
 |---|---|---|---|
-| `@Suspended AsyncResponse` | Chappe + JDK | Bloque un virtual thread jusqu'à `resume()` | ✅ passe |
-| `CompletionStage<T>` return | Chappe + JDK | Bloque un virtual thread jusqu'à complétion | ✅ passe |
-| SSE bufferisé | Chappe | Events accumulés en mémoire, envoyés en bloc à `sink.close()` | ✅ passe (sauf 3 tests streaming) |
-| SSE streaming chunked | JDK | Push au fil de l'eau via `OutputStream` direct | ✅ passe |
+| `@Suspended AsyncResponse` | Chappe + JDK | Blocks a virtual thread until `resume()` | ✅ passes |
+| `CompletionStage<T>` return | Chappe + JDK | Blocks a virtual thread until completion | ✅ passes |
+| Buffered SSE | Chappe | Events accumulated in memory, sent in one block on `sink.close()` | ✅ passes (except 3 streaming tests) |
+| Chunked SSE streaming | JDK | Progressive push through direct `OutputStream` | ✅ passes |
 
-### Ce qui ne fonctionne pas
+### What does not work
 
-| Fonctionnalité | Transport | Raison |
+| Functionality | Transport | Reason |
 |---|---|---|
-| SSE streaming chunked | Chappe | Deadlock architectural (voir ci-dessous) |
-| `addCompletionCallback` / `addConnectionCallback` | tous | Non implémenté (`CassiniAsyncContext` déclaré, non câblé) |
+| Chunked SSE streaming | Chappe | Architectural deadlock (see below) |
+| `addCompletionCallback` / `addConnectionCallback` | all | Not implemented (`CassiniAsyncContext` declared, not wired) |
 
 ---
 
-## Pourquoi Chappe ne peut pas streamer SSE en l'état
+## Why Chappe cannot stream SSE as-is
 
-### Le problème : `Handler` est synchrone
+### The problem: `Handler` is synchronous
 
-L'interface centrale de Chappe est :
+The central Chappe interface is:
 
 ```java
 @FunctionalInterface
@@ -33,47 +33,47 @@ interface Handler {
 }
 ```
 
-Chappe appelle `handle()`, reçoit une `Response` complète, puis lit le body.
-La seule forme de streaming est `Body.streaming(InputStream)` — Chappe lit
-depuis l'InputStream **après** que `handle()` a retourné.
+Chappe calls `handle()`, receives a complete `Response`, then reads the body.
+The only form of streaming is `Body.streaming(InputStream)` — Chappe reads
+from the `InputStream` **after** `handle()` has returned.
 
-### Le deadlock
+### The deadlock
 
-Dans `ChappeHttpAdapter.handle()`, l'Invoker tourne dans `scoped.runInScope()`,
-qui est **synchrone** :
+In `ChappeHttpAdapter.handle()`, the Invoker runs inside `scoped.runInScope()`,
+which is **synchronous**:
 
 ```
 ChappeHttpAdapter.handle()
-└── scoped.runInScope()                ← bloque jusqu'à fin de l'invoke
+└── scoped.runInScope()                ← blocks until invoke completes
     └── invoker.invoke()
-        └── resourceMethod.invoke()    ← la méthode resource tourne ici
-            └── sseSink.send(event)   ← écrit dans pos (PipedOutputStream)
+        └── resourceMethod.invoke()    ← the resource method runs here
+            └── sseSink.send(event)   ← writes into pos (PipedOutputStream)
 ```
 
-Si la méthode resource écrit dans la pipe ET ne rend pas la main (boucle
-événementielle, `awaitClose()`, etc.), `scoped.runInScope()` ne retourne
-jamais. Or Chappe ne peut commencer à lire `pis` qu'après que `handle()`
-a retourné `Body.streaming(pis)`. **Deadlock circulaire.**
+If the resource method writes to the pipe AND does not return control
+(event loop, `awaitClose()`, etc.), `scoped.runInScope()` never returns.
+But Chappe cannot start reading `pis` until after `handle()` has returned
+`Body.streaming(pis)`. **Circular deadlock.**
 
-Même si la méthode resource rend la main rapidement (pattern async), il
-existe une window où `pos` peut être fermé AVANT que Chappe ait commencé
-à lire — dans ce cas ça fonctionne, mais c'est fragile et non garanti.
+Even if the resource method returns quickly (async pattern), there is
+a window where `pos` can be closed BEFORE Chappe has started reading
+from it — in that case it works, but it is fragile and not guaranteed.
 
-La tentative d'implémentation (`PipedInputStream`/`PipedOutputStream` dans
-`ChappeHttpExchange.openForStreaming`) a provoqué un hang sur le test TCK
-`sseeventsource.JAXRSClientIT#wait2Seconds` et a été retirée.
+The implementation attempt (`PipedInputStream`/`PipedOutputStream` in
+`ChappeHttpExchange.openForStreaming`) caused a hang on the TCK test
+`sseeventsource.JAXRSClientIT#wait2Seconds` and was removed.
 
 ---
 
-## SSE streaming avec Chappe : c'est possible, voici comment
+## SSE streaming with Chappe: it is possible, here is how
 
-L'approche pipe est correcte — le problème est uniquement le couplage
-synchrone entre l'exécution de l'Invoker et le retour de `handle()`.
+The pipe approach is correct — the only problem is the synchronous
+coupling between Invoker execution and the return of `handle()`.
 
-### Solution : VT concurrent + signaling
+### Solution: concurrent VT + signaling
 
-Modifier `ChappeHttpAdapter.handle()` pour exécuter l'Invoker sur un VT
-séparé et synchroniser sur un latch "streaming prêt" :
+Modify `ChappeHttpAdapter.handle()` to run the Invoker on a separate VT
+and synchronize on a "streaming ready" latch:
 
 ```java
 @Override
@@ -87,130 +87,130 @@ public Response handle(Request request) throws Exception {
     Thread.startVirtualThread(() -> {
         scoped.runInScope(() -> {
             try {
-                // openForStreaming() libèrera le latch dès la pipe créée
+                // openForStreaming() will release the latch as soon as the pipe is created
                 exchange.setStreamingLatch(streamingReady);
                 responseFuture.complete(invoker.invoke(candidates, exchange));
             } catch (Exception e) {
                 responseFuture.completeExceptionally(e);
-                streamingReady.countDown(); // débloquer si erreur
+                streamingReady.countDown(); // unblock on error
             }
         });
     });
 
-    // Attendre : soit streaming activé, soit réponse complète
-    streamingReady.await(30, TimeUnit.SECONDS);  // ou timeout configuré
+    // Wait: either streaming is enabled, or the full response is ready
+    streamingReady.await(30, TimeUnit.SECONDS);  // or configurable timeout
 
     var pis = (PipedInputStream) exchange.getAttribute("cassini.streaming_pis");
     if (pis != null) {
-        // Mode streaming : le VT continue d'écrire dans pos pendant que
-        // Chappe lit depuis pis → chunked transfer natif
+        // Streaming mode: the VT keeps writing into pos while
+        // Chappe reads from pis → native chunked transfer
         var b = Response.builder().status(StatusCode.of(exchange.collectedStatus()));
         exchange.collectedHeaders().forEach((k, vs) -> vs.forEach(v -> b.header(k, v)));
         return b.body(Body.streaming(pis)).build();
     }
 
-    // Mode normal : attendre la réponse complète
+    // Normal mode: wait for the full response
     var out = responseFuture.get();
     return toChappe(out);
 }
 ```
 
-Et dans `ChappeHttpExchange.openForStreaming()` :
+And in `ChappeHttpExchange.openForStreaming()`:
 ```java
 @Override
 public CassiniStreamingSink openForStreaming(int status, Map<String, List<String>> headers) {
-    // ... créer pis/pos ...
+    // ... create pis/pos ...
     setAttribute("cassini.streaming_pis", pis);
     if (streamingLatch != null) streamingLatch.countDown(); // ← signal
     return new CassiniStreamingSink() { /* writeChunk, flush, close via pos */ };
 }
 ```
 
-### Ce que ça débloque
+### What this unlocks
 
-- **Pattern async** (resource spawne un VT, retourne immédiatement) :
-  le latch est libéré dès `openForStreaming()`, Chappe commence à lire,
-  le VT background écrit les events. ✅
+- **Async pattern** (resource spawns a VT, returns immediately):
+  the latch is released as soon as `openForStreaming()` runs, Chappe starts reading,
+  the background VT writes the events. ✅
 
-- **Pattern sync boucle** (resource écrit en boucle jusqu'à disconnect) :
-  même chose — le latch est libéré au moment de la création de la pipe,
-  Chappe commence à lire, la méthode resource tourne sur son VT et écrit.
-  La pipe crée la backpressure naturelle (8 Ko de buffer). ✅
+- **Synchronous loop pattern** (resource writes in a loop until disconnect):
+  same thing — the latch is released when the pipe is created,
+  Chappe starts reading, the resource method runs on its VT and writes.
+  The pipe creates natural backpressure (8 KB buffer). ✅
 
-- **Broadcaster** (N clients, background thread écrit à tous) :
-  chaque requête spawne son VT, créé sa pipe, libère son latch. Le
-  broadcaster écrit dans N pipes concurrentes. Chappe lit chacune sur
-  son propre thread. ✅
+- **Broadcaster** (N clients, background thread writes to all):
+  each request spawns its VT, creates its pipe, releases its latch. The
+  broadcaster writes into N concurrent pipes. Chappe reads each one on
+  its own thread. ✅
 
-### Effort estimé
+### Estimated effort
 
-~1 jour. L'essentiel du code est déjà en place :
+~1 day. Most of the code is already in place:
 - `CassiniStreamingSink` SPI ✅
-- `Body.streaming(InputStream)` Chappe ✅ (testé dans `StreamingBodyTest`)
-- `openForStreaming()` dans `CassiniHttpExchange` (default = null) ✅
-- Il reste : `CountDownLatch` dans `ChappeHttpAdapter` + override dans
-  `ChappeHttpExchange` + ré-activer les 3 challenges SSE dans `TckChallengeExclusions`
+- `Body.streaming(InputStream)` in Chappe ✅ (tested in `StreamingBodyTest`)
+- `openForStreaming()` in `CassiniHttpExchange` (default = null) ✅
+- Remaining work: `CountDownLatch` in `ChappeHttpAdapter` + override in
+  `ChappeHttpExchange` + re-enable the 3 SSE challenges in `TckChallengeExclusions`
 
 ---
 
-## M2h — Async vrai non-bloquant
+## M2h — real non-blocking async
 
-### Situation actuelle
+### Current situation
 
-`@Suspended AsyncResponse` et `CompletionStage<T>` **fonctionnent** grâce
-aux virtual threads : le VT qui traite la requête bloque sur `.get()` sans
-occuper de thread OS. En pratique, zéro starvation.
+`@Suspended AsyncResponse` and `CompletionStage<T>` **work** thanks
+to virtual threads: the VT handling the request blocks on `.get()` without
+occupying an OS thread. In practice, zero starvation.
 
-Cependant c'est du **blocking-under-the-hood** :
+However, this is **blocking-under-the-hood**:
 
-| Ce qu'on fait | Ce que M2h ferait |
+| What we do | What M2h would do |
 |---|---|
-| `cs.toCompletableFuture().get()` | `dispatch()` retourne un `CompletionStage<Void>` propagé jusqu'au transport |
-| ThreadLocals (`CURRENT_MATCH`, etc.) | `ScopedValue` ou attributs `CassiniHttpExchange` |
-| `Async.awaitBlocking(cs)` | propagation non-bloquante |
+| `cs.toCompletableFuture().get()` | `dispatch()` returns a `CompletionStage<Void>` propagated to the transport |
+| ThreadLocals (`CURRENT_MATCH`, etc.) | `ScopedValue` or `CassiniHttpExchange` attributes |
+| `Async.awaitBlocking(cs)` | non-blocking propagation |
 
-### Pourquoi c'est acceptable maintenant
+### Why this is acceptable now
 
-Avec les VT JDK 25, un `.get()` dans un VT **yield** son carrier thread
-sans le bloquer. Le débit reste excellent tant que le nombre de requêtes
-en attente ne dépasse pas la capacité mémoire des VT (quelques Ko chacun,
-vs Mo pour un thread OS).
+With JDK 25 VTs, a `.get()` in a VT **yields** its carrier thread
+without blocking it. Throughput stays excellent as long as the number of
+pending requests does not exceed VT memory capacity (a few KB each,
+vs MB for an OS thread).
 
-### Sites de blocage résiduels
+### Remaining blocking sites
 
-| Fichier | Code | TODO |
+| File | Code | TODO |
 |---|---|---|
-| `Invoker.java:787` | `cs.toCompletableFuture().get()` | M2h : propager dans `dispatch → CompletionStage<Void>` |
-| `Invoker.java:768` | `asyncResponse.completionFuture().get()` | M2h : même |
-| `Invoker.java:816` | `sseSink.awaitClose()` (mode bufferisé) | M2i : SSE streaming → plus besoin |
+| `Invoker.java:787` | `cs.toCompletableFuture().get()` | M2h: propagate into `dispatch → CompletionStage<Void>` |
+| `Invoker.java:768` | `asyncResponse.completionFuture().get()` | M2h: same |
+| `Invoker.java:816` | `sseSink.awaitClose()` (buffered mode) | M2i: SSE streaming → no longer needed |
 
-### ThreadLocals à migrer pour M2h vrai
+### ThreadLocals to migrate for real M2h
 
-Si on veut un async entièrement non-bloquant (pas de blocage même sur VT),
-les ThreadLocals cassent si le VT yield entre deux accès :
+If we want fully non-blocking async (no blocking even on VT),
+ThreadLocals break when the VT yields between two accesses:
 
-| Fichier | ThreadLocal | Migration cible |
+| File | ThreadLocal | Target migration |
 |---|---|---|
-| `Invoker.java` | `CURRENT_MATCH`, `CURRENT_REQUEST`, `CURRENT_MATCHED_RESOURCES` | `ScopedValue` ou attribut `CassiniHttpExchange` |
-| `CassiniRequest.java` | `PENDING_VARY` | attribut `CassiniHttpExchange` |
-| `CassiniSecurityContext.java` | `CURRENT_AUTH` | attribut `CassiniHttpExchange` |
-| `FieldInjector.java` | `FORM_CACHE`, `FORM_CACHE_ENCODED`, `BODY_CACHE` | attribut `CassiniHttpExchange` |
+| `Invoker.java` | `CURRENT_MATCH`, `CURRENT_REQUEST`, `CURRENT_MATCHED_RESOURCES` | `ScopedValue` or `CassiniHttpExchange` attribute |
+| `CassiniRequest.java` | `PENDING_VARY` | `CassiniHttpExchange` attribute |
+| `CassiniSecurityContext.java` | `CURRENT_AUTH` | `CassiniHttpExchange` attribute |
+| `FieldInjector.java` | `FORM_CACHE`, `FORM_CACHE_ENCODED`, `BODY_CACHE` | `CassiniHttpExchange` attribute |
 | `ParamExtractor.java` | `PROVIDERS`, etc. | `ScopedValue` |
 | `CassiniResponseBuilder.java` | `BASE_URI` | `ScopedValue` |
 
-### Effort estimé M2h complet
+### Estimated effort for full M2h
 
-~8-13 jours. Les invariants sont déjà préparés :
+~8-13 days. The invariants are already prepared:
 - `CassiniHttpAdapter.dispatch → CompletionStage<Void>` ✅
-- `CassiniAsyncContext` SPI ✅ (non câblé côté transport)
-- `Async.awaitBlocking()` centralise tous les `.get()` ✅ (facilite le grep)
+- `CassiniAsyncContext` SPI ✅ (not wired on the transport side)
+- `Async.awaitBlocking()` centralizes all `.get()` calls ✅ (makes grep easier)
 
 ---
 
-## Priorités recommandées
+## Recommended priorities
 
-| Ordre | Tâche | Effort | Débloque |
+| Order | Task | Effort | Unlocks |
 |---|---|---|---|
-| 1 | **SSE streaming Chappe** (VT + latch dans ChappeHttpAdapter) | ~1 j | 3 challenges TCK SSE |
-| 2 | **M2h async vrai** (propagation CompletionStage, ScopedValues) | ~8-13 j | 10 tests async TCK, scalabilité maximale |
-| 3 | `addCompletionCallback` / `addConnectionCallback` | ~0.5 j | compliance §8.2 callbacks |
+| 1 | **Chappe SSE streaming** (VT + latch in `ChappeHttpAdapter`) | ~1 d | 3 SSE TCK challenges |
+| 2 | **Real M2h async** (`CompletionStage` propagation, `ScopedValue`s) | ~8-13 d | 10 async TCK tests, maximum scalability |
+| 3 | `addCompletionCallback` / `addConnectionCallback` | ~0.5 d | §8.2 callback compliance |

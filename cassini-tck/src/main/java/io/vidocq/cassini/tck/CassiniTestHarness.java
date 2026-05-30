@@ -23,16 +23,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Minimal test harness that mounts a full Cassini runtime in front of Chappe
- * on an ephemeral port. Used by the Arquillian TCK adapter
+ * Minimal test harness for mounting a complete Cassini runtime in front of
+ * Chappe on an ephemeral port. Used by the Arquillian TCK adapter
  * ({@code VidocqCassiniDeployableContainer}).
  *
  * <p>Builds:</p>
  * <ul>
- *   <li>a {@link UriRouter} from the supplied {@code @Path} classes;</li>
+ *   <li>a {@link UriRouter} from the provided {@code @Path} classes;</li>
  *   <li>an {@link Invoker} with a resolver based on no-arg constructor
  *     instantiation (the TCK deploys simple resources);</li>
- *   <li>a {@link ChappeHttpAdapter} mounted on a local Chappe
+ *   <li>a {@link ChappeHttpAdapter} and mounts it on a local Chappe
  *     {@link Server}.</li>
  * </ul>
  */
@@ -54,9 +54,9 @@ public final class CassiniTestHarness implements AutoCloseable {
     public static Builder builder() { return new Builder(); }
 
     public static final class Builder {
-        /** Explicitly supplied instances (resolved as-is per request). */
+        /** Explicitly provided instances (resolved identically per request). */
         private final Map<Class<?>, Object> beans = new HashMap<>();
-        /** Classes to instantiate per request (JAX-RS §3.1.1). */
+        /** Classes to be instantiated per-request (JAX-RS §3.1.1). */
         private final java.util.Set<Class<?>> perRequestClasses = new java.util.LinkedHashSet<>();
         private final FilterRegistry filters = new FilterRegistry();
         private final ExceptionMapperRegistry exceptionMappers = new ExceptionMapperRegistry();
@@ -103,9 +103,9 @@ public final class CassiniTestHarness implements AutoCloseable {
         }
 
         public Builder resourceClass(Class<?> cls) {
-            // §3.1.1: only a public, non-abstract class can be a root
-            // resource. Non-public constructors → the class is ignored
-            // (→ 404 visible from the TCK).
+            // §3.1.1: only a public, non-abstract class can be a root resource.
+            // Non-public constructors → the class
+            // is ignored (→ 404 visible from the TCK).
             if (!java.lang.reflect.Modifier.isPublic(cls.getModifiers())) {
                 return this;
             }
@@ -120,8 +120,8 @@ public final class CassiniTestHarness implements AutoCloseable {
         }
 
         /** §3.1.1: picks the public constructor with the most injectable
-         *  parameters (@Context, @*Param). Returns {@code null} if no
-         *  suitable public constructor exists. */
+         *  parameters (@Context, @*Param). Returns {@code null} if no suitable
+         *  public constructor exists. */
         private static java.lang.reflect.Constructor<?> pickConstructor(Class<?> cls) {
             java.lang.reflect.Constructor<?> best = null;
             int bestScore = -1;
@@ -166,8 +166,8 @@ public final class CassiniTestHarness implements AutoCloseable {
             java.util.Set<Class<?>> allClasses = new java.util.LinkedHashSet<>(beans.keySet());
             allClasses.addAll(perRequestClasses);
             List<ResourceMethod> routes = ResourceScanner.discover(allClasses.toArray(Class<?>[]::new));
-            // §6.5.5: DynamicFeatures run once per resource method, after
-            // the scan, to bind method-specific filters/interceptors.
+            // §6.5.5: DynamicFeatures execute once per resource method,
+            // after scanning, to bind specific filters/interceptors.
             filters.applyDynamicFeatures(routes);
             UriRouter router = new UriRouter(routes);
             java.util.function.Function<Class<?>, Object> resolver = cls -> {
@@ -207,8 +207,8 @@ public final class CassiniTestHarness implements AutoCloseable {
                     : new ContextStrippingHandler(bh.prefix(), bh.bridgeHandler());
 
             RuntimeException last = null;
-            // More aggressive retry on fixed port (port 8080 may linger in
-            // TIME_WAIT between tests). 10 attempts with 100 ms delay.
+            // More aggressive retry on fixed port (port 8080 may remain in
+            // TIME_WAIT between tests). 10 attempts with 100 ms.
             int attempts = fixedPort != null ? 10 : 5;
             for (int attempt = 0; attempt < attempts; attempt++) {
                 int port;
@@ -243,10 +243,10 @@ public final class CassiniTestHarness implements AutoCloseable {
     }
 
     /**
-     * Root handler that strips the contextPath before delegating to the
-     * Cassini bridge. Mirrors what {@code ChappeMountPoint.mount(prefix, ...)}
-     * does in the normal Vidocq integration, but without pulling in the full
-     * engine (the harness only embeds a bare Chappe Server).
+     * Root handler that strips the contextPath before delegating to the Cassini
+     * bridge. Reproduces what {@code ChappeMountPoint.mount(prefix, ...)}
+     * does in the normal Vidocq integration, but without depending on the full
+     * engine (the harness embeds just a bare Chappe Server).
      */
     private record ContextStrippingHandler(String prefix, Handler delegate) implements Handler {
         @Override public Response handle(Request request) throws Exception {
@@ -254,7 +254,7 @@ public final class CassiniTestHarness implements AutoCloseable {
             if (path == null) path = "/";
             if (!path.startsWith(prefix)) {
                 // Outside the deployed context — direct 404 to avoid matching
-                // the Cassini tree against unrelated paths.
+                // the Cassini tree on unrelated paths.
                 return Response.builder()
                         .status(io.vidocq.chappe.api.StatusCode.NOT_FOUND)
                         .body(io.vidocq.chappe.api.Body.empty())

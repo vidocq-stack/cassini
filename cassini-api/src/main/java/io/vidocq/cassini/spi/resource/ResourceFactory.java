@@ -1,41 +1,41 @@
 package io.vidocq.cassini.spi.resource;
 
 /**
- * JAX-RS resource factory SPI — abstracts the instantiation of {@code @Path}-
- * annotated classes and providers.
+ * JAX-RS resource factory SPI — abstracts instantiation of classes annotated
+ * with {@code @Path} and providers.
  *
  * <p>Two usage modes:
  * <ul>
- *   <li><b>Mode A ("pure" Cassini)</b> — the default factory
- *       {@link #defaultFactory()} creates a fresh instance per request via the
- *       no-arg constructor. No injection.</li>
- *   <li><b>Mode B (Cassini + managed DI)</b> — prefer the
- *       {@link io.vidocq.cassini.spi.bean.BeanProvider} SPI and its
- *       {@code cassini-cdi-vauban} adapter (or any other BeanProvider) to
- *       delegate instantiation to a DI container.</li>
+ *   <li><b>Mode A (pure Cassini)</b> — the default factory
+ *       {@link #defaultFactory()} creates a new instance per request via
+ *       the no-arg constructor. No injection.</li>
+ *   <li><b>Mode B (Cassini + managed DI)</b> — prefer the SPI
+ *       {@link io.vidocq.cassini.spi.bean.BeanProvider} and its adapter
+ *       {@code cassini-cdi-vauban} (or any other BeanProvider) to delegate
+ *       instantiation to a DI container.</li>
  * </ul>
  */
 public interface ResourceFactory {
 
     /**
-     * Creates (or fetches from the scope) an instance of {@code resourceClass}.
+     * Creates (or retrieves from scope) an instance of {@code resourceClass}.
      *
      * @param resourceClass JAX-RS resource or provider class
-     * @return an instance ready to be invoked
+     * @return instance ready to be invoked
      */
     <T> T create(Class<T> resourceClass);
 
     /**
      * Releases an instance created by {@link #create(Class)}. Default
-     * implementation: no-op (GC handles it in Mode A).
+     * implementation: no-op (GC handles it for Mode A).
      */
     default void destroy(Object resource) {
         // no-op
     }
 
     /**
-     * Default factory: a new instance per call via the no-arg constructor.
-     * No injection. Used in Mode A.
+     * Default factory: new instance per call via no-arg constructor. No
+     * injection. Used in Mode A.
      *
      * <p>M6a: if a generated adapter with {@code newInstance()} is available (i.e. the class
      * has an accessible no-arg constructor), it is preferred over reflection. Falls back to

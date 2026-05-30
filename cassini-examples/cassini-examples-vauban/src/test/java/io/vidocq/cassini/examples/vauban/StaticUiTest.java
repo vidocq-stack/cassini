@@ -71,10 +71,10 @@ class StaticUiTest {
 
     @Test
     void apiAndStaticCoexist() throws Exception {
-        // Static on /
+        // The static content on /
         var html = get("/");
         assertEquals(200, html.statusCode());
-        // API on /api/todos
+        // The API on /api/todos
         var api = get("/api/todos");
         assertEquals(200, api.statusCode());
         assertTrue(api.headers().firstValue("Content-Type").orElse("").contains("json"));

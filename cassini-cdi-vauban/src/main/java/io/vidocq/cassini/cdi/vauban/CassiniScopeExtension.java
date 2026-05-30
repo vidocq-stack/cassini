@@ -15,22 +15,21 @@ import jakarta.ws.rs.ext.Provider;
  * {@link BuildCompatibleExtension} that aligns Vauban with JAX-RS 4.0 spec §11.2.5:
  * classes annotated with {@code @Path} or {@code @Provider} must be discoverable
  * as managed CDI beans even without an explicit scope. Without this BCE, a generic
- * CDI container like Vauban ignores these classes during bean discovery (no
- * bean-defining annotation) and Cassini cannot find them via
+ * CDI container like Vauban ignores these classes during bean discovery
+ * (no bean-defining annotation), so Cassini cannot find them through
  * {@link VaubanBeanProvider#getResourceClasses()}.
  *
  * <ul>
- *   <li>{@code @Path} without a scope → {@code @RequestScoped} (standard JAX-RS
- *       semantics: a fresh resource instance per request)</li>
- *   <li>{@code @Provider} without a scope → {@code @Dependent} (singleton-equivalent
- *       on the JAX-RS side: providers default to per-class singletons —
- *       {@code @Dependent} enables on-demand instantiation without the overhead of
- *       a normal-scope proxy)</li>
+ *   <li>{@code @Path} without a scope → {@code @RequestScoped} (standard JAX-RS semantics:
+ *       a new resource instance per request)</li>
+ *   <li>{@code @Provider} without a scope → {@code @Dependent} (JAX-RS-side singleton equivalent:
+ *       providers are singleton per class by default — {@code @Dependent}
+ *       allows on-demand instantiation without the overhead of a normal-scope proxy)</li>
  * </ul>
  *
- * <p>This BCE is the Cassini counterpart of the standard CDI "bean-defining
- * annotation" rule. It spares Vauban (a generic CDI container) from knowing about
- * {@code jakarta.ws.rs} and keeps the separation of concerns clean.</p>
+ * <p>This BCE is Cassini's counterpart to the standard CDI "bean-defining
+ * annotation" rule. It avoids forcing Vauban (a generic CDI container) to know
+ * about {@code jakarta.ws.rs} and keeps the separation of concerns clean.</p>
  */
 public class CassiniScopeExtension implements BuildCompatibleExtension {
 
@@ -52,7 +51,7 @@ public class CassiniScopeExtension implements BuildCompatibleExtension {
     @SuppressWarnings("unused")
     @Enhancement(types = Object.class, withAnnotations = Provider.class)
     public void addProviderDefaultScope(ClassConfig clazz) {
-        // Skip classes that are also @Path (already handled by addPathDefaultScope)
+        // Exclude classes that are also @Path (already handled by addPathDefaultScope)
         if (clazz.info().hasAnnotation(Path.class)) return;
         if (!hasAnyScope(clazz)) {
             clazz.addAnnotation(Dependent.class);

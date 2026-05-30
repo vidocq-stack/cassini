@@ -10,10 +10,10 @@ module io.vidocq.cassini.cdi.vauban {
     provides io.vidocq.cassini.spi.bean.BeanProvider.Factory
             with io.vidocq.cassini.cdi.vauban.VaubanBeanProviderFactory;
 
-    // BCE Cassini qui aligne Vauban sur la spec JAX-RS 4.0 §11.2.5 :
-    // @Path/@Provider sans scope -> @RequestScoped / @Dependent par defaut.
-    // Sans ce provides, Vauban (container CDI generique) ignore les classes
-    // JAX-RS sans annotation bean-defining et Cassini ne les decouvre pas.
+    // Cassini BCE that aligns Vauban with JAX-RS 4.0 spec §11.2.5:
+    // @Path/@Provider without a scope -> @RequestScoped / @Dependent by default.
+    // Without this provides clause, Vauban (a generic CDI container) ignores
+    // JAX-RS classes without a bean-defining annotation and Cassini does not discover them.
     provides jakarta.enterprise.inject.build.compatible.spi.BuildCompatibleExtension
             with io.vidocq.cassini.cdi.vauban.CassiniScopeExtension;
 }

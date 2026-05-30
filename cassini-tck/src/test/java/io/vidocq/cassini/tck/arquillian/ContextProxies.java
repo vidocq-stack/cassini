@@ -13,10 +13,10 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
 /**
- * §4.5 / §9.2: dynamic proxies for the @Context parameters of a singleton
- * provider's constructor. The provider is instantiated at deploy time, but
- * its methods (writeTo, getContext, toResponse...) are only invoked per
- * request. Each proxy therefore delegates to the current request (ThreadLocal
+ * §4.5 / §9.2: dynamic proxies for @Context constructor parameters of a
+ * singleton provider. The provider is instantiated at deploy time but its
+ * methods (writeTo, getContext, toResponse...) are only called at request
+ * time. Each proxy therefore delegates to the current request (ThreadLocal
  * Invoker.CURRENT_REQUEST + CURRENT_MATCH) to resolve the effective value
  * at invocation time.
  */
@@ -26,8 +26,8 @@ final class ContextProxies {
 
     static Object proxy(Class<?> type) {
         if (!type.isInterface()) {
-            // Application (concrete class): return an empty instance —
-            // getProperties()/getClasses() return defaults.
+            // Application (concrete class): return an empty instance
+            // — getProperties()/getClasses() return defaults.
             if (type == jakarta.ws.rs.core.Application.class) {
                 return new jakarta.ws.rs.core.Application();
             }

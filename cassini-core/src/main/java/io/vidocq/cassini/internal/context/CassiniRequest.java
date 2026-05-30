@@ -46,9 +46,9 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
         String acceptEnc = delegate.firstHeader("Accept-Encoding");
         boolean encWildcard = acceptEnc != null && containsWildcard(acceptEnc);
 
-        // §5.1: negotiation dimensions = all those present on at least one
-        // Variant. Vary is set for these dimensions regardless of the final
-        // selection (the client needs to know how to vary its request).
+        // §5.1: negotiation dimensions = all those present on at least one Variant.
+        // We set Vary for these dimensions, independently of the final selection
+        // (the client must know how to vary its request).
         boolean anyMedia = variants.stream().anyMatch(v -> v.getMediaType() != null);
         boolean anyLang = variants.stream().anyMatch(v -> v.getLanguage() != null);
         boolean anyEnc = variants.stream().anyMatch(v -> v.getEncoding() != null);

@@ -11,8 +11,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Helpers for {@link MediaType}: parsing, wildcard matching, quality sorting
- * and best-match selection (§3.8 Content Negotiation).
+ * Helpers pour {@link MediaType} : parsing, matching par wildcard, tri par
+ * qualité et sélection best-match (§3.8 Content Negotiation).
  */
 public final class MediaTypes {
 
@@ -20,7 +20,7 @@ public final class MediaTypes {
 
     private MediaTypes() {}
 
-    /** Parses "type/subtype;p1=v1;q=0.8" into a {@link MediaType}. Defaults to wildcard. */
+    /** Parse "type/subtype;p1=v1;q=0.8" en {@link MediaType}. Défaut wildcard. */
     public static MediaType parse(String raw) {
         if (raw == null || raw.isBlank()) return WILDCARD;
         String[] parts = raw.split(";");
@@ -30,8 +30,8 @@ public final class MediaTypes {
         }
         String type = ts[0].trim().isEmpty() ? "*" : ts[0].trim();
         String subtype = ts[1].trim().isEmpty() ? "*" : ts[1].trim();
-        // RFC 7231 token: letters, digits, and a few symbols. Reject
-        // clearly invalid characters (backslash, space, etc.).
+        // RFC 7231 token : lettres, chiffres, et quelques symboles. On rejette
+        // clearly invalid characters (backslash, espace, etc.).
         if (!isValidMediaTypeToken(type) || !isValidMediaTypeToken(subtype)) {
             throw new IllegalArgumentException("Invalid media type: " + raw);
         }
@@ -75,7 +75,7 @@ public final class MediaTypes {
                 || a.getSubtype().equalsIgnoreCase(b.getSubtype());
     }
 
-    /** Takes client Accept + method @Produces, returns the best-match (most specific). */
+    /** Takes client Accept + @Produces method, returns the best match (most specific). */
     public static Optional<MediaType> pickProduced(List<MediaType> accepts,
                                                    List<MediaType> produces) {
         boolean producesExplicit = !produces.isEmpty();
@@ -92,7 +92,7 @@ public final class MediaTypes {
                 MediaType candidate = p.isWildcardSubtype() || p.isWildcardType() ? a : p;
                 double sq = sourceQuality(p);
                 int spec = specificity(candidate);
-                // Prefer higher qs, then specificity.
+                // Prioritize higher qs, then specificity.
                 if (sq > bestSourceQ || (sq == bestSourceQ && spec > bestSpec)) {
                     best = candidate;
                     bestSourceQ = sq;
@@ -112,7 +112,7 @@ public final class MediaTypes {
         try { return Double.parseDouble(qs); } catch (NumberFormatException e) { return 1.0; }
     }
 
-    /** Request Content-Type vs method @Consumes. */
+    /** Request Content-Type vs @Consumes method. */
     public static boolean consumesMatches(MediaType contentType, List<MediaType> consumes) {
         if (consumes.isEmpty()) return true;
         for (MediaType c : consumes) if (matches(contentType, c)) return true;
@@ -142,10 +142,10 @@ public final class MediaTypes {
     public static List<MediaType> fromSet(java.util.Set<String> raws) {
         if (raws == null || raws.isEmpty()) return List.of();
         List<MediaType> out = new ArrayList<>(raws.size());
-        for (String r : raws) {
-            // Jersey/RestEasy tolerate @Consumes/@Produces("a,b") — a single
-            // String containing multiple comma-separated media-types.
-            if (r != null && r.indexOf(',') >= 0 && r.indexOf(';') < 0) {
+         for (String r : raws) {
+             // Jersey/RestEasy allow @Consumes/@Produces("a,b") — a single
+             // String containing multiple media-types separated by comma.
+             if (r != null && r.indexOf(',') >= 0 && r.indexOf(';') < 0) {
                 for (String tok : r.split(",")) if (!tok.isBlank()) out.add(parse(tok));
             } else {
                 out.add(parse(r));

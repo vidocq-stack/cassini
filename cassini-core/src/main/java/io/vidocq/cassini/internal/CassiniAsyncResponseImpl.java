@@ -12,20 +12,19 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * {@link AsyncResponse} (§8.2) implementation for Cassini.
+ * Cassini implementation of {@link AsyncResponse} (§8.2).
  *
  * <p>Each asynchronous request ({@code @Suspended AsyncResponse}) receives
  * an instance of this class. The resource method calls {@link #resume(Object)}
- * (from any thread) to send the response; the Invoker blocks the current
- * virtual thread on {@link #completionFuture()} until that call.
+ * (from any thread) to send the response; the Invoker blocks the
+ * current virtual thread on {@link #completionFuture()} until that call.
  *
  * <p>Blocking on a virtual thread is intentional (M2h): it releases the
- * carrier thread without starvation, in line with the JDK 25 virtual-threads
- * model.
+ * carrier thread without starvation, in line with the JDK 25 virtual-threads model.
  */
 public final class CassiniAsyncResponseImpl implements AsyncResponse {
 
-    /** Exchange attribute key so ParamExtractor can find the instance. */
+    /** Exchange attribute key so that ParamExtractor can retrieve the instance. */
     public static final String ATTR_KEY = "cassini.async_response";
 
     private static final ScheduledExecutorService SCHEDULER;

@@ -12,9 +12,9 @@ import java.util.Map;
 /**
  * {@code application/x-www-form-urlencoded} decoder (RFC 3986).
  *
- * <p>Lazy read of the HTTP body, parsed into {@code Map<name, List<value>>}.
- * Values are decoded as UTF-8 after replacing {@code '+'} → {@code ' '} as
- * the historical MIME type requires.</p>
+ * <p>Lazily reads the HTTP body, parsing it into {@code Map<name, List<value>>}.
+ * Values are decoded as UTF-8 after replacing {@code '+'} → {@code ' '}
+ * as required by the historical MIME type.</p>
  */
 public final class FormDecoder {
 
@@ -32,8 +32,8 @@ public final class FormDecoder {
         return parse(body, true);
     }
 
-    /** If {@code decode} is {@code false}, preserves raw {@code %XX} triplets
-     *  and does not turn {@code '+'} into a space — used for
+    /** If {@code decode} is {@code false}, preserves raw {@code %XX}
+     *  triplets and does not turn {@code '+'} into a space — used for
      *  {@code @Encoded} §3.2. */
     public static Map<String, List<String>> parse(String body, boolean decode) {
         Map<String, List<String>> out = new LinkedHashMap<>();

@@ -19,10 +19,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Todos CRUD resource — static store for the standalone example.
+ * CRUD Todos resource — static store for the standalone example.
  *
- * <p>Note: since the store is static, a {@code @BeforeEach} reset is required
- * in tests.</p>
+ * <p>Note: since the store is static, a {@code @BeforeEach} reset
+ * is required in tests.</p>
  */
 @Path("/todos")
 @Produces(MediaType.APPLICATION_JSON)

@@ -15,8 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@link UriInfo} implementation backed by a {@link CassiniHttpExchange} plus
- * the path parameters captured by the router.
+ * {@link UriInfo} implementation backed by a {@link CassiniHttpExchange} plus the
+ * path parameters captured by the router.
  */
 public final class CassiniUriInfo implements UriInfo {
 
@@ -37,7 +37,7 @@ public final class CassiniUriInfo implements UriInfo {
         this.matchedTemplate = matchedTemplate;
     }
 
-    /** Path after contextPath (equivalent to the servlet {@code pathInfo}). */
+    /** Path après contextPath (équivalent du {@code pathInfo} servlet). */
     private String pathInfo() {
         String p = exchange.requestUri().getRawPath();
         if (p == null) return "";
@@ -137,8 +137,8 @@ public final class CassiniUriInfo implements UriInfo {
 
     @Override public MultivaluedMap<String, String> getQueryParameters(boolean decode) {
         MultivaluedMap<String, String> m = new MultivaluedHashMap<>();
-        // In decode=false mode, re-read from getRawQuery(); otherwise use
-        // the SPI helper which decodes.
+        // In decode=false mode we re-read from getRawQuery(); otherwise we use
+        // the SPI helper that decodes.
         if (!decode) {
             String rawQuery = exchange.requestUri().getRawQuery();
             if (rawQuery == null || rawQuery.isEmpty()) return m;
@@ -158,9 +158,10 @@ public final class CassiniUriInfo implements UriInfo {
     @Override public List<String> getMatchedURIs() { return getMatchedURIs(true); }
 
     @Override public List<String> getMatchedURIs(boolean decode) {
-        // §9.2.1: list of matched URIs, from most specific (method)
-        // to broadest (root resource). Minimal: split pathInfo in two
-        // levels (method then class) as soon as there is at least one '/'.
+        // §9.2.1: list of matched URIs, from the most specific (method)
+        // to the broadest (root resource). Minimalist: we split pathInfo
+        // into two levels (method then class) whenever there is at least
+        // one '/'.
         String p = decode ? getPath() : getPath(false);
         if (p == null || p.isEmpty()) return List.of();
         int lastSlash = p.lastIndexOf('/');
@@ -172,7 +173,7 @@ public final class CassiniUriInfo implements UriInfo {
     @Override public String getMatchedResourceTemplate() {
         if (matchedTemplate == null) return "";
         // §10 (jaxrs40): the returned template includes the path declared by
-        // @ApplicationPath on the Application subclass (if present).
+        // @ApplicationPath of the Application subclass (if any).
         var app = io.vidocq.cassini.internal.ParamExtractor.currentApplication();
         if (app != null) {
             jakarta.ws.rs.ApplicationPath ap = app.getClass().getAnnotation(jakarta.ws.rs.ApplicationPath.class);

@@ -19,9 +19,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Concrete server-side {@link Response} implementation (immutable).
- * Built by {@link CassiniResponseBuilder}, consumed by the Invoker which
- * extracts status / headers / entity to serialize on the Chappe side.
+ * Implémentation concrète de {@link Response} côté serveur (immutable).
+ * Construite par {@link CassiniResponseBuilder}, consommée par l'Invoker
+ * qui en extrait status / headers / entity pour sérialiser côté Chappe.
  */
 public final class CassiniResponse extends Response {
 
@@ -57,7 +57,7 @@ public final class CassiniResponse extends Response {
 
     @Override public Object getEntity() {
         if (closed) throw new IllegalStateException("Response has been closed");
-        // §4.3: GenericEntity wrap is unwrapped on the read side.
+        // §4.3 : GenericEntity wrap is unwrapped on read side.
         if (entity instanceof jakarta.ws.rs.core.GenericEntity<?> ge) return ge.getEntity();
         return entity;
     }
@@ -75,8 +75,8 @@ public final class CassiniResponse extends Response {
     }
     @Override public boolean bufferEntity() {
         if (closed) throw new IllegalStateException("Response has been closed");
-        // §4.3: returns false if there is no backing stream to buffer
-        // (entity already stored in memory). true only if a stream existed
+        // §4.3 : returns false if there is no backing stream to buffer (entity
+        // already stored in memory). true only if a stream existed
         // and was copied.
         return false;
     }
@@ -196,9 +196,9 @@ public final class CassiniResponse extends Response {
         return new HttpHeadersViewObject(headers);
     }
 
-    /** {@code Object}-typed variant of {@link HttpHeadersView}. Used by
-     *  {@code Response.getMetadata()} §4.3 which must tolerate HTTP header
-     *  name case (RFC 7230 §3.2). */
+    /** Typed {@code Object} variant of {@link HttpHeadersView}. Used by
+     *  {@code Response.getMetadata()} §4.3 which must tolerate HTTP header name
+     *  case (RFC 7230 §3.2). */
     private static final class HttpHeadersViewObject implements MultivaluedMap<String, Object> {
         private final MultivaluedMap<String, Object> backing;
         HttpHeadersViewObject(MultivaluedMap<String, Object> backing) { this.backing = backing; }
@@ -237,8 +237,8 @@ public final class CassiniResponse extends Response {
     }
 
     @Override public MultivaluedMap<String, String> getStringHeaders() {
-        // Preserves the original case for stringification; exposes a
-        // case-insensitive view for get/getFirst (HTTP headers RFC 7230 §3.2).
+        // Conserve la casse d'origine pour la stringification ; expose une
+        // vue case-insensitive pour get/getFirst (HTTP headers RFC 7230 §3.2).
         MultivaluedMap<String, String> m = new MultivaluedHashMap<>();
         for (var e : headers.entrySet()) {
             for (Object v : e.getValue()) m.add(e.getKey(), headerToString(v));
@@ -246,8 +246,8 @@ public final class CassiniResponse extends Response {
         return new HttpHeadersView(m);
     }
 
-    /** Case-insensitive view of a MultivaluedMap that preserves the original
-     *  case for entrySet/keySet but tolerates different cases on get. */
+    /** Vue case-insensitive d'un MultivaluedMap conservant la casse d'origine
+     *  pour l'entrySet/keySet mais tolérant différentes casses lors des get. */
     private static final class HttpHeadersView implements MultivaluedMap<String, String> {
         private final MultivaluedMap<String, String> backing;
         HttpHeadersView(MultivaluedMap<String, String> backing) { this.backing = backing; }
@@ -290,7 +290,7 @@ public final class CassiniResponse extends Response {
     }
 
     @Override public String getHeaderString(String name) {
-        // Case-insensitive lookup for HTTP.
+        // Recherche case-insensitive pour HTTP.
         java.util.List<Object> v = null;
         for (var e : headers.entrySet()) {
             if (e.getKey().equalsIgnoreCase(name)) { v = e.getValue(); break; }
@@ -305,7 +305,7 @@ public final class CassiniResponse extends Response {
     }
 
 
-    /** Serializes a header via HeaderDelegate when available (§4.3). */
+    /** Sérialise un header via HeaderDelegate si disponible (§4.3). */
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static String headerToString(Object v) {
         if (v == null) return "";

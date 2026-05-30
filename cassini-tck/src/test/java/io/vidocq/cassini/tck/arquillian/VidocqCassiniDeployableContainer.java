@@ -27,21 +27,21 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Arquillian adapter that deploys a REST TCK {@link WebArchive} onto a
- * {@link CassiniTestHarness} instance.
+ * Arquillian adapter that deploys a TCK REST test {@link WebArchive}
+ * onto a {@link CassiniTestHarness} instance.
  *
  * <p>Strategy: extract classes from {@code /WEB-INF/classes/}, filter those
- * annotated with {@code @Path} (or implementing an {@link Application} that
- * declares classes), instantiate them by reflection (the test classloader
- * sees them — the TCK runtime jar is on the classpath) and load them into
- * the Cassini harness. Returns a {@code Servlet 3.0} {@link ProtocolMetaData}
+ * annotated with {@code @Path} (or implementing an {@link Application}
+ * declaring classes), instantiate them via reflection (the test classloader
+ * sees them — the TCK runtime jar is on the classpath) and load them into the
+ * Cassini harness. Returns a {@link ProtocolMetaData} {@code Servlet 3.0}
  * with the baseUrl so the TCK client targets the correct URL.</p>
  */
 public class VidocqCassiniDeployableContainer implements DeployableContainer<VidocqContainerConfiguration> {
 
     private VidocqContainerConfiguration config;
 
-    /** prefix → bridge handler (without ContextStrippingHandler — handled by the dispatcher). */
+    /** prefix → bridge handler (without ContextStrippingHandler — managed by the dispatcher). */
     private final LinkedHashMap<String, Handler> contextHandlers = new LinkedHashMap<>();
     /** archive name → prefix (for undeploy). */
     private final LinkedHashMap<String, String> archivePrefixes = new LinkedHashMap<>();
@@ -185,9 +185,9 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         } else {
             for (Class<?> c : classes) registerDiscovered(c, builder, registered, providers);
         }
-        // §10: ServiceLoader (META-INF/services/) — Feature and DynamicFeature
-        // can be declared here in addition to Application.getClasses().
-        java.util.Set<Class<?>> features = new java.util.LinkedHashSet<>();
+        // §10 : ServiceLoader (META-INF/services/) — Feature and DynamicFeature
+         // can be declared here in addition to Application.getClasses().
+         java.util.Set<Class<?>> features = new java.util.LinkedHashSet<>();
         for (Class<?> c : (appFiltersResources ? appClasses : classes)) {
             if (jakarta.ws.rs.core.Feature.class.isAssignableFrom(c)) features.add(c);
         }
@@ -209,7 +209,7 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
                 } catch (java.io.IOException ignored) {}
             }
         }
-        // §10: invoke Feature.configure() — register() delegates to the builder.
+        // §10 : call Feature.configure() — register() delegates to builder.
         for (Class<?> c : features) {
             if (!c.isInterface() && !java.lang.reflect.Modifier.isAbstract(c.getModifiers())
                     && jakarta.ws.rs.core.Feature.class.isAssignableFrom(c)) {
@@ -221,8 +221,8 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
                     providers.add(c.getSimpleName());
                 } catch (ReflectiveOperationException ignored) {}
             } else if (jakarta.ws.rs.container.DynamicFeature.class.isAssignableFrom(c)) {
-                // DynamicFeature: register as a provider — the bridge calls
-                // it per resource method at scan time (M2g).
+                // DynamicFeature: register as provider — the bridge
+                // calls it per resource method at scan-time (M2g).
                 try {
                     Object instance = c.getDeclaredConstructor().newInstance();
                     builder.provider(instance);
@@ -232,13 +232,13 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         }
         if (appInstance != null) {
             builder.application(appInstance);
-            // §11.2.1: @ApplicationPath on the Application subclass is
-            // appended to the archive contextPath as a servlet path.
+            // §11.2.1 : @ApplicationPath sur la sous-classe Application
+            // s'ajoute au contextPath de l'archive comme servlet path.
             jakarta.ws.rs.ApplicationPath appPath =
                     appInstance.getClass().getAnnotation(jakarta.ws.rs.ApplicationPath.class);
             if (appPath != null && !appPath.value().isEmpty()) {
-                // §2.3.2: @ApplicationPath value is URI-encoded; decode it to
-                // match the form sent on the wire by the client (e.g. %21 → !).
+                // §2.3.2: @ApplicationPath value is URI-encoded, decode it
+                // to match the form transported by the client (e.g. %21 → !).
                 String ap = java.net.URLDecoder.decode(appPath.value(),
                         java.nio.charset.StandardCharsets.UTF_8);
                 if (!ap.startsWith("/")) ap = "/" + ap;
@@ -248,13 +248,13 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         }
 
         // Build the bridge without starting a server, then register it in
-        // the shared dispatcher. The shared server is (re)started so that all
-        // known contexts are taken into account.
+        // the shared dispatcher. The shared server is (re)started to take
+        // into account all known contexts.
         CassiniTestHarness.Builder.BuiltHandler bh = builder.buildHandler();
         String actualPrefix = bh.prefix();
         // §6.1 BASIC: if web.xml declares a security-constraint with
-        // <auth-method>BASIC</auth-method>, wrap the bridge with a handler
-        // that validates Authorization Basic and sets an AuthInfo.
+        // <auth-method>BASIC</auth-method>, wrap the bridge with a
+        // handler that validates Authorization Basic and sets an AuthInfo.
         io.vidocq.chappe.api.Handler bridgeOrAuth = bh.bridgeHandler();
         String authPattern = parseBasicAuthPattern(war, actualPrefix);
         if (authPattern != null) {
@@ -301,15 +301,15 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         if (cls.isAnnotationPresent(Path.class)) {
             try { b.resourceClass(cls); registered.add(cls.getSimpleName()); }
             catch (RuntimeException ignored) {}
-        } else if (cls.isAnnotationPresent(Provider.class) || isProviderClass(cls)) {
-            // §9.4: Application.getClasses() may return a class that
-            // implements a standard provider type without carrying @Provider.
-            // §9.2: a singleton provider may have @Context-only constructors
-            // — pick the widest public one and instantiate it with null
-            // arguments. @Context fields will be re-injected per-request by
-            // injectProviderContexts().
-            Object instance = instantiateProvider(cls);
-            if (instance != null) {
+         } else if (cls.isAnnotationPresent(Provider.class) || isProviderClass(cls)) {
+             // §9.4 : Application.getClasses() may return a class that
+             // implements a standard provider type without @Provider annotation.
+             // §9.2 : a provider singleton can have @Context-only constructors
+             // — we choose the broadest public and instantiate
+             // with null arguments. The @Context fields will be re-injected
+             // per-request by injectProviderContexts().
+             Object instance = instantiateProvider(cls);
+             if (instance != null) {
                 b.provider(instance);
                 providers.add(cls.getSimpleName());
             }
@@ -320,10 +320,10 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         try {
             return cls.getDeclaredConstructor().newInstance();
         } catch (ReflectiveOperationException ignored) {}
-        // No no-arg constructor: §4.5 selects the public ctor with the most
-        // arguments, each having a resolvable @Context type. Values are
-        // dynamic proxies that delegate to the current request (ThreadLocal
-        // Invoker.CURRENT_REQUEST + CURRENT_MATCH).
+        // No no-arg constructor: §4.5 selects the public constructor with
+        // the most parameters each of which has a resolvable @Context type.
+        // Values are dynamic proxies that delegate to the current request
+        // (ThreadLocal Invoker.CURRENT_REQUEST + CURRENT_MATCH).
         java.lang.reflect.Constructor<?> best = null;
         int bestParams = -1;
         for (var c : cls.getConstructors()) {
@@ -349,10 +349,10 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
     }
 
     /**
-     * Parses WEB-INF/web.xml of the WAR: if a security-constraint with
+     * Parses WEB-INF/web.xml from the WAR: if a security-constraint with
      * url-pattern and auth-method=BASIC is found, returns a regex matching
-     * the protected paths (the WAR contextPath has already been stripped
-     * upstream by the shared dispatcher — so the regex is NOT prefixed),
+     * the protected paths (the WAR's contextPath has already been stripped
+     * by the shared dispatcher upstream — so the regex is NOT prefixed),
      * otherwise null.
      */
     private static String parseBasicAuthPattern(WebArchive war, String prefix) {
@@ -415,19 +415,18 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
     private static void registerSingleton(Object instance, CassiniTestHarness.Builder b,
                                           List<String> registered, List<String> providers) {
         Class<?> cls = instance.getClass();
-        if (cls.isAnnotationPresent(Path.class)) {
-            b.resource(instance); registered.add(cls.getSimpleName());
-            return;
+         if (cls.isAnnotationPresent(Path.class)) {
+             b.resource(instance); registered.add(cls.getSimpleName());
+             return;
+         }
+         // §9.4 : a singleton can be a provider without @Provider annotation
+         // if it implements one of the standard types (MBR, MBW, ExceptionMapper,
+         // ContextResolver, Feature, DynamicFeature, Filter, Interceptor).
+         if (cls.isAnnotationPresent(Provider.class) || isProviderType(instance)) {
+             b.provider(instance); providers.add(cls.getSimpleName());
+             return;
         }
-        // §9.4: a singleton may be a provider without the @Provider
-        // annotation if it implements one of the standard types (MBR, MBW,
-        // ExceptionMapper, ContextResolver, Feature, DynamicFeature, Filter,
-        // Interceptor).
-        if (cls.isAnnotationPresent(Provider.class) || isProviderType(instance)) {
-            b.provider(instance); providers.add(cls.getSimpleName());
-            return;
-        }
-        // Utility singleton with no recognized type: expose it as a resource.
+        // Utility singleton with no recognised type: expose it as a resource.
         b.resource(instance); registered.add(cls.getSimpleName());
     }
 
@@ -445,7 +444,7 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
                 || instance instanceof jakarta.ws.rs.core.Feature;
     }
 
-    /** §10 minimal FeatureContext: .register() delegates to the harness builder. */
+    /** §10 FeatureContext minimal : .register() délègue au harness builder. */
     private static final class CassiniFeatureContext implements jakarta.ws.rs.core.FeatureContext {
         private final CassiniTestHarness.Builder builder;
         private final List<String> registered;

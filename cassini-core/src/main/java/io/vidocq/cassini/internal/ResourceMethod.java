@@ -15,11 +15,11 @@ import java.util.Set;
  * @param consumes        media types declared via {@code @Consumes}
  * @param rootBeanClass   root class instantiated first (§3.4.1)
  * @param locatorChain    ordered chain of locator methods to invoke on the
- *                        root to reach the {@code beanClass} instance
+ *                        root to reach the instance of {@code beanClass}
  * @param dynamicLocator  §3.4.1: catch-all route emitted when a sub-resource
  *                        locator returns {@code Object} or a non-scannable type.
- *                        At runtime, the Invoker executes the chain and scans
- *                        the effective class of the returned instance for dispatch.
+ *                        At runtime, the Invoker executes the chain and scans the
+ *                        effective class of the returned instance for dispatch.
  */
 public record ResourceMethod(
         Class<?> beanClass,
@@ -45,7 +45,7 @@ public record ResourceMethod(
         this(beanClass, javaMethod, httpMethod, template, produces, consumes, null, null, 0, false);
     }
 
-    /** Compatibility: single locator (chain of length 1). */
+    /** Compatibilité : locator unique (chaîne de longueur 1). */
     public ResourceMethod(Class<?> beanClass, Method javaMethod, String httpMethod,
                           UriTemplate template, Set<String> produces, Set<String> consumes,
                           Class<?> rootBeanClass, Method locator) {

@@ -94,7 +94,7 @@ class FiltersTest {
                 client.register((ClientResponseFilter) (req, resp) -> seenStatus.set(resp.getStatus()));
                 Response r = client.target(server.baseUrl()).path("/").request().get();
                 assertEquals(201, r.getStatus());
-                // HttpServer JDK normalise la casse des headers — chercher case-insensitive.
+                // JDK HttpServer normalizes header casing — search case-insensitively.
                 String found = null;
                 for (var e : r.getStringHeaders().entrySet()) {
                     if (e.getKey().equalsIgnoreCase("X-Custom")) {
@@ -166,7 +166,7 @@ class FiltersTest {
         }
     }
 
-    // ---- Fixtures filtres avec @Priority -------------------------------------------------
+    // ---- Filter fixtures with @Priority -------------------------------------------------
 
     @Priority(Priorities.AUTHENTICATION) // 1000
     static class HighPrioFilter implements ClientRequestFilter {

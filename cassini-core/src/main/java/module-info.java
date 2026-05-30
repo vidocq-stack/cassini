@@ -43,5 +43,5 @@ module io.vidocq.cassini.core {
     // jakarta.ws.rs.ext.RuntimeDelegate provided by cassini-chappe or
     // cassini-jdk-http (transport-specific for SeBootstrap). Cassini-core
     // does not expose its CassiniRuntimeDelegate via ServiceLoader to avoid
-    // collision: this is the role of the active transport adapter.
+    // a collision: that is the role of the active transport adapter.
 }

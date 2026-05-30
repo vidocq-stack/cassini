@@ -1,77 +1,77 @@
-# Cassini — Exemples
+# Cassini — Examples
 
-Trois exemples illustrent les manières d'utiliser Cassini selon le transport et l'intégration souhaités.
+Three examples illustrate the different ways to use Cassini depending on the desired transport and integration.
 
 | Module | Transport | CDI | Bootstrap |
 |---|---|---|---|
-| `cassini-examples-chappe` | Chappe (HTTP/1.1 + HTTP/2) | non | `SeBootstrap.start()` |
-| `cassini-examples-jdkhttp` | JDK natif (`com.sun.net.httpserver`) | non | `CassiniStack.builder()` ou `SeBootstrap.start()` |
-| `cassini-examples-vauban` | Chappe + CDI Vauban | oui (`@ApplicationScoped` + `@Inject`) | `VaubanContainer` + `SeBootstrap.start()` (auto-discovery `BeanProvider`) |
+| `cassini-examples-chappe` | Chappe (HTTP/1.1 + HTTP/2) | no | `SeBootstrap.start()` |
+| `cassini-examples-jdkhttp` | Native JDK (`com.sun.net.httpserver`) | no | `CassiniStack.builder()` or `SeBootstrap.start()` |
+| `cassini-examples-vauban` | Chappe + Vauban CDI | yes (`@ApplicationScoped` + `@Inject`) | `VaubanContainer` + `SeBootstrap.start()` (auto-discovery `BeanProvider`) |
 
-Tous trois exposent les mêmes ressources pour comparaison directe :
+All three expose the same resources for direct comparison:
 - `GET /greetings` → `"Hello, World!"`
 - `GET /greetings/{name}` → `"Hello, {name}!"`
 - `GET|POST|PUT|DELETE /todos[/{id}]` → CRUD JSON
 
-## Comment lancer
+## How to run
 
-Chaque module a un `Main.java` lançable depuis IntelliJ ou via :
+Each module has a `Main.java` launchable from IntelliJ or via:
 
 ```bash
 mvn -pl cassini-examples/cassini-examples-{chappe,jdkhttp,vauban} \
     exec:java -Dexec.mainClass=io.vidocq.cassini.examples.{chappe,jdkhttp,vauban}.Main
 ```
 
-Les fichiers `.http` dans `src/test/resources/http/` permettent de tester via le HTTP Client d'IntelliJ.
+The `.http` files in `src/test/resources/http/` allow testing via the IntelliJ HTTP Client.
 
 ---
 
-## Mécanisme de découverte du transport — `SeBootstrap`
+## Transport discovery mechanism — `SeBootstrap`
 
-`jakarta.ws.rs.SeBootstrap.start(app, config)` utilise le ServiceLoader JPMS standard pour trouver une implémentation de `jakarta.ws.rs.ext.RuntimeDelegate` :
+`jakarta.ws.rs.SeBootstrap.start(app, config)` uses the standard JPMS ServiceLoader to find an implementation of `jakarta.ws.rs.ext.RuntimeDelegate`:
 
 ```
 SeBootstrap.start(app, config)
     ↓
 RuntimeDelegate.getInstance()
     ↓
-ServiceLoader.load(RuntimeDelegate.class)   ← cherche les modules avec
+ServiceLoader.load(RuntimeDelegate.class)   ← looks for modules with
                                                 provides RuntimeDelegate with ...
     ↓
-Premier provider trouvé → utilisé
+First provider found → used
 ```
 
-### Où c'est déclaré dans Cassini
+### Where it is declared in Cassini
 
-| Module | Provider | Déclaration |
+| Module | Provider | Declaration |
 |---|---|---|
-| `cassini-chappe` | `ChappeRuntimeDelegate` | `module-info.java` : `provides jakarta.ws.rs.ext.RuntimeDelegate with ChappeRuntimeDelegate;` |
-| `cassini-jdk-http` | `JdkHttpRuntimeDelegate` | `module-info.java` : `provides jakarta.ws.rs.ext.RuntimeDelegate with JdkHttpRuntimeDelegate;` |
-| `cassini-core` | (rien) | Le `CassiniRuntimeDelegate` interne n'est **pas** exposé via ServiceLoader pour éviter les conflits — c'est le rôle des transports. |
+| `cassini-chappe` | `ChappeRuntimeDelegate` | `module-info.java`: `provides jakarta.ws.rs.ext.RuntimeDelegate with ChappeRuntimeDelegate;` |
+| `cassini-jdk-http` | `JdkHttpRuntimeDelegate` | `module-info.java`: `provides jakarta.ws.rs.ext.RuntimeDelegate with JdkHttpRuntimeDelegate;` |
+| `cassini-core` | (none) | The internal `CassiniRuntimeDelegate` is **not** exposed via ServiceLoader to avoid conflicts — that is the transport's responsibility. |
 
-### Conflit si plusieurs transports sur le classpath
+### Conflict if multiple transports on the classpath
 
-Si `cassini-chappe` ET `cassini-jdk-http` sont tous deux dans le module graph, le ServiceLoader retourne le **premier** trouvé — comportement non-déterministe.
+If both `cassini-chappe` and `cassini-jdk-http` are in the module graph, the ServiceLoader returns the **first** one found — non-deterministic behavior.
 
-**Solution** : forcer le choix via la system property standard JAX-RS :
+**Solution**: force the choice via the standard JAX-RS system property:
 
 ```bash
 java -Djakarta.ws.rs.ext.RuntimeDelegate=io.vidocq.cassini.chappe.ChappeRuntimeDelegate ...
 ```
 
-ou l'inverse pour JDK :
+or the reverse for JDK:
 
 ```bash
 java -Djakarta.ws.rs.ext.RuntimeDelegate=io.vidocq.cassini.jdkhttp.JdkHttpRuntimeDelegate ...
 ```
 
-Dans la pratique, une application n'utilise qu'**un seul** transport : on n'inclut qu'un des deux artefacts (`cassini-chappe` OU `cassini-jdk-http`) dans le `pom.xml`.
+In practice, an application uses only **one** transport: include only one of the two artifacts (`cassini-chappe` OR `cassini-jdk-http`) in the `pom.xml`.
 
 ---
 
-## Découverte du `BeanProvider` (intégration DI)
+## `BeanProvider` discovery (DI integration)
 
-Cassini expose une SPI publique `io.vidocq.cassini.spi.bean.BeanProvider` permettant à un container DI (CDI Vauban, Weld, OpenWebBeans, ou tout autre mécanisme) de fournir des instances managées de ressources et providers JAX-RS, **sans que `cassini-api` ni `cassini-core` ne dépendent de `jakarta.cdi`**.
+Cassini exposes a public SPI `io.vidocq.cassini.spi.bean.BeanProvider` allowing a DI container (Vauban CDI, Weld, OpenWebBeans, or any other mechanism) to provide managed instances of JAX-RS resources and providers, **without `cassini-api` or `cassini-core` depending on `jakarta.cdi`**.
 
 ```
 CassiniStack.builder()
@@ -79,26 +79,26 @@ CassiniStack.builder()
 ServiceLoader.load(BeanProvider.Factory.class)
     ↓ (max priority())
 Factory.create() → BeanProvider
-    ↓ utilisé pour instancier @Path / @Provider
+    ↓ used to instantiate @Path / @Provider
 ```
 
-| Adapter | Container | Priorité |
+| Adapter | Container | Priority |
 |---|---|---|
 | `cassini-cdi-vauban` | Vauban CDI (`io.vidocq.vauban`) | 100 |
-| (futur) `cassini-cdi-weld` | Weld | — |
-| (futur) `cassini-cdi-owb` | OpenWebBeans | — |
+| (future) `cassini-cdi-weld` | Weld | — |
+| (future) `cassini-cdi-owb` | OpenWebBeans | — |
 
-Quand un `BeanProvider` est actif :
+When a `BeanProvider` is active:
 
-- `BeanProvider.getResourceClasses()` est fusionné avec `Application.getClasses()` et `getSingletons()` — l'utilisateur peut donc passer `new Application() {}` vide.
-- Le `resolver` interne tente d'abord `beanProvider.getBean(cls)`. Si la classe n'est pas managée (`IllegalArgumentException`), fallback sur `ResourceFactory` puis sur `newInstance()`.
-- L'utilisateur peut désactiver l'auto-discovery via `CassiniStack.builder().beanProvider(null)`.
+- `BeanProvider.getResourceClasses()` is merged with `Application.getClasses()` and `getSingletons()` — the user can therefore pass an empty `new Application() {}`.
+- The internal resolver first tries `beanProvider.getBean(cls)`. If the class is not managed (`IllegalArgumentException`), it falls back to `ResourceFactory` then to `newInstance()`.
+- Auto-discovery can be disabled via `CassiniStack.builder().beanProvider(null)`.
 
 ---
 
-## Bootstrap manuel — `CassiniStack`
+## Manual bootstrap — `CassiniStack`
 
-Pour les cas où on ne veut **pas** passer par `SeBootstrap` (par exemple pour configurer finement le transport, intégrer dans un framework existant, ou dans un pipeline de tests), on bootstrap manuellement :
+For cases where **`SeBootstrap` is not desired** (e.g., to fine-tune the transport, integrate into an existing framework, or in a test pipeline), manual bootstrapping is available:
 
 ```java
 import io.vidocq.cassini.spi.http.CassiniStack;
@@ -106,19 +106,19 @@ import io.vidocq.cassini.spi.http.CassiniHttpAdapter;
 
 var stack = CassiniStack.builder()
     .application(new MyApplication())
-    .beanProvider(myBeanProvider)               // optionnel — sinon auto-discovery
-    .provider(new MyExceptionMapper())          // optionnel
+    .beanProvider(myBeanProvider)               // optional — otherwise auto-discovery
+    .provider(new MyExceptionMapper())          // optional
     .build();
 
 CassiniHttpAdapter adapter = stack.adapter();
-// adapter.dispatch(exchange) — à appeler depuis votre transport
+// adapter.dispatch(exchange) — call from your transport
 ```
 
-`CassiniStack.builder()` est disponible dans `cassini-api` (la SPI publique). Cette interface est implémentée par `cassini-core` via ServiceLoader (`provides CassiniStack.BuilderFactory`).
+`CassiniStack.builder()` is available in `cassini-api` (the public SPI). This interface is implemented by `cassini-core` via ServiceLoader (`provides CassiniStack.BuilderFactory`).
 
-### Cas d'usage par exemple
+### Use case per example
 
-#### `cassini-examples-chappe` — `SeBootstrap` standard
+#### `cassini-examples-chappe` — standard `SeBootstrap`
 
 ```java
 SeBootstrap.start(new ExamplesApp(),
@@ -126,68 +126,68 @@ SeBootstrap.start(new ExamplesApp(),
         .host("0.0.0.0").port(8080).build());
 ```
 
-Le `RuntimeDelegate` Chappe est trouvé automatiquement. Pas de bootstrap manuel.
+The Chappe `RuntimeDelegate` is found automatically. No manual bootstrap.
 
-#### `cassini-examples-jdkhttp` — `CassiniStack` direct
+#### `cassini-examples-jdkhttp` — direct `CassiniStack`
 
 ```java
 var stack = CassiniStack.builder().application(new ExamplesApp()).build();
 var server = new JdkHttpAdapter(stack.adapter()).serve(8080);
 ```
 
-On bypass `SeBootstrap` pour démontrer l'API bas-niveau. Mais comme `JdkHttpRuntimeDelegate` est aussi enregistré, on **pourrait** utiliser `SeBootstrap.start()` à la place.
+`SeBootstrap` is bypassed to demonstrate the low-level API. But since `JdkHttpRuntimeDelegate` is also registered, **`SeBootstrap.start()` could be used instead**.
 
 #### `cassini-examples-vauban` — CDI + `SeBootstrap`
 
 ```java
-// 1. Démarrer Vauban CDI (s'enregistre comme CDI.current() via VaubanCDIProvider)
+// 1. Start Vauban CDI (registers as CDI.current() via VaubanCDIProvider)
 var container = VaubanContainer.builder()
         .addBeanClass(TodoService.class)
         .addBeanClass(TodoResource.class)
         .build();
 
-// 2. SeBootstrap — l'Application est vide. Cassini découvre le BeanProvider
-//    Vauban via ServiceLoader, scanne les classes @Path/@Provider managées
-//    par le container et les instancie via @Inject résolu.
+// 2. SeBootstrap — Application is empty. Cassini discovers the Vauban BeanProvider
+//    via ServiceLoader, scans the @Path/@Provider classes managed
+//    by the container and instantiates them via resolved @Inject.
 SeBootstrap.start(new Application() {}, config);
 ```
 
-Aucune liste manuelle de singletons : `VaubanBeanProvider.getResourceClasses()` itère le `BeanManager` et expose toutes les classes annotées `@Path`/`@Provider` au stack. Le `resolver` interne appelle `container.select()` à chaque dispatch (respecte `@RequestScoped` etc.).
+No manual singleton list: `VaubanBeanProvider.getResourceClasses()` iterates the `BeanManager` and exposes all `@Path`/`@Provider`-annotated classes to the stack. The internal resolver calls `container.select()` on each dispatch (respects `@RequestScoped` etc.).
 
 ---
 
-## Architecture des dépendances
+## Dependency architecture
 
 ```
-              ┌─ cassini-api (SPI publique)
+              ┌─ cassini-api (public SPI)
               │     ├── CassiniHttpExchange, CassiniHttpAdapter
               │     ├── CassiniStack, ResourceFactory
-              │     └── (zéro dépendance hors jakarta.ws.rs-api)
+              │     └── (zero dependency outside jakarta.ws.rs-api)
               │
-              ├─ cassini-core (implémentation, fermée)
+              ├─ cassini-core (implementation, closed)
               │     ├── Invoker, UriRouter, ResourceScanner...
-              │     ├── CassiniRuntimeDelegate (base pour transports)
+              │     ├── CassiniRuntimeDelegate (base for transports)
               │     └── exports internal.runtime to {tck, jdkhttp}
               │
-   exemple ───┼─ cassini-chappe ──→ requires cassini-api + cassini-core (ServiceLoader)
+   example ───┼─ cassini-chappe ──→ requires cassini-api + cassini-core (ServiceLoader)
               │     provides RuntimeDelegate with ChappeRuntimeDelegate
               │
-   exemple ───┼─ cassini-jdk-http ──→ requires cassini-api + cassini-core
+   example ───┼─ cassini-jdk-http ──→ requires cassini-api + cassini-core
               │     provides RuntimeDelegate with JdkHttpRuntimeDelegate
               │
-   exemple ───┴─ cassini-cdi-vauban ──→ requires cassini-api + io.vidocq.vauban.core
+   example ───┴─ cassini-cdi-vauban ──→ requires cassini-api + io.vidocq.vauban.core
                     provides BeanProvider.Factory with VaubanBeanProviderFactory
 ```
 
-**Règle d'or** : `cassini-chappe`, `cassini-jdk-http` et `cassini-cdi-vauban` n'importent **aucun package interne** de `cassini-core`. Ils utilisent uniquement la SPI publique (`cassini-api` + `CassiniStack` + `BeanProvider`). Le `requires cassini-core` n'est même plus nécessaire pour `cassini-cdi-vauban` qui ne parle qu'à `BeanProvider` (SPI publique).
+**Golden rule**: `cassini-chappe`, `cassini-jdk-http`, and `cassini-cdi-vauban` import **no internal packages** from `cassini-core`. They only use the public SPI (`cassini-api` + `CassiniStack` + `BeanProvider`). The `requires cassini-core` is not even needed for `cassini-cdi-vauban`, which only speaks to `BeanProvider` (public SPI).
 
-Cette discipline permet à n'importe quel écosystème (Vidocq, Weld, Quarkus, autre) d'écrire son propre transport ou intégration DI **sans accéder aux internes de Cassini**.
+This discipline allows any ecosystem (Vidocq, Weld, Quarkus, other) to write its own transport or DI integration **without accessing Cassini internals**.
 
 ---
 
-## Tests automatisés
+## Automated tests
 
-Chaque exemple a une classe `ExampleServer` (AutoCloseable) utilisée par les tests JUnit 5 :
+Each example has an `ExampleServer` class (AutoCloseable) used by JUnit 5 tests:
 
 ```java
 @BeforeAll
@@ -205,4 +205,4 @@ void listEmpty() throws Exception {
 }
 ```
 
-Le serveur démarre sur un port aléatoire (`ServerSocket(0)`), assurant l'isolation entre tests parallèles.
+The server starts on a random port (`ServerSocket(0)`), ensuring isolation between parallel tests.

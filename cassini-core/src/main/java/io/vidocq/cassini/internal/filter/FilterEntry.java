@@ -8,8 +8,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Registry entry: a filter/interceptor + its metadata (priority,
- * pre-matching, name-binding annotations).
+ * Registry entry: a filter/interceptor + its metadata
+ * (priority, pre-matching, name-binding annotations).
  *
  * <p>§6: the default priority is {@code Priorities.USER = 5000}. A
  * filter without {@link Priority} uses this value.</p>
@@ -25,11 +25,12 @@ public record FilterEntry<T>(
     public static final int DEFAULT_PRIORITY = 5000;
 
     public static <T> FilterEntry<T> of(T instance) {
-        // §6: a filter supplied by a CDI BeanProvider is a client proxy (e.g.
+        // §6: a filter provided by a CDI BeanProvider is a client proxy (e.g.
         // JwtAuthenticationFilter_ClientProxy extends JwtAuthenticationFilter). @Provider /
-        // @PreMatching / @Priority / @NameBinding are not @Inherited, so walk up the
-        // hierarchy to the @Provider class (see CassiniStackBuilderImpl.jaxrsAnnotatedClass)
-        // to read them — otherwise @PreMatching is read as false and the filter is classified post-matching.
+        // @PreMatching / @Priority / @NameBinding are not @Inherited, so we walk up the
+        // hierarchy to the @Provider class (cf. CassiniStackBuilderImpl.jaxrsAnnotatedClass)
+        // to read them — otherwise @PreMatching is read as false and the filter is
+        // classified as post-matching.
         Class<?> cls = providerClass(instance.getClass());
         int prio = DEFAULT_PRIORITY;
         Priority p = cls.getAnnotation(Priority.class);
@@ -39,7 +40,7 @@ public record FilterEntry<T>(
         return new FilterEntry<>(instance, cls, prio, pre, bindings, null);
     }
 
-    /** §6.5.5: creates an entry scoped to a target method (DynamicFeature). */
+    /** §6.5.5: creates an entry bound to a specific target method (DynamicFeature). */
     public static <T> FilterEntry<T> dynamicFor(T instance, java.lang.reflect.Method target) {
         Class<?> cls = providerClass(instance.getClass());
         int prio = DEFAULT_PRIORITY;
@@ -49,9 +50,10 @@ public record FilterEntry<T>(
     }
 
     /**
-     * Walks up the hierarchy to the class carrying {@code @Provider} (the real filter class
-     * behind any CDI client proxy). Falls back to the original class if no superclass is
-     * annotated {@code @Provider} (e.g. filter registered programmatically).
+     * Walks up the hierarchy to find the class carrying {@code @Provider} (the real
+     * filter class behind an optional CDI client proxy). Falls back to the original
+     * class if no superclass is annotated with {@code @Provider} (e.g. filter
+     * registered programmatically).
      */
     private static Class<?> providerClass(Class<?> c) {
         Class<?> cur = c;
@@ -66,7 +68,7 @@ public record FilterEntry<T>(
 
     /** True if the filter applies to the target method (name-bindings + dynamic target). */
     public boolean appliesTo(AnnotatedElement method, AnnotatedElement declaringClass) {
-        // §6.5.5: dynamic binding — strictly applies to the target method.
+        // §6.5.5: dynamic binding — applies strictly to the target method.
         if (dynamicTarget != null) {
             return method instanceof java.lang.reflect.Method m && m.equals(dynamicTarget);
         }
@@ -74,9 +76,9 @@ public record FilterEntry<T>(
         Set<Class<? extends Annotation>> owned = new HashSet<>();
         collectAnnotationsOfType(declaringClass, owned);
         collectAnnotationsOfType(method, owned);
-        // §6.5.2: a @NameBinding on the Application subclass (retrieved via
-        // ParamExtractor.currentApplication) applies to all resources and
-        // all filters → global bindings.
+        // §6.5.2: a @NameBinding on the Application subclass
+        // (retrieved via ParamExtractor.currentApplication) applies to
+        // all resources and all filters → global bindings.
         var app = io.vidocq.cassini.internal.ParamExtractor.currentApplication();
         if (app != null) {
             collectAnnotationsOfType(app.getClass(), owned);

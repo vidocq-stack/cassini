@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Todo service — Application scope (CDI singleton).
  *
- * <p>All business logic lives here; REST resources stay lightweight.</p>
+ * <p>All business logic lives here; REST resources remain lightweight.</p>
  */
 @ApplicationScoped
 public class TodoService {

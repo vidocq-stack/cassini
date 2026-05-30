@@ -1,176 +1,176 @@
-# Rapport de développement assisté par IA — Cassini
+# AI-assisted development report — Cassini
 
-> Retour d'expérience sur la construction de Cassini avec Claude Code (Sonnet 4.6 / Opus 4.7).
-> Durée réelle : **~10 jours** (du 2026-04-20 au 2026-04-30).
-> Développeur : 1 senior (25 ans d'expérience Java/Jakarta EE).
+> Retrospective on building Cassini with Claude Code (Sonnet 4.6 / Opus 4.7).
+> Actual duration: **~10 days** (from 2026-04-20 to 2026-04-30).
+> Developer: 1 senior (25 years of Java/Jakarta EE experience).
 
 ---
 
-## Ce qui a été construit
+## What was built
 
-| Module | Rôle |
+| Module | Role |
 |--------|------|
-| `cassini-api` | SPI publique (CassiniHttpExchange, CassiniHttpAdapter, ResourceFactory, BeanProvider, CassiniStack) — zéro dépendance hors `jakarta.ws.rs-api` |
-| `cassini-core` | Implémentation JAX-RS 4.0 complète : Invoker, ResourceScanner, UriRouter, MessageBodyRegistry, filters, interceptors, multipart, SSE, providers built-in |
-| `cassini-chappe` | Adapter transport Chappe + `ChappeRuntimeDelegate` (SeBootstrap), bridge HTTP/1.1 + HTTP/2 |
-| `cassini-jdk-http` | Adapter transport JDK natif (`com.sun.net.httpserver`) zéro-dép externe |
-| `cassini-cdi-vauban` | Adapter CDI Vauban (`VaubanBeanProvider` via SPI) + `CassiniScopeExtension` (BCE) |
-| `cassini-tck` | Runner Arquillian + harness officiel Jakarta REST 4.0 (Model 4.0.0 standalone pour contournement ShrinkWrap) |
-| `cassini-examples` × 3 | Exemples chappe / jdkhttp / vauban (avec UI HTML/CSS/JS et handler composite Chappe) |
+| `cassini-api` | Public SPI (CassiniHttpExchange, CassiniHttpAdapter, ResourceFactory, BeanProvider, CassiniStack) — zero dependency beyond `jakarta.ws.rs-api` |
+| `cassini-core` | Full JAX-RS 4.0 implementation: Invoker, ResourceScanner, UriRouter, MessageBodyRegistry, filters, interceptors, multipart, SSE, built-in providers |
+| `cassini-chappe` | Chappe transport adapter + `ChappeRuntimeDelegate` (SeBootstrap), HTTP/1.1 + HTTP/2 bridge |
+| `cassini-jdk-http` | Native JDK transport adapter (`com.sun.net.httpserver`) with zero external dependency |
+| `cassini-cdi-vauban` | Vauban CDI adapter (`VaubanBeanProvider` via SPI) + `CassiniScopeExtension` (BCE) |
+| `cassini-tck` | Arquillian runner + official Jakarta REST 4.0 harness (Model 4.0.0 standalone for ShrinkWrap workaround) |
+| `cassini-examples` × 3 | Chappe / jdkhttp / Vauban examples (with HTML/CSS/JS UI and Chappe composite handler) |
 
-**Caractéristiques transversales**
+**Cross-cutting characteristics**
 
-- **JPMS natif** — chaque module a son `module-info.java`, packages internes verrouillés via `exports ... to`
-- **Transport-agnostique** — `cassini-core` n'importe ni `chappe` ni `httpserver` ; SPI publique permet à n'importe quel transport (Netty, Undertow, Vert.x) de s'intégrer
-- **CDI-pluggable** — SPI `BeanProvider` découplée de `jakarta.cdi` ; un adapter pour chaque container (Vauban fourni, Weld/OpenWebBeans futurs)
-- **Virtual threads** — VT par requête (`Executors.newVirtualThreadPerTaskExecutor`), `@Suspended AsyncResponse` et `CompletionStage<T>` bloquent un VT sans starvation
-- **TCK officiel Jakarta REST 4.0.1 — `2535/2535` (100 %)** des tests applicables au profil Core Profile / SE-Bootstrap
+- **Native JPMS** — each module has its `module-info.java`, internal packages locked via `exports ... to`
+- **Transport-agnostic** — `cassini-core` imports neither `chappe` nor `httpserver`; the public SPI lets any transport (Netty, Undertow, Vert.x) integrate
+- **CDI-pluggable** — `BeanProvider` SPI decoupled from `jakarta.cdi`; one adapter per container (Vauban provided, Weld/OpenWebBeans future)
+- **Virtual threads** — VT per request (`Executors.newVirtualThreadPerTaskExecutor`), `@Suspended AsyncResponse` and `CompletionStage<T>` block a VT without starvation
+- **Official Jakarta REST 4.0.1 TCK — `2535/2535` (100%)** of tests applicable to the Core Profile / SE-Bootstrap profile
 
 ---
 
-## Métriques quantitatives
+## Quantitative metrics
 
-| Métrique | Valeur |
+| Metric | Value |
 |---|---|
-| Période | 10 jours calendaires |
-| Commits | **168** (sur le repo origine `vidocq/`) + **24** (post-extraction) = 192 |
-| Code Java | ~14 200 lignes (hors generated/target) |
-| Tests TCK exécutés | 2670 (134 hors-profil + 6 challenges = 135 skipped) |
-| TCK PASS | **2535/2535** applicables (100 %) |
-| Tests unitaires Cassini | 34 (cassini-core) |
-| Tests examples | 30 (10 chappe + 10 jdkhttp + 10 vauban) |
+| Period | 10 calendar days |
+| Commits | **168** (on original repo `vidocq/`) + **24** (post-extraction) = 192 |
+| Java code | ~14,200 lines (excluding generated/target) |
+| TCK tests run | 2670 (134 out-of-profile + 6 challenges = 135 skipped) |
+| TCK PASS | **2535/2535** applicable (100%) |
+| Cassini unit tests | 34 (cassini-core) |
+| Examples tests | 30 (10 chappe + 10 jdkhttp + 10 vauban) |
 | Modules | 7 (api, core, chappe, jdk-http, cdi-vauban, tck, examples × 3) |
 
 ---
 
-## Estimation sans IA
+## Estimate without AI
 
-### Développeur seul (profil senior, 25 ans d'expérience)
+### Solo developer (senior profile, 25 years of experience)
 
-| Bloc | Durée estimée |
-|------|--------------|
-| §3 Resources (URI templates, best-match §3.7.2, sub-resource locators récursifs §3.4) | 1,5 mois |
-| §4 Providers (MBR/MBW selection, ExceptionMapper §4.4, ContextResolver, JSON-B/Yasson, JAXB) | 1,5 mois |
-| §5 Context (Request, UriInfo, Variant, HttpHeaders) | 1 mois |
-| §6 Filters / Interceptors / DynamicFeature §6.5.5 + §6.7.4 setEntityStream | 1,5 mois |
-| §8 @Suspended AsyncResponse + §9 CompletionStage<T> | 1 mois |
-| §10 Application/ApplicationPath + SeBootstrap (RuntimeDelegate complet) | 1 mois |
-| §11 SSE serveur (CassiniSseEventSink, SseBroadcaster, OutboundSseEvent, EventSource) | 1 mois |
-| §3.5.4 EntityPart + Multipart RFC 7578 (MBR/MBW + Builder) | 1 mois |
-| §11.2 BASIC auth + SecurityContext | 0,5 mois |
-| Transport découplé (`CassiniHttpExchange` + adapters Chappe et JDK) | 1 mois |
-| Intégration CDI (BeanManager, ScopeExtension, BCE) | 1 mois |
-| TCK setup (Arquillian + ShrinkWrap + contournement Model 4.0.0) | 0,5 mois |
-| TCK 100 % — debug des 2535 tests applicables | 2,5 mois |
-| SPI propre (`CassiniStack`, `BeanProvider`, ServiceLoader, classpath + JPMS) | 0,5 mois |
-| Examples + UI HTML/CSS/JS + handler composite | 0,5 mois |
-| Documentation (TCK.md, ASYNC.md, README × 4, HOWTO-CLAUDE.md) | 0,5 mois |
-| Friction JPMS transversale | +30 % sur l'ensemble |
-| **Total** | **~18–22 mois** |
+| Block | Estimated duration |
+|------|--------------------|
+| §3 Resources (URI templates, best-match §3.7.2, recursive sub-resource locators §3.4) | 1.5 months |
+| §4 Providers (MBR/MBW selection, ExceptionMapper §4.4, ContextResolver, JSON-B/Yasson, JAXB) | 1.5 months |
+| §5 Context (Request, UriInfo, Variant, HttpHeaders) | 1 month |
+| §6 Filters / Interceptors / DynamicFeature §6.5.5 + §6.7.4 setEntityStream | 1.5 months |
+| §8 @Suspended AsyncResponse + §9 CompletionStage<T> | 1 month |
+| §10 Application/ApplicationPath + SeBootstrap (full RuntimeDelegate) | 1 month |
+| §11 Server SSE (CassiniSseEventSink, SseBroadcaster, OutboundSseEvent, EventSource) | 1 month |
+| §3.5.4 EntityPart + Multipart RFC 7578 (MBR/MBW + Builder) | 1 month |
+| §11.2 BASIC auth + SecurityContext | 0.5 month |
+| Decoupled transport (`CassiniHttpExchange` + Chappe and JDK adapters) | 1 month |
+| CDI integration (BeanManager, ScopeExtension, BCE) | 1 month |
+| TCK setup (Arquillian + ShrinkWrap + Model 4.0.0 workaround) | 0.5 month |
+| TCK 100% — debugging the 2535 applicable tests | 2.5 months |
+| Clean SPI (`CassiniStack`, `BeanProvider`, ServiceLoader, classpath + JPMS) | 0.5 month |
+| Examples + HTML/CSS/JS UI + composite handler | 0.5 month |
+| Documentation (TCK.md, ASYNC.md, README × 4, HOWTO-CLAUDE.md) | 0.5 month |
+| Cross-cutting JPMS friction | +30% overall |
+| **Total** | **~18–22 months** |
 
-> Le TCK seul (2,5 mois) est la phase la plus chronophage. Chaque corner case (sub-resource locator récursif, Cookie multi-attribut RFC 2109, content-type avec `;charset=` non standardisé, status-code de variants ambigus, header lookup case-insensitive…) peut représenter une demi-journée de debug. Atteindre 100 % et pas 95 % coûte disproportionnément cher.
+> The TCK alone (2.5 months) is the most time-consuming phase. Each corner case (recursive sub-resource locator, multi-attribute Cookie RFC 2109, content-type with non-standard `;charset=`, ambiguous variant status code, case-insensitive header lookup…) can take half a day to debug. Reaching 100% instead of 95% is disproportionately expensive.
 
-### Équipe de 2 seniors
+### Team of 2 seniors
 
-Environ **10–13 mois** — la coordination (revues PR, alignement architectural, propriété du code partagée) limite le gain linéaire. Le TCK reste la phase la moins parallélisable car les fixes y sont souvent interdépendants (un fix sur la résolution de `@Path` affecte 50+ tests).
+About **10–13 months** — coordination (PR reviews, architectural alignment, shared code ownership) limits linear gain. The TCK remains the least parallelizable phase because fixes are often interdependent there (one fix to `@Path` resolution affects 50+ tests).
 
 ---
 
-## Facteur d'accélération
+## Acceleration factor
 
 ```
 ~20x
 ```
 
-10 jours pilotés ≈ 18–22 mois solo.
+10 guided days ≈ 18–22 months solo.
 
-Plus précisément :
-- **Phase initiale (M1–M2c, scaffolding + routing + injection + MBR/MBW)** : ratio le plus haut (~30x) — code structurellement similaire à des patterns connus, l'IA produit du Java idiomatique sans hésitation.
-- **Phase TCK (94 % → 100 %)** : ratio plus bas (~10–12x) — chaque échec demande lecture spec + design fix + validation, le pilotage humain redevient dominant.
-- **Refactorings architecturaux (CassiniStack SPI, BeanProvider SPI)** : ratio moyen (~15x) — l'IA exécute brillamment une fois le design tranché, mais ne tranche pas elle-même.
+More precisely:
+- **Initial phase (M1–M2c, scaffolding + routing + injection + MBR/MBW)**: highest ratio (~30x) — structurally similar code to known patterns, AI produces idiomatic Java without hesitation.
+- **TCK phase (94% → 100%)**: lower ratio (~10–12x) — each failure requires spec reading + fix design + validation, human steering becomes dominant again.
+- **Architectural refactors (CassiniStack SPI, BeanProvider SPI)**: medium ratio (~15x) — AI executes brilliantly once the design is decided, but does not decide it itself.
 
 ---
 
-## Ce que l'IA a apporté
+## What AI contributed
 
-### Spec JAX-RS 4.0 disponible en mémoire de travail
+### JAX-RS 4.0 spec in working memory
 
-Les règles de §3.7.2 (best-match avec literals + capture groups + path remaining), §4.2.4 (sélection MBR avec `Object`/byte[]/InputStream), §6.5.2 (NameBinding sur sous-classe Application), §3.4 (sub-resource locator récursif avec dispatch dynamique sur `Class<T>`) — toutes ces règles ont été appliquées correctement dès le premier jet, sans aller-retour avec la spec PDF.
+The rules of §3.7.2 (best-match with literals + capture groups + path remaining), §4.2.4 (MBR selection with `Object`/byte[]/InputStream), §6.5.2 (NameBinding on Application subclass), §3.4 (recursive sub-resource locator with dynamic dispatch on `Class<T>`) — all these rules were applied correctly from the first draft, without back-and-forth with the PDF spec.
 
-### Boilerplate JAX-RS
+### JAX-RS boilerplate
 
-Implémenter `UriBuilder`, `Response.ResponseBuilder`, `HeaderDelegate<T>` pour 8 types JAX-RS, les 5 contextes d'intercepteurs (RequestContext, ResponseContext, ReaderInterceptorContext, WriterInterceptorContext, DynamicFeatureContext) — c'est plusieurs semaines de boilerplate qui passent à quelques heures.
+Implementing `UriBuilder`, `Response.ResponseBuilder`, `HeaderDelegate<T>` for 8 JAX-RS types, the 5 interceptor contexts (RequestContext, ResponseContext, ReaderInterceptorContext, WriterInterceptorContext, DynamicFeatureContext) — that is several weeks of boilerplate reduced to a few hours.
 
 ### TCK pattern recognition
 
-Les erreurs TCK ont des familles. Une fois qu'un fix sur "header lookup case-insensitive §6.7.4" est trouvé, l'IA reconnaît les 3 autres tests qui échouaient pour la même raison sans qu'il soit nécessaire de chercher. Sur 2535 tests, ce pattern recognition a probablement économisé 20+ jours.
+TCK failures come in families. Once a fix for "header lookup case-insensitive §6.7.4" is found, the AI recognizes the 3 other tests failing for the same reason without needing to search. Across 2535 tests, this pattern recognition probably saved 20+ days.
 
-### Refactorings cross-module
+### Cross-module refactors
 
-Renommer `cassini-cdi` → `cassini-cdi-vauban` impacte : artifactId Maven, module Java, package Java sur tous les fichiers, `requires` dans 4 module-info, exports dans cassini-core, dépendance dans 1 example, ServiceLoader entry, documentation. L'IA propage tout en ~5 minutes, là où un humain aurait passé ~1h avec risques d'oublis.
+Renaming `cassini-cdi` → `cassini-cdi-vauban` touches: Maven artifactId, Java module, Java package across all files, `requires` in 4 module-info files, exports in cassini-core, dependency in 1 example, ServiceLoader entry, documentation. The AI propagates everything in ~5 minutes, where a human would spend ~1h with omissions risk.
 
-### Documentation à la volée
+### On-the-fly documentation
 
-`TCK.md`, `ASYNC.md`, `AI_DEV.md`, README par module, schémas ASCII, justifications des challenges TCK Process 1.4.1 — produits en parallèle du code, sans coût marginal sur la concentration architecturale.
-
----
-
-## Ce que l'IA n'a pas remplacé
-
-- **Vision architecturale** — la décision de séparer `cassini-api` (SPI publique) de `cassini-core` (impl), de rendre le transport agnostique via `CassiniHttpExchange`, de promouvoir `CassiniStack.builder()` comme façade publique pour les transports tiers. L'IA exécute le design, ne le crée pas.
-- **Détection des odeurs architecturales** — c'est moi qui ai dit "non, je ne veux pas spécifier les singletons à la main" pour faire émerger le `BeanProvider`. L'IA avait livré un kludge `getSingletons()` techniquement correct mais médiocre.
-- **Intuition du domaine** — savoir que le TCK Multipart `basicTest` échoue côté Jersey CLIENT et pas côté Cassini SERVER (c'est un challenge à documenter, pas un bug à fixer). Savoir que `locatorNameTooLongAgainTest` impose une interprétation segment-par-segment non-portable de §3.7.2.
-- **Découverte d'API existantes** — l'IA n'est pas allée fouiller `chappe-api/StaticFileHandler` ni `vauban-maven-plugin:generate` toute seule. C'est moi qui ai pointé "Chappe a déjà ça", "Vauban a un APT". Sans cette intervention, les exemples auraient eu du custom code inférieur.
-- **Décisions produit** — périmètre Core Profile vs Full, choix des challenges TCK officiels à documenter (vs essayer de fixer), priorité au JPMS strict dès le départ.
+`TCK.md`, `ASYNC.md`, `AI_DEV.md`, README per module, ASCII diagrams, justifications of TCK Process 1.4.1 challenges — produced in parallel with the code, with no marginal cost on architectural focus.
 
 ---
 
-## Observations sur la méthode de travail
+## What AI did not replace
 
-### Ce qui a bien fonctionné
-
-- **Plan mode systématique** sur les refactorings (CassiniStack SPI, BeanProvider SPI) — rédiger le plan en 5 étapes avant de toucher au code a évité les zigzags coûteux.
-- **Agents parallèles isolés (worktree)** sur les gros refactorings cross-module — pendant qu'un agent restructurait `cassini-chappe`, je continuais à analyser le diff et préparer la mise à jour de `cassini-jdk-http` mentalement.
-- **Context-mode** pour les sorties TCK (~37 000 lignes par run) — l'externalisation a évité de saturer la fenêtre de contexte sur les sessions longues.
-- **Validation TCK après chaque fix** — coût ~2 min par run mais évite les régressions silencieuses qui auraient coûté beaucoup plus cher en aval.
-- **Revue diff systématique** avant chaque commit — l'IA produit parfois du code qui compile et passe les tests mais introduit des régressions architecturales (duplication, perte d'encapsulation).
-
-### Ce qui a coûté du temps malgré l'IA
-
-- **Friction JPMS** récurrente — `opens to named-module` qui ne couvre pas l'unnamed module, `requires` manquants en mode classpath, `ServiceLoader` qui ignore le `provides` quand le module n'est pas en graph, `META-INF/services` à doublonner pour le mode classpath. Probablement 1 jour cumulé.
-- **Choix d'auto-discovery vs explicite** — premier jet `getSingletons()` (kludge), deuxième jet `BeanProvider` (correct). ~30 min de re-travail.
-- **Bugs latents introduits par l'agent en autonomie** — duplication de 700 lignes de boilerplate `RuntimeDelegate` au lieu d'extension, oubli de `META-INF/services` qui a fait échouer le TCK une fois (7 errors `SeBootstrapIT`). ~1h cumulée.
-- **Zombie process port 8080** sur poste de dev — bloqué une heure pendant la première validation TCK avant identification du conflit.
+- **Architectural vision** — the decision to separate `cassini-api` (public SPI) from `cassini-core` (impl), to make transport agnostic via `CassiniHttpExchange`, to promote `CassiniStack.builder()` as the public facade for third-party transports. AI executes the design, it does not create it.
+- **Architectural smell detection** — I was the one who said "no, I do not want to specify singletons manually" to bring out `BeanProvider`. AI had delivered a technically correct but mediocre `getSingletons()` kludge.
+- **Domain intuition** — knowing that the TCK Multipart `basicTest` fails on Jersey CLIENT and not on Cassini SERVER (it is a challenge to document, not a bug to fix). Knowing that `locatorNameTooLongAgainTest` imposes a non-portable segment-by-segment interpretation of §3.7.2.
+- **Discovery of existing APIs** — AI did not go inspect `chappe-api/StaticFileHandler` or `vauban-maven-plugin:generate` on its own. I had to point out "Chappe already has this", "Vauban has an APT". Without that intervention, the examples would have had inferior custom code.
+- **Product decisions** — Core Profile vs Full scope, choice of official TCK challenges to document (rather than try to fix), priority on strict JPMS from the start.
 
 ---
 
-## Comparaison aux implémentations de référence
+## Observations on the working method
 
-| Implementation | Équipe | Durée publique connue |
+### What worked well
+
+- **Systematic plan mode** on refactors (CassiniStack SPI, BeanProvider SPI) — writing the 5-step plan before touching the code avoided costly zigzags.
+- **Isolated parallel agents (worktree)** on major cross-module refactors — while one agent restructured `cassini-chappe`, I kept analyzing the diff and preparing the `cassini-jdk-http` update mentally.
+- **Context mode** for TCK outputs (~37,000 lines per run) — offloading avoided saturating the context window during long sessions.
+- **TCK validation after each fix** — cost ~2 minutes per run but avoids silent regressions that would have cost much more later.
+- **Systematic diff review** before each commit — AI sometimes produces code that compiles and passes tests but introduces architectural regressions (duplication, lost encapsulation).
+
+### What cost time despite AI
+
+- **Recurring JPMS friction** — `opens to named-module` does not cover the unnamed module, missing `requires` in classpath mode, `ServiceLoader` ignores `provides` when the module is not on the graph, `META-INF/services` must be duplicated for classpath mode. Probably 1 cumulative day.
+- **Auto-discovery vs explicit choice** — first draft `getSingletons()` (kludge), second draft `BeanProvider` (correct). ~30 minutes of rework.
+- **Latent bugs introduced by the agent autonomously** — 700 lines of `RuntimeDelegate` boilerplate duplicated instead of extended, missing `META-INF/services` that made the TCK fail once (7 `SeBootstrapIT` errors). ~1h cumulative.
+- **Zombie process on port 8080** on the dev workstation — blocked for an hour during the first TCK validation before the conflict was identified.
+
+---
+
+## Comparison with reference implementations
+
+| Implementation | Team | Known public duration |
 |---|---|---|
-| Jersey (Eclipse Foundation) | Multi-personnes Oracle/Eclipse | Années (depuis 2010+) |
-| RESTEasy (Red Hat) | Multi-personnes | Années (depuis 2007+) |
-| Apache CXF (rs) | Multi-personnes ASF | Années |
-| **Cassini** | **1 senior + IA** | **10 jours pour 2535/2535** |
+| Jersey (Eclipse Foundation) | Multiple Oracle/Eclipse people | Years (since 2010+) |
+| RESTEasy (Red Hat) | Multiple people | Years (since 2007+) |
+| Apache CXF (rs) | Multiple ASF people | Years |
+| **Cassini** | **1 senior + AI** | **10 days for 2535/2535** |
 
-Note : ces implémentations couvrent un périmètre plus large que Cassini (notamment client API + Servlet + EE Full Profile). Mais sur le périmètre Core Profile / SE-Bootstrap qui constitue Cassini, atteindre la conformance officielle TCK 100 % en moins de 2 semaines est sans précédent à ma connaissance.
+Note: these implementations cover a broader scope than Cassini (notably client API + Servlet + EE Full Profile). But on the Core Profile / SE-Bootstrap scope that defines Cassini, reaching official TCK 100% conformance in less than 2 weeks is, to my knowledge, unprecedented.
 
 ---
 
 ## Conclusion
 
-Pour un projet de cette densité technique — spec formelle (JAX-RS 4.0 = 200+ pages denses), TCK officiel à 100 %, JPMS natif, transport-agnostique, CDI-pluggable, virtual threads — l'assistance IA a représenté un multiplicateur de **~20x** sur la vitesse de développement.
+For a project of this technical density — formal spec (JAX-RS 4.0 = 200+ dense pages), 100% official TCK, native JPMS, transport-agnostic, CDI-pluggable, virtual threads — AI assistance represented a **~20x** multiplier on development speed.
 
-Le gain n'est pas uniforme : il est maximal sur le code mécanique (boilerplate JAX-RS, refactorings cross-module, génération de tests) et nul sur les décisions d'architecture, le jugement TCK challenges vs bugs, et l'intuition produit.
+The gain is not uniform: it is maximal on mechanical code (JAX-RS boilerplate, cross-module refactors, test generation) and null on architectural decisions, TCK challenge vs bug judgment, and product intuition.
 
-Comme pour Vauban, le modèle le plus juste n'est pas "l'IA code à la place du développeur" mais
-**"le développeur senior pilote à la vitesse de sa pensée plutôt qu'à la vitesse de sa frappe"**.
+As with Vauban, the most accurate model is not "AI codes instead of the developer" but
+**"the senior developer drives at the speed of thought rather than at the speed of typing"**.
 
-La friction restante n'est plus dans la production de code, c'est dans :
-1. La supervision de l'agent (relire chaque diff, corriger les choix sub-optimaux)
-2. La friction toolchain (JPMS, IntelliJ test runner, Maven 4 vs IDE LSP)
-3. La validation TCK (la spec ne se simplifie pas avec l'IA)
+The remaining friction is no longer in code production, it is in:
+1. Agent supervision (reviewing each diff, correcting suboptimal choices)
+2. Toolchain friction (JPMS, IntelliJ test runner, Maven 4 vs IDE LSP)
+3. TCK validation (the spec does not get simpler with AI)
 
-Si je devais refaire Cassini sans IA aujourd'hui, je n'essaierais probablement pas seul.
-Avec deux seniors, j'estimerais **10 à 13 mois calendaires** pour atteindre TCK 2535/2535
-sur le même périmètre. Avec IA et un seul senior aux commandes, ça a été **10 jours**.
+If I had to rebuild Cassini without AI today, I probably would not try alone.
+With two seniors, I would estimate **10 to 13 calendar months** to reach TCK 2535/2535
+on the same scope. With AI and one senior at the controls, it took **10 days**.

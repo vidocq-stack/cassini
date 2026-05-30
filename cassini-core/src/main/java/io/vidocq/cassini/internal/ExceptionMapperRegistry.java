@@ -13,11 +13,10 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Registry of {@link ExceptionMapper}s annotated {@code @Provider}.
+ * Registry of {@link ExceptionMapper}s annotated with {@code @Provider}.
  *
- * <p>Mapper selection (§4.4): prefer the mapper whose parameterized
- * exception type is the most specific (closest to the concrete class)
- * among those that match.</p>
+ * <p>Mapper selection (§4.4): prefer the mapper whose parameterized exception type
+ * is the most specific (closest to the concrete class) among those that match.</p>
  */
 public final class ExceptionMapperRegistry {
 
@@ -30,7 +29,7 @@ public final class ExceptionMapperRegistry {
     }
 
     /** Registers a {@code @Provider} instance implementing {@link ExceptionMapper} if applicable.
-     *  Resolves the exception type via the generic interfaces. */
+     *  Resolves the exception type via generic interfaces. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     public void register(Object instance) {
         if (!(instance instanceof ExceptionMapper)) return;
@@ -39,9 +38,9 @@ public final class ExceptionMapperRegistry {
         mappers.add(new Registration(excType, (ExceptionMapper) instance));
     }
 
-    /** §4.4: if an ExceptionMapper itself throws during its own execution,
-     *  that exception must not be mapped again — it must bubble up as 500.
-     *  This per-thread flag prevents recursion. */
+    /** §4.4: if an ExceptionMapper itself throws an exception during
+     *  its own execution, that exception must not be mapped again —
+     *  it must propagate as a 500. This per-thread flag prevents recursion. */
     private static final ThreadLocal<Boolean> MAPPING = ThreadLocal.withInitial(() -> false);
 
     public Optional<Response> map(Throwable t) {
@@ -52,7 +51,7 @@ public final class ExceptionMapperRegistry {
                 if (best == null) {
                     best = r;
                 } else if (best.exceptionType() == r.exceptionType()) {
-                    // §4.4 / §4.1.4: same exception type → lowest priority wins.
+                    // §4.4 / §4.1.4: same exception type → lower priority wins.
                     if (priorityOf(r.mapper()) < priorityOf(best.mapper())) best = r;
                 } else if (best.exceptionType().isAssignableFrom(r.exceptionType())) {
                     best = r;

@@ -28,17 +28,17 @@ import java.util.TreeSet;
  *   <li>{@link Enum} — {@link Enum#valueOf}</li>
  *   <li>public static method {@code valueOf(String)}</li>
  *   <li>public static method {@code fromString(String)}</li>
- *   <li>public single-argument {@link String} constructor</li>
+ *   <li>public single-argument constructor {@link String}</li>
  * </ol>
  *
- * <p>Parameterized collection types {@link List}, {@link Set}, {@link SortedSet}
- * are unwrapped on their element type.</p>
+ * <p>Collection types {@link List}, {@link Set}, {@link SortedSet}
+ * parameterized over their element type are unwrapped.</p>
  */
 public final class ParamValueConverter {
 
     private ParamValueConverter() {}
 
-    /** Converts a list of raw values to the target type (possibly a collection). */
+    /** Converts a list of raw values to the target type (potentially a collection). */
     public static Object coerce(Class<?> raw, Class<?> elementType, List<String> values) {
         if (isListLike(raw)) {
             List<Object> items = new ArrayList<>(values.size());
@@ -74,8 +74,8 @@ public final class ParamValueConverter {
         }
 
         if (type.isEnum()) {
-            // §3.2: for an enum with fromString(String), it takes precedence
-            // over Enum.valueOf (otherwise the built-in enum valueOf always wins).
+            // §3.2 : for an enum with fromString(String), it has priority
+            // over Enum.valueOf (otherwise a built-in enum valueOf always wins).
             try {
                 Method fs = type.getDeclaredMethod("fromString", String.class);
                 if (Modifier.isStatic(fs.getModifiers())) {
@@ -123,9 +123,9 @@ public final class ParamValueConverter {
         return 0;
     }
 
-    /** §3.2: PathSegment from a raw "path;k1=v1;k2=v2" segment.
-     *  The declaration order of matrix params is preserved (LinkedHashMap),
-     *  required by TCKs that compare literal serializations. */
+    /** §3.2: PathSegment from a raw segment "path;k1=v1;k2=v2".
+     *  Declaration order of matrix params is preserved (LinkedHashMap),
+     *  required by the TCK which compares literal serialisations. */
     public static PathSegment parsePathSegment(String raw) {
         if (raw == null) raw = "";
         String[] parts = raw.split(";", -1);
@@ -144,7 +144,7 @@ public final class ParamValueConverter {
         };
     }
 
-    /** MultivaluedMap that preserves the insertion order of keys. */
+    /** MultivaluedMap that preserves insertion order of keys. */
     private static final class OrderedMultivaluedMap extends AbstractMultivaluedMap<String, String> {
         OrderedMultivaluedMap() { super(new java.util.LinkedHashMap<>()); }
     }
@@ -153,9 +153,9 @@ public final class ParamValueConverter {
         return new WebApplicationException(msg, Response.Status.BAD_REQUEST);
     }
 
-    /** Invokes a static method. If it throws a WebApplicationException
+    /** Calls a static method. If it throws a WebApplicationException
      *  (or wraps one via InvocationTargetException), it is propagated
-     *  as-is — JAX-RS §3.2 mandates honoring its status. Other
+     *  as-is — JAX-RS §3.2 requires honouring its status. Other
      *  exceptions become a 400 by default. */
     private static Object invokeOrPropagate(Method m, Object instance, Object... args) {
         try {

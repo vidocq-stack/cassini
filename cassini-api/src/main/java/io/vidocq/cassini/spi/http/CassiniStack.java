@@ -8,12 +8,12 @@ import java.util.Comparator;
 import java.util.ServiceLoader;
 
 /**
- * Cassini bootstrap facade — wires the internal components (router, invoker,
- * registries) and exposes a {@link CassiniHttpAdapter} ready to dispatch.
+ * Cassini bootstrap facade — assembles the internal components (router,
+ * invoker, registries) and exposes a {@link CassiniHttpAdapter} ready to dispatch.
  *
- * <p>Lets {@code cassini-chappe}, {@code cassini-jdk-http} and DI-integration
- * modules (e.g. {@code cassini-cdi-vauban}) avoid depending on
- * {@code cassini-core} directly: they go through the public SPI of
+ * <p>Allows {@code cassini-chappe}, {@code cassini-jdk-http} and DI integration
+ * modules (e.g. {@code cassini-cdi-vauban}) to no longer depend on
+ * {@code cassini-core} directly: they go through the public SPI
  * {@code cassini-api}.
  *
  * <p>Usage example:
@@ -27,7 +27,7 @@ import java.util.ServiceLoader;
  * <p>If a {@link BeanProvider.Factory} is registered via {@link ServiceLoader}
  * (e.g. {@code cassini-cdi-vauban} on the classpath), the {@link Builder} is
  * automatically pre-configured with the highest-priority {@link BeanProvider}.
- * Callers can disable this by passing {@code beanProvider(null)} explicitly.</p>
+ * The user can override this by explicitly passing {@code beanProvider(null)}.</p>
  */
 public interface CassiniStack {
 
@@ -55,13 +55,13 @@ public interface CassiniStack {
         Builder application(Application app);
         Builder resourceFactory(ResourceFactory factory);
 
-        /** Registers a manually-supplied {@code @Provider} instance. */
+        /** Adds a manually registered {@code @Provider} instance. */
         Builder provider(Object providerInstance);
 
         /**
          * Configures the {@link BeanProvider} used to resolve managed resources
-         * and providers. If {@code null}, disables every BeanProvider (including
-         * the one auto-discovered by {@link CassiniStack#builder()}).
+         * and providers. If {@code null}, disables all BeanProvider
+         * (including the one auto-discovered by {@link CassiniStack#builder()}).
          */
         Builder beanProvider(BeanProvider provider);
 

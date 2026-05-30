@@ -1,8 +1,8 @@
 /**
  * TCK harness module for the Cassini extension (JAX-RS 4.0 on Chappe).
  *
- * <p><b>Out-of-reactor</b> module — uses Maven Model 4.0.0 for
- * ShrinkWrap compatibility (transitive dependency of the Jakarta TCK).</p>
+ * <p>Module <b>out of reactor</b> — uses Maven Model 4.0.0 for
+ * ShrinkWrap compatibility (transitive dep from the Jakarta TCK).</p>
  */
 module io.vidocq.cassini.tck {
     requires io.vidocq.cassini.api;

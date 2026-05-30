@@ -9,17 +9,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Abstraction of the in-flight HTTP request/response, exposed by a transport
+ * Abstraction of the current HTTP request/response, exposed by a transport
  * (Chappe, JDK HttpServer, etc.) to the Cassini runtime.
  *
  * <p>The contract is deliberately minimal: Cassini does not depend on any
- * particular HTTP engine. All JAX-RS logic (routing, providers, filters,
- * interceptors) is carried by {@code cassini-core} and operates on this
- * interface.
+ * specific HTTP engine. All JAX-RS logic (routing, providers, filters, interceptors)
+ * is carried by {@code cassini-core} and operates on this interface.
  *
  * <p><b>Lifecycle</b>: an exchange is valid for the duration of one dispatch.
- * Headers and status are read just before the body is written. The output
- * stream is consumed exactly once.
+ * Headers and status are read just before writing the body. The output
+ * stream is consumed only once.
  */
 public interface CassiniHttpExchange {
 
@@ -27,7 +26,7 @@ public interface CassiniHttpExchange {
 
     URI requestUri();
 
-    /** Raw, un-decoded URI — preserves the original encoding (cf. JAX-RS §3.7). */
+    /** Raw non-decoded URI — preserves the original encoding (cf. JAX-RS §3.7). */
     String requestUriRaw();
 
     Map<String, List<String>> requestHeaders();
@@ -53,7 +52,7 @@ public interface CassiniHttpExchange {
         return List.of();
     }
 
-    /** Decoded query string — Map of key → list of values. Empty map if no query. */
+    /** Decoded query string — key → list-of-values map. Empty map if there is no query. */
     default Map<String, List<String>> queryParams() {
         String raw = requestUri().getRawQuery();
         if (raw == null || raw.isEmpty()) return Map.of();
@@ -74,23 +73,23 @@ public interface CassiniHttpExchange {
 
     InputStream requestBody();
 
-    /** Request Content-Length, or {@code -1} if unknown/not supplied. */
+    /** Request Content-Length, or {@code -1} if unknown/not provided. */
     default long contentLength() {
         String raw = firstHeader("Content-Length");
         if (raw == null || raw.isEmpty()) return -1L;
         try { return Long.parseLong(raw.trim()); } catch (NumberFormatException e) { return -1L; }
     }
 
-    /** Application prefix (e.g. {@code "/api"}). Empty or {@code "/"} if no context. */
+    /** Application prefix (e.g. {@code "/api"}). Empty or {@code "/"} if there is no context. */
     default String contextPath() { return ""; }
 
     /**
-     * Request path stripped of the contextPath — ready for routing.
+     * Request path without the contextPath — ready for routing.
      *
      * <p>The default implementation subtracts {@link #contextPath()} from
-     * {@link #requestUri()}{@code .getRawPath()}. Transports exposing a native
-     * {@code pathInfo} (e.g. Chappe {@code Request.pathInfo()}) should override
-     * this method to avoid a double decoding pass.
+     * {@link #requestUri()}{@code .getRawPath()}. Transports with a native
+     * {@code pathInfo} (e.g. Chappe {@code Request.pathInfo()}) must
+     * override this method to avoid double-decoding.
      */
     default String routingPath() {
         URI u = requestUri();
@@ -118,15 +117,15 @@ public interface CassiniHttpExchange {
     /** Authentication scheme (BASIC, DIGEST, BEARER...) or {@code null} if unauthenticated. */
     String authScheme();
 
-    /** Authenticated principal, or {@code null}. */
+    /** Authenticated principal or {@code null}. */
     Principal userPrincipal();
 
     /** Role check delegated to the transport (BASIC auth via Chappe, etc.). */
     boolean isUserInRole(String role);
 
     /**
-     * Request-scoped attribute store, thread-safe with virtual threads (M2h).
-     * Replaces the per-request {@code ThreadLocal}s inside {@code cassini-core}.
+     * Request-scope attribute store, thread-safe with virtual threads (M2h).
+     * Replaces per-request {@code ThreadLocal}s in {@code cassini-core}.
      */
     void setAttribute(String key, Object value);
 
@@ -134,11 +133,11 @@ public interface CassiniHttpExchange {
     Object getAttribute(String key);
 
     /**
-     * Opens streaming mode for SSE / chunked-transfer (M2i).
+     * Opens streaming mode for SSE / chunked transfer (M2i).
      *
-     * <p>Sends the response headers with an unknown-length body
-     * ({@code Transfer-Encoding: chunked} on HTTP/1.1) and returns a
-     * {@link CassiniStreamingSink} allowing chunk-by-chunk writes.
+     * <p>Sends response headers with a body of unknown length
+     * ({@code Transfer-Encoding: chunked} for HTTP/1.1) and returns a
+     * {@link CassiniStreamingSink} that can write chunks as they are produced.
      *
      * <p>Transports that do not support streaming return {@code null} —
      * the caller must fall back to buffered mode.

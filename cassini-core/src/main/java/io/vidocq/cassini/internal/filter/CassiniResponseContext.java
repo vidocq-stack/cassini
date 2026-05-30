@@ -20,9 +20,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@link ContainerResponseContext} implementation wrapping a mutable
- * internal representation of the outgoing response (status + headers +
- * entity). Response filters can change all of these before the MBW.
+ * {@link ContainerResponseContext} implementation wrapping a
+ * mutable internal representation of the outgoing response (status + headers
+ * + entity). Response filters can change all of this before the
+ * MBW.
  */
 public final class CassiniResponseContext implements ContainerResponseContext {
 
@@ -36,9 +37,9 @@ public final class CassiniResponseContext implements ContainerResponseContext {
     private OutputStream entityStream = originalStream;
 
     /** Original sink (ByteArrayOutputStream) — used by the runtime to
-     *  collect the final body even when a filter wrapped entityStream
-     *  via setEntityStream(). The application wrapper is expected to
-     *  forward to this sink (see TCK tests setEntityStreamTest). */
+     *  collect the final body even when a filter has wrapped entityStream
+     *  via setEntityStream(). The application wrapper is expected to forward to
+     *  this sink (cf. TCK tests setEntityStreamTest). */
     public java.io.ByteArrayOutputStream originalStream() { return originalStream; }
 
     public CassiniResponseContext(int status, Object entity, Type entityType,
@@ -78,7 +79,7 @@ public final class CassiniResponseContext implements ContainerResponseContext {
     }
 
     @Override public boolean containsHeaderString(String n, String sep, java.util.function.Predicate<String> p) {
-        // §6.7.4: case-insensitive header lookup (RFC 7230).
+        // §6.7.4 : recherche d'header case-insensitive (RFC 7230).
         java.util.List<Object> vs = caseInsensitiveLookup(n);
         if (vs == null) return false;
         for (Object v : vs) for (String tok : v.toString().split(sep)) if (p.test(tok.trim())) return true;

@@ -13,17 +13,17 @@ import java.util.Map;
 /**
  * {@link UriBuilder} implementation aligned with RFC 3986 and §6 of the
  * Jakarta REST 4.0 spec. Encoding is applied component by component:
- * PATH, QUERY_PARAM, MATRIX_PARAM, FRAGMENT. {@code %XX} triplets are
- * preserved (template mode) for values passed to {@code xxxParam}/{@code path}
- * methods, but re-encoded for template values substituted in non-encoded
- * {@code build*()} mode.
+ * PATH, QUERY_PARAM, MATRIX_PARAM, FRAGMENT. {@code %XX} triplets
+ * are preserved (template mode) for values passed to
+ * {@code xxxParam}/{@code path} methods, but re-encoded for template values
+ * substituted in non-encoded {@code build*()} mode.
  */
 public final class CassiniUriBuilder extends UriBuilder {
 
     private enum Comp { PATH, QUERY_PARAM, MATRIX_PARAM, FRAGMENT }
 
     private String scheme;
-    private String ssp;            // for opaque URIs (mailto:, urn:, …)
+    private String ssp;            // pour URI opaques (mailto:, urn:, …)
     private String userInfo;
     private String host;
     private int port = -1;
@@ -33,7 +33,7 @@ public final class CassiniUriBuilder extends UriBuilder {
     /** Resolved values + whether the value is already encoded (FromEncoded). */
     private final Map<String, Object> resolvedTemplates = new LinkedHashMap<>();
     private final Map<String, Boolean> resolvedTemplatesEncoded = new LinkedHashMap<>();
-    /** Per variable: encode the '/' contained in the value? */
+    /** Per variable: should '/' characters contained in the value be encoded? */
     private final Map<String, Boolean> resolvedTemplatesEncodeSlash = new LinkedHashMap<>();
 
     public CassiniUriBuilder() {}
@@ -63,17 +63,17 @@ public final class CassiniUriBuilder extends UriBuilder {
     }
 
     private void copyFrom(URI uri) {
-        // §6.4.2: uri(URI) merge — non-null components of the new URI
-        // replace the current state, null components leave it intact.
+        // §6.4.2: uri(URI) merge — non-null components from the new URI
+        // replace the current state, null components leave it unchanged.
         if (uri.getScheme() != null) this.scheme = uri.getScheme();
         if (uri.isOpaque()) {
             this.ssp = uri.getRawSchemeSpecificPart();
             this.userInfo = null; this.host = null; this.port = -1;
             this.path.setLength(0); this.query.clear();
         } else {
-            // Switching to hierarchical → the ssp from a former opaque URI
-            // (e.g. mailto:foo@bar) becomes obsolete: its content is taken over
-            // via the path.
+            // Switching to hierarchical → the ssp of a former opaque URI
+            // (e.g. mailto:foo@bar) becomes obsolete: its content is carried
+            // through the path.
             this.ssp = null;
             if (uri.getHost() != null) {
                 this.userInfo = uri.getRawUserInfo();
@@ -122,8 +122,8 @@ public final class CassiniUriBuilder extends UriBuilder {
 
     @Override public UriBuilder uri(String uriTemplate) {
         if (uriTemplate == null) throw new IllegalArgumentException("uri is null");
-        // §11.1: must raise IllegalArgumentException if the string is not a
-        // valid URI (and is not a template with {name}).
+        // §11.1: must throw IllegalArgumentException if the string is not
+        // a valid URI (and is not a template containing {name}).
         try {
             URI u = new URI(uriTemplate);
             return uri(u);
@@ -204,7 +204,7 @@ public final class CassiniUriBuilder extends UriBuilder {
     @Override public UriBuilder host(String host) {
         if (host != null && host.isEmpty()) throw new IllegalArgumentException("host is empty");
         if (host != null) {
-            // Check that scheme://host can be formed without a syntax error.
+            // Validate that scheme://host can be formed without a syntax error.
             try { new URI(scheme == null ? "http" : scheme, null, host, -1, "/", null, null); }
             catch (URISyntaxException e) { throw new IllegalArgumentException(e); }
         }
@@ -225,8 +225,8 @@ public final class CassiniUriBuilder extends UriBuilder {
     @Override public UriBuilder path(String segment) {
         if (segment == null) throw new IllegalArgumentException("path is null");
         if (segment.isEmpty()) return this;
-        // §6: avoid double slashes on join. Append a separator if needed
-        // and dedupe any leading slash from the segment.
+        // §6: avoid double slashes when joining. Add a separator if
+        // needed and deduplicate any leading slash on the segment.
         boolean endsWithSlash = path.length() > 0 && path.charAt(path.length() - 1) == '/';
         boolean startsWithSlash = segment.startsWith("/");
         if (path.length() > 0 && !endsWithSlash && !startsWithSlash) {
@@ -275,7 +275,7 @@ public final class CassiniUriBuilder extends UriBuilder {
         if (segments == null) throw new IllegalArgumentException("segments is null");
         for (String s : segments) {
             if (s == null) throw new IllegalArgumentException("segment is null");
-            // Encode the segment as a path-segment: '/' is always encoded as %2F
+            // Encode the segment as a path segment: '/' is always encoded as %2F
             String enc = encode(s, Comp.PATH, true, true);
             if (path.length() > 0 && path.charAt(path.length() - 1) != '/') path.append('/');
             path.append(enc);
@@ -342,9 +342,9 @@ public final class CassiniUriBuilder extends UriBuilder {
         if (values == null) throw new IllegalArgumentException("values is null");
         for (Object v : values) {
             if (v == null) throw new IllegalArgumentException("query value is null");
-            // §3.7.4.4: queryParam value encodes space as '+' (HTML form style,
-            // confirmed by TCK queryParamTest5). replaceQuery, on the contrary,
-            // keeps the raw and encode-rebuilds it as %20.
+            // §3.7.4.4: queryParam values encode spaces as '+' (HTML form style,
+            // confirmed by TCK queryParamTest5). replaceQuery, by contrast,
+            // keeps the raw value and encode-rebuilds it as %20.
             String formEncoded = String.valueOf(v).replace(" ", "+");
             query.computeIfAbsent(encode(name, Comp.QUERY_PARAM, true, true), k -> new ArrayList<>())
                  .add(encode(formEncoded, Comp.QUERY_PARAM, true, true));
@@ -474,9 +474,8 @@ public final class CassiniUriBuilder extends UriBuilder {
         catch (URISyntaxException e) { throw new jakarta.ws.rs.core.UriBuilderException(e); }
     }
 
-    /** Walks the template: literal segments are encoded preserving
-     *  {@code %XX} triplets (already typed), {name} values are encoded
-     *  according to {@code valuesAlreadyEncoded}. */
+    /** Walks the template: literal segments encoded while preserving
+     *  {@code %XX} triplets (already typed), with {name} values encoded according to {@code valuesAlreadyEncoded}. */
     private String substituteLiteralAndTemplates(String tpl, Object[] values, Map<String, ?> valueMap,
                                                  Map<String, Object> seen, int[] posIdx,
                                                  Comp comp, boolean encodeSlash,
@@ -498,8 +497,8 @@ public final class CassiniUriBuilder extends UriBuilder {
                 Object val;
                 boolean valEncoded = valuesAlreadyEncoded;
                 // §6: when the value is already pre-encoded (buildFromEncoded*),
-                // the '/' it contains must be preserved — it represents what
-                // the caller chose to emit.
+                // any '/' it contains must be preserved — it
+                // represents what the caller chose to emit.
                 boolean valEncodeSlash = valuesAlreadyEncoded ? false : encodeSlash;
                 if (resolvedTemplates.containsKey(name)) {
                     val = resolvedTemplates.get(name);
@@ -592,19 +591,19 @@ public final class CassiniUriBuilder extends UriBuilder {
     }
 
     private static boolean allowed(Comp comp, char c, boolean encodeSlash) {
-        // Sub-delims depending on component.
+        // Sous-delims selon composant.
         switch (comp) {
             case PATH:
                 if (c == '/') return !encodeSlash;
                 // pchar = unreserved / pct-encoded / sub-delims / ":" / "@"
                 return "!$&'()*+,;=:@".indexOf(c) >= 0;
             case QUERY_PARAM:
-                // query chars, but '&' and '=' are the separators → encode them
+                // query chars, but '&' and '=' are separators → encode
                 return "!$'()*+,;:@/?".indexOf(c) >= 0;
             case FRAGMENT:
                 return "!$&'()*+,;=:@/?".indexOf(c) >= 0;
             case MATRIX_PARAM:
-                // ';' and '=' are the separators → encode them
+                // ';' and '=' are separators → encode
                 return "!$&'()*+,:@/".indexOf(c) >= 0;
         }
         return false;
@@ -614,10 +613,10 @@ public final class CassiniUriBuilder extends UriBuilder {
      * Encodes {@code s} for the given component.
      *
      * @param preservePercent if {@code true}, a valid already-encoded {@code %XX}
-     *                       is preserved without re-encoding. If {@code false},
+     *                       sequence is preserved without re-encoding. If {@code false},
      *                       {@code %} is encoded as {@code %25}.
-     * @param encodeSlash    only applies to the PATH component: {@code true}
-     *                       encodes {@code /} as {@code %2F}.
+     * @param encodeSlash    applique seulement au composant PATH : {@code true}
+     *                       encode {@code /} en {@code %2F}.
      */
     private static String encode(String s, Comp comp, boolean preservePercent, boolean encodeSlash) {
         if (s == null || s.isEmpty()) return s;
@@ -631,9 +630,9 @@ public final class CassiniUriBuilder extends UriBuilder {
                 i += 3;
                 continue;
             }
-            // §3.7.4.4: RFC 3986 in a URI query requires '%20' (not '+'
-            // which is the application/x-www-form-urlencoded convention).
-            // The TCK test replaceQueryTest3 explicitly validates %20.
+            // §3.7.4.4 : RFC 3986 dans une query d'URI exige '%20' (et non '+'
+            // qui est la convention application/x-www-form-urlencoded).
+            // Le test TCK replaceQueryTest3 valide explicitement %20.
             if (isUnreserved(c) || allowed(comp, c, encodeSlash)) {
                 out.append(c);
                 i++;

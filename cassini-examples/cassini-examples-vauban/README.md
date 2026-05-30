@@ -1,21 +1,21 @@
 # cassini-examples-vauban
 
-**Mode B (CDI)** — Cassini + Vauban CDI + UI HTML/CSS/JS statique servie par Chappe.
+**Mode B (CDI)** — Cassini + Vauban CDI + static HTML/CSS/JS UI served by Chappe.
 
-Démo end-to-end : `http://localhost:8080/` affiche une vraie page web qui consomme l'API REST sur `/api/*`. Les ressources JAX-RS sont des beans CDI gérés par Vauban, avec injection (`@Inject TodoService`) résolue automatiquement.
+End-to-end demo: `http://localhost:8080/` displays a real web page that consumes the REST API at `/api/*`. JAX-RS resources are CDI beans managed by Vauban, with injection (`@Inject TodoService`) resolved automatically.
 
-## Lancer
+## Run
 
 ```bash
 mvn -pl cassini-examples/cassini-examples-vauban \
     exec:java -Dexec.mainClass=io.vidocq.cassini.examples.vauban.Main
 ```
 
-ou `Main.java` depuis IntelliJ. Ouvrir `http://localhost:8080/` dans le navigateur.
+or `Main.java` from IntelliJ. Open `http://localhost:8080/` in your browser.
 
 ```
 ┌──────────────────────────────────────────────┐
-│ Cassini + Vauban CDI — démarré sur port 8080 │
+│ Cassini + Vauban CDI — started on port 8080  │
 ├──────────────────────────────────────────────┤
 │  UI  → http://localhost:8080/                │
 │  API → http://localhost:8080/api/todos       │
@@ -30,11 +30,11 @@ ou `Main.java` depuis IntelliJ. Ouvrir `http://localhost:8080/` dans le navigate
                                 │
                                 ▼
                     VaubanApp.composeHandler()
-                         (handler composite)
+                         (composite handler)
                                 │
               ┌─────────────────┴──────────────────┐
               │                                    │
-        path = /api/*                       path = autre
+        path = /api/*                       other path
               │                                    │
               ▼                                    ▼
      strip /api + dispatch              staticHandler()
@@ -55,12 +55,12 @@ ou `Main.java` depuis IntelliJ. Ouvrir `http://localhost:8080/` dans le navigate
    VaubanContainer.select(TodoResource.class)
               │
               ▼
-   instance avec @Inject TodoService résolu
+   instance with @Inject TodoService resolved
 ```
 
-## Comment ça marche
+## How it works
 
-### 1. Bootstrap Vauban CDI
+### 1. Vauban CDI bootstrap
 
 ```java
 var container = VaubanContainer.builder()
@@ -68,24 +68,24 @@ var container = VaubanContainer.builder()
         .build();
 ```
 
-`scanClasspath()` lit `META-INF/vauban-beans.list`, un fichier index **généré à la compile** par `vauban-maven-plugin:generate` qui liste toutes les classes annotées CDI (`@ApplicationScoped`, `@RequestScoped`, etc.) du module.
+`scanClasspath()` reads `META-INF/vauban-beans.list`, an index file **generated at compile time** by `vauban-maven-plugin:generate` that lists all CDI-annotated classes (`@ApplicationScoped`, `@RequestScoped`, etc.) in the module.
 
 ```
-# META-INF/vauban-beans.list — généré
+# META-INF/vauban-beans.list — generated
 io.vidocq.cassini.examples.vauban.resource.GreetingResource
 io.vidocq.cassini.examples.vauban.resource.TodoResource
 io.vidocq.cassini.examples.vauban.service.TodoService
 ```
 
-**Avantages** :
-- Pas de scan runtime, pas de réflexion par package
-- Fonctionne en JPMS named module (les ressources `META-INF/` sont toujours accessibles via `ClassLoader.getResources()`, contrairement au scan de répertoires)
-- Détection à la compile : si un bean est mal annoté, le plugin le signale immédiatement
-- Liste réutilisable : `scanClasspath()` agrège tous les `vauban-beans.list` du classpath, donc multi-module supporté
+**Benefits**:
+- No runtime classpath scan, no package-level reflection
+- Works in JPMS named modules (`META-INF/` resources are always accessible via `ClassLoader.getResources()`, unlike directory scanning)
+- Compile-time detection: if a bean is incorrectly annotated, the plugin reports it immediately
+- Reusable list: `scanClasspath()` aggregates all `vauban-beans.list` files from the classpath, so multi-module setups are supported
 
-`VaubanContainer.build()` enregistre l'instance comme `CDI.current()` (via `VaubanCDIProvider` ServiceLoader).
+`VaubanContainer.build()` registers the instance as `CDI.current()` (via `VaubanCDIProvider` ServiceLoader).
 
-#### Configuration plugin
+#### Plugin configuration
 
 ```xml
 <plugin>
@@ -101,22 +101,22 @@ io.vidocq.cassini.examples.vauban.service.TodoService
 </plugin>
 ```
 
-> Alternative `addBeanClass()` (déclaration explicite) reste disponible pour les cas où on ne veut pas (ou pas pu) configurer le plugin Maven.
+> The `addBeanClass()` alternative (explicit declaration) remains available for cases where configuring the Maven plugin is not desired or possible.
 
-### 2. Auto-discovery du `BeanProvider`
+### 2. Auto-discovery of `BeanProvider`
 
-`CassiniStack.builder()` (appelé par `VaubanApp.composeHandler()`) fait `ServiceLoader.load(BeanProvider.Factory.class)` et trouve **`VaubanBeanProviderFactory`** (priorité 100, déclaré dans `cassini-cdi-vauban/module-info.java`). La factory récupère `VaubanContainer.current()` et l'injecte dans la stack.
+`CassiniStack.builder()` (called by `VaubanApp.composeHandler()`) calls `ServiceLoader.load(BeanProvider.Factory.class)` and finds **`VaubanBeanProviderFactory`** (priority 100, declared in `cassini-cdi-vauban/module-info.java`). The factory retrieves `VaubanContainer.current()` and injects it into the stack.
 
-À partir de là, le résolveur interne devient :
+From that point, the internal resolver becomes:
 ```java
-clazz -> beanProvider.getBean(clazz)  // → container.select(clazz) avec @Inject résolu
+clazz -> beanProvider.getBean(clazz)  // → container.select(clazz) with @Inject resolved
 ```
 
-L'`Application` JAX-RS peut être **vide** (`new Application() {}`) : `BeanProvider.getResourceClasses()` itère le `BeanManager` Vauban et expose toutes les classes annotées `@Path`/`@Provider` à Cassini.
+The JAX-RS `Application` can be **empty** (`new Application() {}`): `BeanProvider.getResourceClasses()` iterates the Vauban `BeanManager` and exposes all `@Path`/`@Provider`-annotated classes to Cassini.
 
-### 3. Handler composite Chappe
+### 3. Chappe composite handler
 
-`Main.java` ne passe pas par `SeBootstrap` car on veut mixer statique + API REST sur le même port. À la place :
+`Main.java` does not go through `SeBootstrap` because we want to mix static files + REST API on the same port. Instead:
 
 ```java
 var server = Server.builder()
@@ -125,49 +125,49 @@ var server = Server.builder()
         .build();
 ```
 
-`VaubanApp.composeHandler()` retourne un `Handler` Chappe qui dispatche selon le path :
+`VaubanApp.composeHandler()` returns a Chappe `Handler` that dispatches by path:
 
 ```java
 return req -> {
     if (req.path().startsWith("/api")) {
-        // strip /api et délègue à ChappeHttpAdapter (qui pointe sur CassiniStack)
+        // strip /api and delegate to ChappeHttpAdapter (pointing to CassiniStack)
         return cassiniHandler.handle(stripContext(req, "/api", ...));
     }
-    return staticHandler.handle(req);  // sert classpath:/static/...
+    return staticHandler.handle(req);  // serves classpath:/static/...
 };
 ```
 
-### 4. Service du statique — `StaticFileHandler` Chappe
+### 4. Static file serving — Chappe `StaticFileHandler`
 
-Chappe fournit nativement un `StaticFileHandler` avec support classpath, fallback chain, cache mémoire :
+Chappe natively provides a `StaticFileHandler` with classpath support, fallback chain, and in-memory cache:
 
 ```java
 StaticFileHandler.builder()
-        .addClasspath("static")    // résolu depuis classpath:/static/
-        .cacheInMemory(true)       // cache en RAM pour les ressources < 64 Ko
+        .addClasspath("static")    // resolved from classpath:/static/
+        .cacheInMemory(true)       // cache in RAM for resources < 64 KB
         .build();
 ```
 
-> **Petit ajustement nécessaire** : le composite handler réécrit `/` en `/index.html` avant de passer la requête au `StaticFileHandler`. En mode classpath, `getResource("static/")` retourne l'URL du directory non-null, ce qui empêche le fallback `indexFile` interne — la réécriture côté composite contourne ça.
+> **Minor adjustment needed**: the composite handler rewrites `/` to `/index.html` before passing the request to `StaticFileHandler`. In classpath mode, `getResource("static/")` returns a non-null directory URL, which prevents the internal `indexFile` fallback — the rewrite in the composite handler works around this.
 
-### 5. UI client
+### 5. Client UI
 
-`src/main/resources/static/` contient :
+`src/main/resources/static/` contains:
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| `index.html` | Structure page : header, greeting, form, liste, footer |
-| `style.css` | Dark theme moderne (gradient, glow accent, animations subtiles) |
-| `app.js` | Fetch API : GET `/api/todos`, POST/PUT/DELETE, render dynamique |
+| `index.html` | Page structure: header, greeting, form, list, footer |
+| `style.css` | Modern dark theme (gradient, glow accent, subtle animations) |
+| `app.js` | Fetch API: GET `/api/todos`, POST/PUT/DELETE, dynamic render |
 
-Le JS appelle :
-- `GET /api/greetings/Vauban` au load → affiche le message dans le header
-- `GET /api/todos` au load → render la liste
-- `POST /api/todos` au submit du form → crée puis re-render
-- `PUT /api/todos/{id}` au toggle checkbox → marque done
-- `DELETE /api/todos/{id}` au clic ✕ → supprime puis re-render
+The JS calls:
+- `GET /api/greetings/Vauban` on load → displays message in the header
+- `GET /api/todos` on load → renders the list
+- `POST /api/todos` on form submit → creates then re-renders
+- `PUT /api/todos/{id}` on checkbox toggle → marks done
+- `DELETE /api/todos/{id}` on ✕ click → deletes then re-renders
 
-### 6. Côté serveur
+### 6. Server side
 
 ```java
 // TodoService.java
@@ -187,23 +187,23 @@ public class TodoResource {
 }
 ```
 
-Quand une requête arrive, `Invoker` appelle `beanProvider.getBean(TodoResource.class)` → Vauban retourne le proxy CDI avec `service` déjà injecté. Le scope `@ApplicationScoped` garantit qu'il n'y a qu'une instance partagée.
+When a request arrives, `Invoker` calls `beanProvider.getBean(TodoResource.class)` → Vauban returns the CDI proxy with `service` already injected. The `@ApplicationScoped` scope guarantees a single shared instance.
 
 ## Endpoints
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---|---|---|
-| `GET` | `/` | UI HTML (index.html) |
+| `GET` | `/` | HTML UI (index.html) |
 | `GET` | `/style.css` | CSS |
-| `GET` | `/app.js` | JS client |
+| `GET` | `/app.js` | Client JS |
 | `GET` | `/api/greetings/{name}` | "Hello, {name}!" |
-| `GET` | `/api/todos` | Liste JSON |
-| `POST` | `/api/todos` | Crée |
-| `GET` | `/api/todos/{id}` | Récupère |
-| `PUT` | `/api/todos/{id}` | Met à jour |
-| `DELETE` | `/api/todos/{id}` | Supprime |
+| `GET` | `/api/todos` | JSON list |
+| `POST` | `/api/todos` | Create |
+| `GET` | `/api/todos/{id}` | Fetch |
+| `PUT` | `/api/todos/{id}` | Update |
+| `DELETE` | `/api/todos/{id}` | Delete |
 
-Voir `src/test/resources/http/vauban-examples.http` pour le HTTP Client IntelliJ.
+See `src/test/resources/http/vauban-examples.http` for the IntelliJ HTTP Client.
 
 ## Tests
 
@@ -211,23 +211,23 @@ Voir `src/test/resources/http/vauban-examples.http` pour le HTTP Client IntelliJ
 mvn -pl cassini-examples/cassini-examples-vauban test
 ```
 
-15 tests :
-- `GreetingResourceTest` (3) — API greetings via CDI
-- `TodoResourceTest` (7) — CRUD complet via CDI
-- `StaticUiTest` (5) — vérifie `/`, `/style.css`, `/app.js`, 404, coexistence API+statique
+15 tests:
+- `GreetingResourceTest` (3) — greetings API via CDI
+- `TodoResourceTest` (7) — full CRUD via CDI
+- `StaticUiTest` (5) — verifies `/`, `/style.css`, `/app.js`, 404, API+static coexistence
 
-`ExampleServer` réutilise exactement le même `VaubanApp.composeHandler()` que `Main.java` : tests et prod ont la même configuration.
+`ExampleServer` reuses exactly the same `VaubanApp.composeHandler()` as `Main.java`: tests and production have the same configuration.
 
-## Pourquoi c'est plus complexe que les autres exemples ?
+## Why is this more complex than the other examples?
 
-1. **Bootstrap manuel Chappe** au lieu de `SeBootstrap` — nécessaire pour servir le statique sur `/` (SeBootstrap ne donne pas accès au handler racine).
-2. **Préfixe `/api`** — sans ça, les routes JAX-RS seraient en concurrence avec les fichiers statiques.
-3. **Composite handler** — pattern classique pour mixer plusieurs responsabilités sur un même serveur HTTP.
+1. **Manual Chappe bootstrap** instead of `SeBootstrap` — required to serve statics at `/` (SeBootstrap does not expose the root handler).
+2. **`/api` prefix** — without it, JAX-RS routes would conflict with static files.
+3. **Composite handler** — classic pattern for mixing multiple responsibilities on the same HTTP server.
 
-Les détails sont encapsulés dans `VaubanApp.java` — `Main.java` reste simple et lisible.
+The details are encapsulated in `VaubanApp.java` — `Main.java` stays simple and readable.
 
-## Voir aussi
+## See also
 
-- [`cassini-examples/README.md`](../README.md) — découverte du `BeanProvider`, conflits transports.
-- [`cassini-examples-chappe`](../cassini-examples-chappe) — Mode A pur sans CDI (comparaison directe).
-- [`cassini-cdi-vauban`](../../cassini-cdi-vauban) — adapter Vauban : `VaubanBeanProvider`, `VaubanCDIProvider`.
+- [`cassini-examples/README.md`](../README.md) — `BeanProvider` discovery, transport conflicts.
+- [`cassini-examples-chappe`](../cassini-examples-chappe) — pure Mode A without CDI (direct comparison).
+- [`cassini-cdi-vauban`](../../cassini-cdi-vauban) — Vauban adapter: `VaubanBeanProvider`, `VaubanCDIProvider`.

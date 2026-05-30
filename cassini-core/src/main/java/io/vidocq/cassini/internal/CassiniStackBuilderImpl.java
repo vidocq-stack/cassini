@@ -16,10 +16,10 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * Implementation of {@link CassiniStack.Builder} — assembles router, invoker and
+ * Implementation of {@link CassiniStack.Builder} — assembles the router, invoker and
  * registries from a JAX-RS {@link Application} and a {@link ResourceFactory}.
  *
- * <p>Replicates the bootstrap logic previously inlined in
+ * <p>Extracts the bootstrap logic that was previously inlined in
  * {@code ChappeRuntimeDelegate.ChappeSeBootstrapInstance}.</p>
  */
 final class CassiniStackBuilderImpl implements CassiniStack.Builder {
@@ -69,7 +69,7 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
             }
         }
 
-        // Merge classes known by the BeanProvider (annotated with @Path/@Provider).
+        // Merge the classes known to the BeanProvider (annotated @Path/@Provider).
         if (beanProvider != null) {
             for (Class<?> c : beanProvider.getResourceClasses()) {
                 resourceClasses.add(jaxrsAnnotatedClass(c));
@@ -90,7 +90,7 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
                         try {
                             return beanProvider.getBean(k);
                         } catch (IllegalArgumentException ignored) {
-                            // fallback below
+                            // fallback ci-dessous
                         }
                     }
                     try { return k.getDeclaredConstructor().newInstance(); }
@@ -118,9 +118,9 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
 
         var routes = RouteRegistry.discover(pathClasses.toArray(Class<?>[]::new));
         // §6.5.5: run DynamicFeatures on each resource method — they register
-        // their filters/interceptors scoped to the method (e.g. RolesAllowedDynamicFeature →
-        // @RolesAllowed/@DenyAll/@PermitAll). Without this call, features were collected but
-        // never applied: authorization was not wired up.
+        // their per-method filters/interceptors (e.g. RolesAllowedDynamicFeature →
+        // @RolesAllowed/@DenyAll/@PermitAll). Without this call, features were collected
+        // but never applied: authorisation was not wired up.
         filters.applyDynamicFeatures(routes);
         var router = new UriRouter(routes);
 
@@ -135,7 +135,7 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
                 try {
                     return bp.getBean(cls);
                 } catch (IllegalArgumentException ignored) {
-                    // fallback: factory or newInstance
+                    // fallback : factory ou newInstance
                 }
             }
             if (factory != null) {
@@ -158,8 +158,8 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
 
         var invoker = new Invoker(resolver, bodies, mappers);
         invoker.setFilters(filters);
-        // §9: lets the Invoker unwrap a CDI bean (real contextual instance)
-        // for @Context injection in @RequestScoped resources (see BeanProvider).
+        // §9: allows the Invoker to de-proxy a CDI bean (actual contextual instance)
+        // for @Context injection into @RequestScoped resources (cf. BeanProvider).
         invoker.setBeanProvider(bp);
 
         var adapter = new DefaultCassiniHttpAdapter(router, invoker);
@@ -167,7 +167,7 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
     }
 
     /**
-     * Walks up the class hierarchy to find the one carrying {@code @Path}
+     * Walks the class hierarchy to find the class carrying {@code @Path}
      * or {@code @Provider}. Required for CDI proxies.
      */
     static Class<?> jaxrsAnnotatedClass(Class<?> c) {

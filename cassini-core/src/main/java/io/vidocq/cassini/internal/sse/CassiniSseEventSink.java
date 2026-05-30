@@ -17,10 +17,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /**
- * Cassini implementation of {@link SseEventSink}: buffers SSE events then
- * exposes the serialized content via {@link #toByteArray()}.
+ * Cassini implementation of {@link SseEventSink}: buffers SSE events
+ * then exposes the serialized content via {@link #toByteArray()}.
  *
- * <p>SSE format (RFC §11.1.5):</p>
+ * <p>Format SSE (RFC §11.1.5) :</p>
  * <pre>
  * id: &lt;id&gt;
  * event: &lt;name&gt;
@@ -33,9 +33,9 @@ import java.util.concurrent.CompletionStage;
 public final class CassiniSseEventSink implements SseEventSink {
 
     private final MessageBodyRegistry registry;
-    /** Buffered mode (Chappe or transport without streaming). */
+    /** Mode bufferisé (Chappe ou transport sans streaming). */
     private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-    /** Streaming mode (JDK or chunked-capable transport), {@code null} = buffered mode. */
+    /** Mode streaming (JDK ou transport chunked-capable), {@code null} = mode bufferisé. */
     private final CassiniStreamingSink streamingSink;
     private volatile boolean closed = false;
     private final java.util.concurrent.CompletableFuture<Void> closeFuture =
@@ -121,7 +121,7 @@ public final class CassiniSseEventSink implements SseEventSink {
 
     /**
      * Blocks the current virtual thread until {@link #close()} is called.
-     * No-op if the sink is already closed. Lets SSE resource methods close
+     * No-op if the sink is already closed. Allows SSE resource methods to close
      * the sink asynchronously (from a background thread).
      */
     public void awaitClose() {

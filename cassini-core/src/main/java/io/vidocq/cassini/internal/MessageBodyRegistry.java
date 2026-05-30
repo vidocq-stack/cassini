@@ -35,7 +35,7 @@ import java.util.Optional;
  *
  * <p>M2c: built-in providers for {@code String}, {@code byte[]},
  * {@code InputStream}, {@code Reader}, {@link StreamingOutput}, {@link File}.
- * User-defined {@code @Provider} scanning arrives in M2f.</p>
+ * User {@code @Provider} scanning comes in M2f.</p>
  */
 public final class MessageBodyRegistry {
 
@@ -63,19 +63,19 @@ public final class MessageBodyRegistry {
         Class<?> boxed = box(type);
         List<MessageBodyReader<?>> candidates = new ArrayList<>();
         for (MessageBodyReader<?> r : readers) {
-            // §4.2.1: pre-filter by the MBR's generic type T.
+            // §4.2.1 : pre-filter by generic type T of the MBR.
             Class<?> rType = resolveProviderType(r.getClass(), MessageBodyReader.class);
             if (rType != null && rType != Object.class && !rType.isAssignableFrom(boxed)) continue;
-            // §4.2.4 step 1: pre-filter by @Consumes ↔ requested media type
-            // compatibility. Without @Consumes, the provider is treated as
-            // @Consumes("*&#47;*") and matches everything.
+            // §4.2.4 step 1 : pre-filter by compatibility @Consumes ↔ media
+            // type requested. Without @Consumes, the provider is considered as
+            // @Consumes("*/*") and matches everything.
             if (!consumesCompatible(r.getClass().getAnnotation(Consumes.class), mt)) continue;
             if (r.isReadable(type, genericType, anns, mt)) candidates.add(r);
         }
         if (candidates.isEmpty()) return Optional.empty();
         // §4.2.4 step 1: sort by @Consumes media type specificity.
         // Stable sort → on ties, providers at the head of the list
-        // (user-provided, inserted at index 0) win over built-ins (at the tail).
+        // (user-provided, inserted at index 0) win over built-ins (at the end).
         candidates.sort(Comparator.comparingInt(
                 (MessageBodyReader<?> r) -> consumesSpecificity(r.getClass().getAnnotation(Consumes.class), mt)
         ).reversed());
@@ -90,7 +90,7 @@ public final class MessageBodyRegistry {
         for (MessageBodyWriter<?> w : writers) {
             Class<?> wType = resolveProviderType(w.getClass(), MessageBodyWriter.class);
             if (wType != null && wType != Object.class && !wType.isAssignableFrom(boxed)) continue;
-            // §4.2.4 step 1 (writer): pre-filter by @Produces ↔ mt compatibility.
+             // §4.2.4 step 1 (writer) : pre-filter by compatibility @Produces ↔ mt.
             if (!producesCompatible(w.getClass().getAnnotation(Produces.class), mt)) continue;
             if (w.isWriteable(type, genericType, anns, mt)) candidates.add(w);
         }
@@ -101,8 +101,8 @@ public final class MessageBodyRegistry {
         return Optional.of((MessageBodyWriter<T>) candidates.get(0));
     }
 
-    /** §4.2.4 step 1: missing @Consumes → implicit wildcard; otherwise one of
-     *  the annotation values must be compatible with the requested media type. */
+    /** §4.2.4 step 1 : @Consumes absent → wildcard implicite ; sinon une des
+     *  valeurs de l'annotation doit être compatible avec le media type demandé. */
     private static boolean consumesCompatible(Consumes consumes, MediaType requested) {
         if (consumes == null || consumes.value().length == 0) return true;
         if (requested == null) return true;
@@ -125,8 +125,8 @@ public final class MessageBodyRegistry {
         return false;
     }
 
-    /** RFC 6839 + §3.5: extends {@link MediaType#isCompatible} to handle
-     *  structured suffixes (e.g. {@code application/*+xml} matches
+    /** RFC 6839 + §3.5 : étend {@link MediaType#isCompatible} pour traiter
+     *  les suffixes structurés (ex : {@code application/*+xml} matche
      *  {@code application/atom+xml}). */
     private static boolean mediaTypeCompatible(MediaType declared, MediaType requested) {
         if (declared.isCompatible(requested)) return true;
@@ -140,8 +140,8 @@ public final class MessageBodyRegistry {
         return false;
     }
 
-    // §4.2.4 step 1: match specificity between declared @Consumes and requested media type.
-    // 0 = wildcard (or no annotation), 1 = type/*, 2 = exact type/subtype.
+    // §4.2.4 step 1 : matching specificity between declared @Consumes and requested media type.
+    // 0 = wildcard (or no annotation), 1 = type/*, 2 = type/subtype exact.
     private static int consumesSpecificity(Consumes consumes, MediaType requested) {
         if (consumes == null || requested == null) return 0;
         int best = 0;
@@ -167,8 +167,8 @@ public final class MessageBodyRegistry {
     }
 
     private void registerBuiltins() {
-        // Built-in providers: appended at the END (user providers, added via
-        // addReader/addWriter, sit at index 0 and win on equal specificity).
+        // Built-in providers: added at the END (user providers, added
+        // via addReader/addWriter, are at index 0 and win on equal specificity).
         writers.add(new ByteArrayWriter());
         writers.add(new StringWriter());
         writers.add(new StreamingOutputWriter());
@@ -198,7 +198,7 @@ public final class MessageBodyRegistry {
         readers.add(new PrimitiveReader());
     }
 
-    /** Optional JSON-B (Yasson): not registered if jakarta.json.bind is absent. */
+    /** JSON-B (Yasson) optional: not registered if jakarta.json.bind is absent. */
     private static boolean jsonbAvailable() {
         return classPresent("jakarta.json.bind.Jsonb");
     }
@@ -317,7 +317,7 @@ public final class MessageBodyRegistry {
         }
     }
 
-    // ---- MultivaluedMap<String,String> for application/x-www-form-urlencoded ----
+    // ---- MultivaluedMap<String,String> pour application/x-www-form-urlencoded ----
     @Consumes("application/x-www-form-urlencoded")
     static final class FormUrlEncodedReader implements MessageBodyReader<MultivaluedMap<String, String>> {
         @Override public boolean isReadable(Class<?> t, Type gt, Annotation[] a, MediaType mt) {
@@ -355,8 +355,8 @@ public final class MessageBodyRegistry {
 
     // ---- Fallback toString ----
     /** Last resort: serializes any entity via {@code String.valueOf(v).getBytes(UTF-8)}.
-     *  Covers arbitrary application types (simple beans, enums, etc.) when the
-     *  client has not registered a dedicated MBW. Consistent with the spirit of
+     *  Covers arbitrary application types (plain beans, enums, etc.) when the
+     *  client has not registered a dedicated MBW. In line with the spirit of
      *  StringMessageBodyWriter extended to any Object. */
     static final class FallbackToStringWriter implements MessageBodyWriter<Object> {
         @Override public boolean isWriteable(Class<?> t, Type gt, Annotation[] a, MediaType mt) { return true; }
@@ -445,7 +445,7 @@ public final class MessageBodyRegistry {
         }
     }
 
-    // ---- JAXB (@XmlRootElement and JAXBElement) ----
+    // ---- JAXB (@XmlRootElement et JAXBElement) ----
     @Produces({"application/xml", "text/xml", "application/*+xml"})
     static final class JaxbWriter implements MessageBodyWriter<Object> {
         @Override public boolean isWriteable(Class<?> t, Type gt, Annotation[] a, MediaType mt) {
@@ -499,8 +499,8 @@ public final class MessageBodyRegistry {
     }
 
     // ---- Primitives / wrappers / BigDecimal / BigInteger / Character ----
-    /** §4.2.3: Number, Boolean, Character, primitives, BigDecimal, BigInteger
-     *  serialized as {@code text/plain} via {@code String.valueOf} / parse. */
+    /** §4.2.3 : Number, Boolean, Character, primitives, BigDecimal, BigInteger
+     *  sérialisés en {@code text/plain} via {@code String.valueOf} / parse. */
     @Produces("text/plain")
     static final class PrimitiveWriter implements MessageBodyWriter<Object> {
         @Override public boolean isWriteable(Class<?> t, Type gt, Annotation[] a, MediaType mt) {
@@ -522,8 +522,8 @@ public final class MessageBodyRegistry {
             Class<?> c = t;
             try {
                 if (c == Boolean.class || c == boolean.class) {
-                    // Boolean.valueOf is permissive — non "true/false" inputs must be rejected
-                    // to comply with §4.2.3 (empty/invalid body → 400).
+                    // Boolean.valueOf is permissive — reject non "true/false" to
+                    // be compliant with §4.2.3 (empty/invalid body → 400).
                     if (!("true".equalsIgnoreCase(s) || "false".equalsIgnoreCase(s))) {
                         throw new jakarta.ws.rs.BadRequestException(
                                 "Invalid Boolean body: '" + s + "'");
@@ -546,7 +546,7 @@ public final class MessageBodyRegistry {
                 if (c == Number.class) return new java.math.BigDecimal(s);
                 return s;
             } catch (NumberFormatException | ArithmeticException e) {
-                // §4.2.4: an unparsable body for a standard MBR → 400.
+                // §4.2.4 : un body inparsable pour un MBR standard → 400.
                 throw new jakarta.ws.rs.BadRequestException(
                         "Invalid body for " + c.getSimpleName() + ": '" + s + "'");
             }
@@ -581,12 +581,12 @@ public final class MessageBodyRegistry {
         return m;
     }
 
-    /** Helper: forces a MultivaluedMap<String, Object> for MBW output. */
+    /** Utilitaire : force un MultivaluedMap<String, Object> pour sortie MBW. */
     public static MultivaluedMap<String, Object> outHeaders() {
         return new MultivaluedHashMap<>();
     }
 
-    /** Helper that suppresses the type-cast required for typed writeTo. */
+    /** Helper qui suppress le type-cast nécessaire au writeTo typé. */
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static void writeTo(MessageBodyWriter w, Object value, Class<?> type,
                                Type genericType, Annotation[] anns, MediaType mt,
@@ -610,7 +610,7 @@ public final class MessageBodyRegistry {
         return (sup == null || sup == Object.class) ? null : resolveProviderType(sup, providerInterface);
     }
 
-    /** Primitive → wrapper boxing for MBR/MBW type comparison. */
+    /** Boxing primitif → wrapper pour comparaison de type MBR/MBW. */
     static Class<?> box(Class<?> t) {
         if (t == boolean.class) return Boolean.class;
         if (t == byte.class)    return Byte.class;

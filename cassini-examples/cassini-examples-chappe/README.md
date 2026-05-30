@@ -1,39 +1,39 @@
 # cassini-examples-chappe
 
-**Mode A pur** — Cassini + transport Chappe, sans CDI.
+**Pure Mode A** — Cassini + Chappe transport, without CDI.
 
-C'est le cas d'usage le plus simple : une application JAX-RS standalone bootstrappée via `SeBootstrap` standard, où chaque ressource est instanciée via son constructeur sans argument à chaque requête.
+This is the simplest use case: a standalone JAX-RS application bootstrapped via the standard `SeBootstrap` API, where each resource is instantiated via its no-arg constructor on each request.
 
-## Lancer
+## Run
 
 ```bash
 mvn -pl cassini-examples/cassini-examples-chappe \
     exec:java -Dexec.mainClass=io.vidocq.cassini.examples.chappe.Main
 ```
 
-ou directement `Main.java` depuis IntelliJ.
+or launch `Main.java` directly from IntelliJ.
 
-Le serveur démarre sur `http://localhost:8080`.
+The server starts on `http://localhost:8080`.
 
 ## Endpoints
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---|---|---|
 | `GET` | `/greetings` | "Hello, World!" (text/plain) |
 | `GET` | `/greetings/{name}` | "Hello, {name}!" |
-| `GET` | `/todos` | Liste des todos (JSON) |
-| `POST` | `/todos` | Crée un todo, retourne 201 + JSON |
-| `GET` | `/todos/{id}` | Récupère un todo, 404 si absent |
-| `PUT` | `/todos/{id}` | Met à jour un todo |
-| `DELETE` | `/todos/{id}` | Supprime un todo, 204 |
+| `GET` | `/todos` | Todo list (JSON) |
+| `POST` | `/todos` | Creates a todo, returns 201 + JSON |
+| `GET` | `/todos/{id}` | Fetches a todo, 404 if not found |
+| `PUT` | `/todos/{id}` | Updates a todo |
+| `DELETE` | `/todos/{id}` | Deletes a todo, 204 |
 
-Le fichier `src/test/resources/http/chappe-examples.http` contient toutes les requêtes pour tester via le HTTP Client d'IntelliJ.
+The file `src/test/resources/http/chappe-examples.http` contains all requests for testing via the IntelliJ HTTP Client.
 
-## Comment ça marche
+## How it works
 
 ### Bootstrap
 
-`Main.java` utilise l'API publique standard `SeBootstrap` :
+`Main.java` uses the standard public `SeBootstrap` API:
 
 ```java
 SeBootstrap.start(new ExamplesApp(),
@@ -41,20 +41,20 @@ SeBootstrap.start(new ExamplesApp(),
         .host("0.0.0.0").port(8080).build());
 ```
 
-Sous le capot :
+Under the hood:
 
-1. **`SeBootstrap.start()`** appelle `RuntimeDelegate.getInstance().bootstrap(app, config)`.
-2. **`RuntimeDelegate.getInstance()`** utilise `ServiceLoader.load(RuntimeDelegate.class)` qui trouve `ChappeRuntimeDelegate` (déclaré dans `cassini-chappe/module-info.java` via `provides RuntimeDelegate with ChappeRuntimeDelegate`).
-3. **`ChappeRuntimeDelegate.bootstrap()`** appelle `CassiniStack.builder().application(app).build()` pour assembler la stack JAX-RS, puis crée un `Server` Chappe et y branche un `ChappeHttpAdapter` pointant sur la stack.
-4. **`ChappeHttpAdapter`** convertit les `Request`/`Response` Chappe en `CassiniHttpExchange` et délègue à `CassiniHttpAdapter.dispatch()`.
+1. **`SeBootstrap.start()`** calls `RuntimeDelegate.getInstance().bootstrap(app, config)`.
+2. **`RuntimeDelegate.getInstance()`** uses `ServiceLoader.load(RuntimeDelegate.class)` which finds `ChappeRuntimeDelegate` (declared in `cassini-chappe/module-info.java` via `provides RuntimeDelegate with ChappeRuntimeDelegate`).
+3. **`ChappeRuntimeDelegate.bootstrap()`** calls `CassiniStack.builder().application(app).build()` to assemble the JAX-RS stack, then creates a Chappe `Server` and attaches a `ChappeHttpAdapter` pointing to the stack.
+4. **`ChappeHttpAdapter`** converts Chappe `Request`/`Response` objects to `CassiniHttpExchange` and delegates to `CassiniHttpAdapter.dispatch()`.
 
-### Pas de CDI
+### No CDI
 
-Aucun `BeanProvider` n'est sur le classpath, donc l'auto-discovery dans `CassiniStack.builder()` ne trouve rien. Le résolveur tombe en mode "Mode A" : `clazz.getDeclaredConstructor().newInstance()` à chaque requête. Les ressources doivent avoir un constructeur public sans argument.
+No `BeanProvider` is on the classpath, so auto-discovery in `CassiniStack.builder()` finds nothing. The resolver falls back to "Mode A": `clazz.getDeclaredConstructor().newInstance()` on each request. Resources must have a public no-arg constructor.
 
-### Stockage Todo
+### Todo storage
 
-`TodoResource` utilise une `ConcurrentHashMap` statique — les données vivent dans la JVM, partagées entre toutes les requêtes. Pour un vrai cas d'usage il faudrait un service injecté (voir `cassini-examples-vauban`).
+`TodoResource` uses a static `ConcurrentHashMap` — data lives in the JVM, shared across all requests. For a real use case an injected service should be used (see `cassini-examples-vauban`).
 
 ## Tests
 
@@ -62,12 +62,12 @@ Aucun `BeanProvider` n'est sur le classpath, donc l'auto-discovery dans `Cassini
 mvn -pl cassini-examples/cassini-examples-chappe test
 ```
 
-10 tests : `GreetingResourceTest` (3) + `TodoResourceTest` (7).
+10 tests: `GreetingResourceTest` (3) + `TodoResourceTest` (7).
 
-`ExampleServer` démarre Cassini sur un port aléatoire pour chaque suite de tests, `HttpClient` JDK envoie de vraies requêtes HTTP.
+`ExampleServer` starts Cassini on a random port for each test suite; the JDK `HttpClient` sends real HTTP requests.
 
-## Voir aussi
+## See also
 
-- [`cassini-examples-jdkhttp`](../cassini-examples-jdkhttp) — même chose mais sans Chappe (transport JDK natif).
-- [`cassini-examples-vauban`](../cassini-examples-vauban) — version avec CDI Vauban + UI statique.
-- [`cassini-examples/README.md`](../README.md) — vue d'ensemble et mécanisme de découverte des transports.
+- [`cassini-examples-jdkhttp`](../cassini-examples-jdkhttp) — same thing but without Chappe (native JDK transport).
+- [`cassini-examples-vauban`](../cassini-examples-vauban) — version with Vauban CDI + static UI.
+- [`cassini-examples/README.md`](../README.md) — overview and transport discovery mechanism.

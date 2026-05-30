@@ -26,10 +26,10 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Cassini implementation of {@link ClientBuilder} — discovered via
- * {@code META-INF/services/jakarta.ws.rs.client.ClientBuilder} (classpath) and via
- * JPMS {@code provides} (module-path).
+ * {@code META-INF/services/jakarta.ws.rs.client.ClientBuilder} (classpath) and
+ * via {@code provides} JPMS (module-path).
  *
- * <p>The public no-arg constructor is required by the
+ * <p>The nullary public constructor is required by the
  * {@code java.util.ServiceLoader} contract.</p>
  */
 public final class CassiniClientBuilder extends ClientBuilder {
@@ -104,9 +104,9 @@ public final class CassiniClientBuilder extends ClientBuilder {
     public Client build() {
         CassiniClient client = new CassiniClient(configuration, sslContext, hostnameVerifier);
         // Auto-discovery of jakarta.ws.rs.core.Feature via ServiceLoader:
-        // lets third-party modules (humboldt-rest, future OTel/auth/log filters)
+        // allows third-party modules (humboldt-rest, future OTel/auth/log filters) to
         // self-register without explicit caller intervention. MP Telemetry 2.1
-        // mandates this behaviour for tests that call ClientBuilder.newClient() bare.
+        // requires this behavior for tests that call ClientBuilder.newClient() directly.
         CassiniClientFeatureContext featureCtx = new CassiniClientFeatureContext(client);
         for (Feature feature : ServiceLoader.load(Feature.class, Thread.currentThread().getContextClassLoader())) {
             if (configuration.isRegistered(feature.getClass())) continue;

@@ -1,25 +1,25 @@
 # vidocq-rest-cassini-tck-runner
 
-Harness de conformance **Jakarta RESTful Web Services 4.0** pour l'extension
-Cassini. Module Maven **volontairement hors du reactor** principal Vidocq —
-cf. `vidocq-core-extensions/pom.xml`.
+**Jakarta RESTful Web Services 4.0** conformance harness for the
+Cassini extension. Maven module **intentionally outside** the main Vidocq
+reactor — see `vidocq-core-extensions/pom.xml`.
 
-## Pourquoi hors reactor ?
+## Why outside the reactor?
 
-Le TCK officiel Jakarta REST 4.0 tire transitivement **ShrinkWrap Maven
-Resolver 3.3**, qui s'appuie sur `maven-resolver 1.9` et `maven-model 3.9`.
-Ces versions ne savent pas parser les POMs `Model 4.1.0` du reactor Vidocq —
-ShrinkWrap's `ClasspathWorkspaceReader` crashe avec
+The official Jakarta REST 4.0 TCK transitively pulls **ShrinkWrap Maven
+Resolver 3.3**, which relies on `maven-resolver 1.9` and `maven-model 3.9`.
+These versions cannot parse the Vidocq reactor's `Model 4.1.0` POMs —
+ShrinkWrap's `ClasspathWorkspaceReader` crashes with
 `Bad artifact coordinates ... jar:`.
 
-La solution retenue (identique à `vidocq-servlet-chappe-tck-runner`) :
-projet Maven autonome en `Model 4.0.0`, dépendances internes gelées sur la
-version `0.1.0-SNAPSHOT` installée dans le repo M2 local.
+The chosen solution (identical to `vidocq-servlet-chappe-tck-runner`):
+a standalone Maven project in `Model 4.0.0`, with internal dependencies pinned to
+the `0.1.0-SNAPSHOT` version installed in the local M2 repository.
 
-## Installation des artefacts TCK
+## Installing TCK artifacts
 
-Les JAR du TCK officiel ne sont pas sur Maven Central. À récupérer une fois
-depuis l'Eclipse Foundation puis à installer en local :
+The official TCK JARs are not on Maven Central. Download them once
+from the Eclipse Foundation and then install them locally:
 
 ```bash
 curl -Lo /tmp/restful-ws-tck.zip \
@@ -31,37 +31,37 @@ mvn install:install-file \
   -DgroupId=jakarta.tck -DartifactId=jakarta-restful-ws-tck -Dversion=4.0.0 -Dpackaging=jar
 ```
 
-(Si la structure du zip diffère, adapter les chemins.)
+(If the zip structure differs, adjust the paths.)
 
-## Lancement
+## Running
 
-Depuis la racine du projet Vidocq :
+From the root of the Vidocq project:
 
 ```bash
 ./run-official-tck-restful-4.0.sh                     # smoke test
-./run-official-tck-restful-4.0.sh all                 # suite complète
-./run-official-tck-restful-4.0.sh -Dtest=SomeTests    # classe ciblée
+./run-official-tck-restful-4.0.sh all                 # full suite
+./run-official-tck-restful-4.0.sh -Dtest=SomeTests    # targeted class
 ```
 
-Le script :
-1. Installe les modules Vidocq en M2 local (`mvn install` du reactor).
-2. Se place dans `vidocq-core-extensions/vidocq-rest-cassini-tck-runner`.
-3. Lance `mvn -Ptck-official verify` (ou `-Dtest=` si ciblé).
+The script:
+1. Installs the Vidocq modules into the local M2 (`mvn install` of the reactor).
+2. Moves into `vidocq-core-extensions/vidocq-rest-cassini-tck-runner`.
+3. Runs `mvn -Ptck-official verify` (or `-Dtest=` if targeted).
 
-## Architecture du harness
+## Harness architecture
 
-| Composant | Rôle |
+| Component | Role |
 |---|---|
-| `CassiniTestHarness` | Monte Chappe + Cassini sur un port éphémère à partir d'une liste de classes `@Path`. |
-| `VidocqCassiniDeployableContainer` | Adaptateur Arquillian : scanne `WEB-INF/classes/` du WAR TCK, extrait les classes `@Path`, les charge dans un harness. |
-| `VidocqContainerExtension` | Enregistre le container via le SPI `LoadableExtension`. |
-| `VidocqContainerConfiguration` | Accepte l'hôte via `arquillian.xml`. |
-| `arquillian.xml` | Paramétrage du container (hôte par défaut `127.0.0.1`). |
+| `CassiniTestHarness` | Mounts Chappe + Cassini on an ephemeral port from a list of `@Path` classes. |
+| `VidocqCassiniDeployableContainer` | Arquillian adapter: scans `WEB-INF/classes/` from the TCK WAR, extracts `@Path` classes, loads them into a harness. |
+| `VidocqContainerExtension` | Registers the container via the `LoadableExtension` SPI. |
+| `VidocqContainerConfiguration` | Accepts the host via `arquillian.xml`. |
+| `arquillian.xml` | Container configuration (default host `127.0.0.1`). |
 
-## Statut
+## Status
 
-- Smoke test `CassiniHarnessSmokeTest` : valide que le harness démarre et
-  répond à une requête `GET /ping`.
-- TCK officiel : **scaffolding en place** (profile `tck-official`). L'exécution
-  réelle et l'itération jalon par jalon démarrent dès que les artefacts TCK
-  sont installés localement.
+- Smoke test `CassiniHarnessSmokeTest`: validates that the harness starts and
+  answers a `GET /ping` request.
+- Official TCK: **scaffolding in place** (`tck-official` profile). Actual
+  execution and milestone-by-milestone iteration start as soon as the TCK
+  artifacts are installed locally.

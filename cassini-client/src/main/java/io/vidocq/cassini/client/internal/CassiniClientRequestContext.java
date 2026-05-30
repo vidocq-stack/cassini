@@ -33,13 +33,13 @@ import java.util.Map;
 import java.util.function.Predicate;
 
 /**
- * Mutable {@link ClientRequestContext} implementation — feeds the
- * {@link jakarta.ws.rs.client.ClientRequestFilter}s which can mutate URI, method,
- * headers, entity, properties. {@code abortWith(Response)} aborts the chain
+ * Mutable implementation of {@link ClientRequestContext} — feeds the
+ * {@link jakarta.ws.rs.client.ClientRequestFilter}s that can mutate URI, method,
+ * headers, entity, properties. {@code abortWith(Response)} interrupts the chain
  * and short-circuits the transport (the aborted response is returned to the caller).
  *
- * <p>Methods backed by Date/Locale/Cookies/Annotations return values derived from
- * the headers — no cache. The context is created once per call to
+ * <p>The methods related to Date/Locale/Cookies/Annotations return values
+ * derived from the headers — no caching. The context is created once per
  * {@code CassiniInvocationBuilder.invoke(method, entity)}.</p>
  */
 final class CassiniClientRequestContext implements ClientRequestContext {

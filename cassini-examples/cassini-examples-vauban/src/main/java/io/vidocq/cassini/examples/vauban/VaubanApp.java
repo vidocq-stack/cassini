@@ -9,12 +9,12 @@ import io.vidocq.chappe.api.StaticFileHandler;
 import jakarta.ws.rs.core.Application;
 
 /**
- * Composes the Chappe {@link Handler} serving the static UI on {@code /} and
- * the Cassini REST API on {@code /api/*}.
+ * Composes the {@link Handler} Chappe serving the static UI at {@code /}
+ * and the Cassini REST API at {@code /api/*}.
  *
- * <p>Composite handler pattern: depending on the incoming {@code path}, dispatches
- * to the static handler (reading from {@code classpath:/static/}) or to the
- * {@link ChappeHttpAdapter} which points to {@link CassiniStack}.</p>
+ * <p>Composite handler pattern: depending on the incoming {@code path}, requests
+ * are dispatched either to the static handler (reading from {@code classpath:/static/})
+ * or to the {@link ChappeHttpAdapter} pointing at {@link CassiniStack}.</p>
  */
 public final class VaubanApp {
 
@@ -27,7 +27,7 @@ public final class VaubanApp {
         var stack = CassiniStack.builder().application(new Application() {}).build();
         Handler cassini = new ChappeHttpAdapter(stack.adapter());
         // Chappe natively provides a StaticFileHandler with classpath support,
-        // default index.html, and an in-memory cache for small resources.
+        // default index.html, in-memory cache for small resources.
         Handler statique = StaticFileHandler.builder()
                 .addClasspath("static")
                 .cacheInMemory(true)
@@ -35,7 +35,7 @@ public final class VaubanApp {
         return composite(statique, cassini);
     }
 
-    /** Combined handler: {@code /api/*} to Cassini (strip), otherwise to static (pathInfo=path). */
+    /** Handler combiné : {@code /api/*} → Cassini (strip), sinon → statique (pathInfo=path). */
     private static Handler composite(Handler staticH, Handler cassiniH) {
         return req -> {
             String path = req.path() == null ? "/" : req.path();
@@ -44,15 +44,15 @@ public final class VaubanApp {
                 if (stripped.isEmpty()) stripped = "/";
                 return cassiniH.handle(stripContext(req, API_PREFIX, stripped));
             }
-            // StaticFileHandler uses pathInfo() — we ensure it is filled in.
-            // Rewrite / to /index.html (the internal indexFile fallback is broken
+            // StaticFileHandler uses pathInfo() — we guarantee it is set.
+            // Rewrite / → /index.html (the internal indexFile fallback is broken
             // when getResource("static/") returns the directory URL in classpath mode).
             String resolved = (path.endsWith("/")) ? path + "index.html" : path;
             return staticH.handle(stripContext(req, "", resolved));
         };
     }
 
-    /** Wraps the request, rewriting {@code path()} and {@code pathInfo()}. */
+    /** Wraps the request by rewriting {@code path()} and {@code pathInfo()}. */
     private static Request stripContext(Request req, String prefix, String newPath) {
         return new Request() {
             @Override public io.vidocq.chappe.api.HttpMethod method()  { return req.method(); }

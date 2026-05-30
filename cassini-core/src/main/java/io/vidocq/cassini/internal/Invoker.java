@@ -35,30 +35,29 @@ import java.util.function.Function;
 
 /**
  * Executes a {@link ResourceMethod}: content negotiation, body reading via
- * {@link MessageBodyReader}, invocation, serialization via
+ * {@link MessageBodyReader}, invocation, and serialization via
  * {@link MessageBodyWriter}.
  */
 public final class Invoker {
 
-    /** Context exposed during {@link #resolver} call so resolvers (e.g. TCK
-     *  harness) can create instances with constructor injection §3.1.1.
+    /** Context exposed during the {@link #resolver} call to let resolvers
+     *  (e.g. TCK harnesses) create instances with constructor injection
+     *  §3.1.1.
      *
-     *  <p>TODO(M2h): migrate to a portable virtual-thread-safe
-     *  {@code RequestContext} (ScopedValue or context attached to the
-     *  {@link CassiniHttpExchange}). ThreadLocal breaks on virtual threads
-     *  when the Invoker yields. */
+     *  <p>TODO(M2h): migrate to a portable virtual-thread-safe {@code RequestContext}
+     *  (ScopedValue or context attached to {@link CassiniHttpExchange}).
+     *  ThreadLocals break with virtual threads when the Invoker yields. */
     public static final ThreadLocal<MatchResult> CURRENT_MATCH = new ThreadLocal<>();
     public static final ThreadLocal<CassiniHttpExchange> CURRENT_REQUEST = new ThreadLocal<>();
-    /** Exchange attribute key for the matched-instances chain (M2h). */
+    /** Exchange attribute key for the matched-instance chain (M2h). */
     public static final String ATTR_MATCHED_RESOURCES = "cassini.matched_resources";
 
     private final Function<Class<?>, Object> resolver;
     private final MessageBodyRegistry registry;
     private final ExceptionMapperRegistry exceptionMappers;
     private FilterRegistry filters = new FilterRegistry();
-    /** Optional — lets us unwrap a CDI bean (real contextual instance)
-     *  before {@code @Context} injection. {@code null} in {@code newInstance}
-     *  mode. */
+    /** Optional — allows de-proxying a CDI bean (real contextual instance)
+     *  before {@code @Context} injection. {@code null} in {@code newInstance} mode. */
     private io.vidocq.cassini.spi.bean.BeanProvider beanProvider;
 
     public void setFilters(FilterRegistry f) { this.filters = f == null ? new FilterRegistry() : f; }
@@ -67,12 +66,10 @@ public final class Invoker {
 
     /**
      * {@code @Context} injection target for a resolved instance: the real
-     * contextual instance behind any CDI client proxy (see
-     * {@code BeanProvider#contextualInstance}). The resource method is still
-     * invoked on the original object (the proxy), which delegates to this
-     * same instance in the active scope — without that, {@code @Context}
-     * fields injected reflectively on the proxy are never seen by the
-     * method body.
+     * contextual instance behind a possible CDI client proxy (cf. {@code BeanProvider#contextualInstance}).
+     * The resource method invocation still runs on the original object (the proxy), which
+     * delegates to that same instance in the active scope — otherwise {@code @Context}
+     * fields injected reflectively on the proxy are never seen by the method body.
      */
     private Object injectionTarget(Class<?> beanClass, Object resolved) {
         return (beanProvider != null && resolved != null)
@@ -101,8 +98,8 @@ public final class Invoker {
         return invoke(java.util.List.of(match), request);
     }
 
-    /** Resolves the best route among candidates based on the request's
-     *  Accept/Content-Type (§3.7.2). Forwards to the canonical
+    /** Resolves the best route among candidates according to the request
+     *  Accept/Content-Type (§3.7.2). Then calls the canonical
      *  invoke(MatchResult, Request) with the winner. */
     public CassiniHttpResponse invoke(java.util.List<MatchResult> candidates, CassiniHttpExchange request) throws Exception {
         if (candidates.isEmpty()) throw new IllegalArgumentException("no candidates");
@@ -129,15 +126,15 @@ public final class Invoker {
                 io.vidocq.cassini.internal.runtime.CassiniResponseBuilder.setBaseUri(base);
             } catch (Exception ignored) {}
             // §3.4.1 dynamic dispatch: the route emitted for a sub-resource locator
-            // returning Object is resolved at runtime — invoke the chain, scan the
-            // effective class of the returned instance, then dispatch.
+            // returning Object is resolved at runtime — invoke the chain,
+            // scan the effective class of the returned instance, then delegate.
             if (route.dynamicLocator()) {
                 return invokeDynamicLocator(match, request);
             }
             CassiniHttpResponse resp = invokeInternal(match, request, route);
             // §5.1: if Request.selectVariant was called during invocation,
-            // its negotiation dimensions are stored in the PENDING_VARY
-            // exchange attribute → add them to the response Vary header.
+            // its negotiation dimensions are stored in exchange attribute
+            // PENDING_VARY → add them to the response Vary header.
             return applyPendingVary(resp, request);
         } finally {
             ParamExtractor.clearProviders();
@@ -156,7 +153,7 @@ public final class Invoker {
         var dims = (java.util.Set<String>) request.getAttribute(
                 io.vidocq.cassini.internal.context.CassiniRequest.ATTR_PENDING_VARY);
         if (dims == null || dims.isEmpty()) return resp;
-        // Rebuild the Response with the extra Vary header.
+        // Rebuild the Response with the additional Vary header.
         var b = CassiniHttpResponse.builder().status(resp.status()).body(resp.body());
         boolean hasVary = false;
         for (var e : resp.headers().entrySet()) {
@@ -169,10 +166,10 @@ public final class Invoker {
         return b.build();
     }
 
-    /** §3.4.1: runs the chain of a dynamic-locator (return Object), scans
-     *  the effective class of the returned instance, and delegates the
-     *  sub-routing to an ephemeral mini-router. If the sub-method is itself
-     *  a dynamic locator (Object → Object → final), recurses. */
+    /** §3.4.1: executes a dynamic-locator chain (return Object), scans
+     *  the effective class of the returned instance, and delegates sub-routing
+     *  to a temporary mini-router. If the sub-method is itself a dynamic
+     *  locator (Object → Object → final), recurse. */
     private CassiniHttpResponse invokeDynamicLocator(MatchResult match, CassiniHttpExchange request) throws Exception {
         ResourceMethod route = match.method();
         // 1. Instantiate root + invoke the locator chain
@@ -220,7 +217,7 @@ public final class Invoker {
             injectFields(intermediate.getClass(), intermediate, match, request, false);
             matched.add(0, intermediate);
         }
-        // 2. Compute the remaining path from the {__rest:.*} capture
+        // 2. Compute the remaining path from capture {__rest:.*}
         String rest = "";
         if (match.pathParams().containsKey("__rest")) {
             var vs = match.pathParams().get("__rest");
@@ -230,17 +227,17 @@ public final class Invoker {
         return dispatchOnInstance(intermediate, remaining, request, matched);
     }
 
-    /** §3.4.1: dynamically scans {@code instance.getClass()} and resolves
-     *  the best route for {@code remaining}+request HTTP method. Reuses
-     *  {@link #invokeInternal} by passing the already-created instance via
-     *  an ad-hoc resolver to avoid a re-instantiation. */
+    /** §3.4.1: dynamically scans {@code instance.getClass()} and resolves the
+     *  best route for {@code remaining}+request HTTP method.
+     *  Reuses {@link #invokeInternal} while passing the already-created instance
+     *  via an ad-hoc resolver to avoid re-instantiation. */
     private CassiniHttpResponse dispatchOnInstance(Object instance, String remaining, CassiniHttpExchange request,
                                         java.util.List<Object> matchedSoFar) throws Exception {
         Class<?> cls = instance.getClass();
-        // §3.6: if the runtime class lacks @Path at the root, simulate it
-        // by adding @Path("") via a scan wrapper. ResourceScanner.discover
-        // requires @Path on the class — work around by scanning locators
-        // from a fake locator-chain.
+        // §3.6: if the runtime class has no root @Path, simulate it by
+        // adding @Path("") through a scan wrapper. ResourceScanner.discover
+        // requires @Path on the class — work around that by scanning locators
+        // from a fake locator chain.
         java.util.List<ResourceMethod> subRoutes = scanInstanceClass(cls);
         if (subRoutes.isEmpty()) {
             return renderWebAppException(new jakarta.ws.rs.NotFoundException(),
@@ -263,16 +260,16 @@ public final class Invoker {
         }
         MatchResult subMatch = pickBestMatch(subCandidates, request);
         ResourceMethod subRoute = subMatch.method();
-        // Recursion if the sub-route is itself a dynamic-locator
+        // Recurse if the sub-route is itself a dynamic locator
         if (subRoute.dynamicLocator()) {
-            // Back off one level: invoke the sub-chain on the current instance
+            // Move up one level: invoke the sub-chain on the current instance
             return invokeDynamicLocatorWithInstance(subMatch, request, instance, matchedSoFar);
         }
-        // Invoke the final method on the current instance via an ad-hoc resolver
+        // Invoke the final method on the current instance through an ad-hoc resolver
         return invokeFinalOnInstance(subMatch, request, instance, matchedSoFar);
     }
 
-    /** Variant of {@link #invokeDynamicLocator} that starts from an already
+    /** Variant of {@link #invokeDynamicLocator} starting from an already
      *  resolved instance (instead of the root class). */
     private CassiniHttpResponse invokeDynamicLocatorWithInstance(MatchResult match, CassiniHttpExchange request,
                                                       Object startInstance,
@@ -283,10 +280,10 @@ public final class Invoker {
         CURRENT_REQUEST.set(request);
         request.setAttribute(ATTR_MATCHED_RESOURCES, matchedSoFar);
         for (java.lang.reflect.Method locStep : route.locatorChain()) {
-            // Skip locators already executed (present at the top of the chain
-            // of the current instance). We recognize an already-done locator
-            // by its declaration on an "ancestor" class; here we have none
-            // because the scan restarted on intermediate.getClass(), so we
+            // Skip locators already executed (present at the top of the current
+            // instance chain). A locator already run is recognized by being
+            // declared on an "ancestor" class; here there are none,
+            // because scanning restarted from intermediate.getClass(), so we
             // execute the whole sub-chain.
             Parameter[] lps = locStep.getParameters();
             Object[] lArgs = lps.length == 0 ? new Object[0]
@@ -325,16 +322,15 @@ public final class Invoker {
         return dispatchOnInstance(intermediate, remaining, request, matchedSoFar);
     }
 
-    /** Invokes the final method of a sub-route passing {@code instance}
-     *  as the target (instead of re-instantiating via {@code resolver}).
-     *  Uses an ad-hoc resolver that returns the instance for the expected
-     *  class. */
+    /** Invokes the final method of a sub-route using {@code instance}
+     *  as the target (instead of re-instantiating via {@code resolver}). Uses
+     *  an ad-hoc resolver that returns the instance for the expected class. */
     private CassiniHttpResponse invokeFinalOnInstance(MatchResult match, CassiniHttpExchange request,
                                            Object instance,
                                            java.util.List<Object> matchedSoFar) throws Exception {
         ResourceMethod route = match.method();
-        // Reproduce here a subset of the flow (no filters, no pre/post-matching
-        // for this synthetic dynamic-dispatch route).
+        // Reproduce a subset of the flow here (no filters, no
+        // pre/post-matching for this synthetic dynamic-dispatch route).
         // §3.7.2 Accept/Content-Type negotiation applied.
         String ctHeader = request.firstHeader("Content-Type");
         MediaType contentType = MediaTypes.parse(ctHeader);
@@ -366,7 +362,7 @@ public final class Invoker {
             return renderWebAppException(wae, route, chosen, null);
         }
 
-        // §3.4.1: sub-resource via dynamic locator → no @*Param injection
+        // §3.4.1 : sub-resource via dynamic locator → pas d'injection @*Param
         injectFields(instance.getClass(), instance, match, request, false);
         Object result;
         // P1b: use the bean class of the route (not the dynamic instance class) for adapter lookup
@@ -389,11 +385,11 @@ public final class Invoker {
             }
         }
         if (result instanceof java.util.concurrent.CompletionStage<?> cs) {
-            // TODO(M2h): propagate the non-blocking stage down to the transport
-            // (CassiniHttpAdapter.dispatch already returns CompletionStage<Void>).
-            // This try/get block is isolated via Async.awaitBlocking in all other
-            // occurrences; kept inline here because the WAE branch must be
-            // handled locally (renderWebAppException).
+            // TODO(M2h): propagate the non-blocking stage all the way to the transport
+            // (cf. CassiniHttpAdapter.dispatch returns CompletionStage<Void>).
+            // This try/get block is isolated via Async.awaitBlocking in all
+            // other occurrences; we keep it inline here because the WAE branch
+            // must be handled locally (renderWebAppException).
             try { result = cs.toCompletableFuture().get(); }
             catch (java.util.concurrent.ExecutionException ee) {
                 Throwable cause = ee.getCause();
@@ -411,28 +407,28 @@ public final class Invoker {
     }
 
     /** Scans {@code cls} as a resource class (implicit @Path("") added if
-     *  missing) to produce local routes. Used in dynamic dispatch where the
-     *  class comes from a runtime sub-resource locator, without a root @Path. */
+     *  missing) to produce local routes. Used in dynamic dispatch when the class
+     *  comes from a runtime sub-resource locator, without a root @Path. */
     private static java.util.List<ResourceMethod> scanInstanceClass(Class<?> cls) {
         // ResourceScanner.discover requires @Path on the class; for sub-resource
-        // classes without @Path, simulate via scanLocatorType from basePath="/".
+        // classes without @Path, simulate it via scanLocatorType from basePath="/".
         // But scanLocatorType is private — use the standard workaround:
-        // discover() works if the class has a @Path. If it doesn't, use
-        // light reflection to build the routes.
+        // discover() works if the class has @Path. If it does not, we
+        // use light reflection to build routes.
         Path p = cls.getAnnotation(Path.class);
         if (p != null) {
-            // The class itself is @Path → scan normally and strip the
-            // class prefix (routing happens on remaining which lacks the
-            // root @Path).
+            // The class is itself @Path → scan normally and
+            // strip the prefix corresponding to the class (routing is done
+            // on remaining which does not have the root @Path).
             return ResourceScanner.discover(cls);
         }
         return scanSubResourceClass(cls);
     }
 
-    /** Scans a sub-resource class (without root @Path) producing
-     *  ResourceMethods with template = @Path(method) only (resource methods
-     *  + sub locators). No recursion on locators returning Object — they
-     *  emit dynamic routes in turn. */
+    /** Scans a sub-resource class (without a root @Path) by producing
+     *  ResourceMethods whose template is only @Path(method) (resource methods + sub
+     *  locators). No recursion for locators returning Object —
+     *  they emit dynamic routes in turn. */
     private static java.util.List<ResourceMethod> scanSubResourceClass(Class<?> cls) {
         java.util.List<ResourceMethod> out = new java.util.ArrayList<>();
         for (java.lang.reflect.Method m : cls.getMethods()) {
@@ -455,8 +451,8 @@ public final class Invoker {
             Class<?> ret = m.getReturnType();
             if (ret == void.class || ret == null) continue;
             m.setAccessible(true);
-            // Chain contains just this method; the current dispatcher will
-            // invoke it on the already-resolved instance (not via root).
+            // chain contains only this method; the current dispatcher
+            // will invoke it on the already-resolved instance (not through root).
             java.util.List<java.lang.reflect.Method> chain = java.util.List.of(m);
             out.add(new ResourceMethod(Object.class, m, "*",
                     UriTemplate.compile(path),
@@ -491,14 +487,14 @@ public final class Invoker {
     }
 
     /**
-     * §6.6.1: result of running the pre-matching filters.
+     * §6.6.1: result of pre-matching filter execution.
      * Contains either a stop {@code response} (abortWith or mapped
-     * exception) or (if {@code response == null}) the mutable context
-     * used to re-run routing with possibly modified method/URI.
+     * exception), or (if {@code response == null}) the mutable context used
+     * to restart routing with possibly modified method/URI.
      */
     public record PreMatchResult(CassiniHttpResponse response, CassiniRequestContext ctx) {}
 
-    /** §6.6.1: runs the pre-matching filters before routing. */
+    /** §6.6.1: executes pre-matching filters before routing. */
     public PreMatchResult runPreMatching(CassiniHttpExchange request) throws Exception {
         if (filters.preMatching().isEmpty()) return new PreMatchResult(null, null);
         ParamExtractor.setProviders(new io.vidocq.cassini.internal.context.CassiniProviders(
@@ -528,8 +524,8 @@ public final class Invoker {
 
     private CassiniHttpResponse invokeInternal(MatchResult match, CassiniHttpExchange request, ResourceMethod route) throws Exception {
 
-        // 0. Pre-matching request filters §6.6 — run before any
-        //    negotiation. If they throw, route through ExceptionMapper.
+        // 0. Pre-matching request filters §6.6 — executed before any
+        //    negotiation. If they throw, go through ExceptionMapper.
         CassiniRequestContext preCtx = null;
         if (!filters.preMatching().isEmpty()) {
             preCtx = new CassiniRequestContext(request, new CassiniUriInfo(
@@ -558,7 +554,7 @@ public final class Invoker {
         // §3.7.2: if the request has a Content-Type or a body, filter on @Consumes.
         boolean checkConsumes = hasRequestBody(request) || ctHeader != null;
         if (checkConsumes && !consumes.isEmpty() && !MediaTypes.consumesMatches(contentType, consumes)) {
-            // §3.7.2: 415 via WAE so the ExceptionMapper can intercept.
+            // §3.7.2: 415 via WAE so ExceptionMapper can intercept.
             return renderWebAppException(new jakarta.ws.rs.NotSupportedException(), route, null, null);
         }
 
@@ -570,8 +566,8 @@ public final class Invoker {
         }
         MediaType chosen = negotiated.orElse(MediaType.WILDCARD_TYPE);
 
-        // §8.2: @Suspended AsyncResponse — create the impl BEFORE param extraction
-        // so ParamExtractor can inject it via the exchange attribute.
+        // §8.2: @Suspended AsyncResponse — create the impl BEFORE parameter extraction
+        // so ParamExtractor can inject it through the exchange attribute.
         CassiniAsyncResponseImpl asyncResponse = null;
         for (java.lang.reflect.Parameter p : route.javaMethod().getParameters()) {
             if (p.getAnnotation(jakarta.ws.rs.container.Suspended.class) != null
@@ -592,9 +588,9 @@ public final class Invoker {
                 Parameter p = route.javaMethod().getParameters()[resolved.bodyIndex()];
                 // §4.2.4: Standard providers MUST return a non-null object
                 // even for an empty body (String=="", byte[]=new byte[0],
-                // InputStream=empty stream, …). So always read via MBR
-                // when a body param is present.
-                // §4.2.4 (cont.): for MBR selection, the default when
+                // InputStream=empty stream, ...). So we always read through an MBR
+                // when a body parameter is present.
+                // §4.2.4 (continued): for MBR selection, the default when
                 // Content-Type is absent is application/octet-stream.
                 MediaType readMt = (ctHeader == null) ? MediaType.APPLICATION_OCTET_STREAM_TYPE : contentType;
                 args[resolved.bodyIndex()] = readEntity(p, readMt, request, route);
@@ -603,7 +599,7 @@ public final class Invoker {
             return renderWebAppException(wae, route, chosen, null);
         } catch (RuntimeException | java.io.IOException re) {
             // §4.4: MessageBodyReader / ReaderInterceptor may throw
-            // (RuntimeException or IOException) → try the ExceptionMapper.
+            // (RuntimeException or IOException) → try ExceptionMapper.
             CassiniHttpResponse mapped = mapFilterThrowable(re, route, chosen, preCtx);
             if (mapped != null) return mapped;
             if (re instanceof RuntimeException rrt) throw rrt;
@@ -611,17 +607,17 @@ public final class Invoker {
         }
 
         // 3. Post-matching request filters — mark the context as
-        //    post-matching before they run so the protected setters
-        //    (setRequestUri, setMethod, etc.) throw ISE per §6.6.
+        //    post-matching before execution so protected setters
+        //    (setRequestUri, setMethod, etc.) throw ISE §6.6.
         CassiniRequestContext rctx = null;
         if (!filters.postMatching().isEmpty() || !filters.responseFilters().isEmpty()) {
             rctx = new CassiniRequestContext(request, new CassiniUriInfo(
                     request, request.contextPath(), match.pathParams()));
             rctx.markPostMatching();
-            // §9.2: set CURRENT_MATCH/REQUEST so that injectProviderContexts can
+            // §9.2: set CURRENT_MATCH/REQUEST so injectProviderContexts can
             // populate provider @Context fields (ResourceInfo, UriInfo, etc.).
-            // Note: for singleton filters, in-place writes into shared fields
-            // are not thread-safe — acceptable until we have a per-thread proxy.
+            // Note: for singleton filters, in-place writes to shared fields
+            // are not thread-safe — acceptable as long as we have no per-thread proxy.
             CURRENT_MATCH.set(match);
             CURRENT_REQUEST.set(request);
             for (var fe : filters.postMatching()) {
@@ -669,8 +665,8 @@ public final class Invoker {
                                 new WebApplicationException("Sub-resource locator returned null", 404),
                                 route, chosen, rctx);
                     }
-                    // §3.4.2: a locator may return Class<T> — the runtime
-                    // instantiates the class via the no-arg constructor.
+                    // §3.4.2: a locator may return Class<T> — runtime
+                    // instantiates the class through its no-arg constructor.
                     // M6a: prefer generated adapter newInstance() over reflection
                     if (intermediate instanceof Class<?> cls) {
                         Object created = instantiateSubResourceClass(cls, route, chosen, rctx);
@@ -683,7 +679,7 @@ public final class Invoker {
                 target = intermediate;
             } else {
                 target = resolver.apply(route.beanClass());
-                // §9: inject @Context into the real contextual instance (unwrapped),
+                // §9: inject @Context into the real contextual instance (de-proxied),
                 // but invoke the method on `target` (the CDI proxy delegates to that instance).
                 injectFields(route.beanClass(), injectionTarget(route.beanClass(), target), match, request, true);
                 matched.add(target);
@@ -699,8 +695,8 @@ public final class Invoker {
             throw new RuntimeException(cause);
         }
         Object result;
-        // §11.1: if the method has an SseEventSink parameter, replace the
-        // arg with our instance (CassiniSseEventSink). In streaming mode
+        // §11.1: if the method has an SseEventSink parameter, replace
+        // the arg with our instance (CassiniSseEventSink). In streaming mode
         // (JDK transport), events are written directly to the wire.
         io.vidocq.cassini.internal.sse.CassiniSseEventSink sseSink = null;
         Parameter[] params = route.javaMethod().getParameters();
@@ -769,7 +765,7 @@ public final class Invoker {
         }
 
         // §9.2: CompletionStage<T> returned by a resource method.
-        // Block the virtual thread (M2h) — releases the carrier without starvation.
+        // We block the virtual thread (M2h) — releasing the carrier without starvation.
         if (result instanceof java.util.concurrent.CompletionStage<?> cs) {
             try {
                 result = cs.toCompletableFuture().get();
@@ -792,10 +788,10 @@ public final class Invoker {
         if (sseSink != null) {
             ParamExtractor.clearCurrentSink();
             if (sseSink.isStreaming()) {
-                // Streaming mode (JDK): the response is already on the wire.
+                // Streaming mode (JDK): the response has already been sent on the wire.
                 return CassiniHttpResponse.builder().status(200).body(new byte[0]).build();
             }
-            // Buffered mode: await sink.close() then send the buffer in one shot.
+            // Buffered mode: wait for sink.close() then send the whole buffer at once.
             sseSink.awaitClose();
             byte[] body = sseSink.toByteArray();
             return CassiniHttpResponse.builder()
@@ -804,8 +800,8 @@ public final class Invoker {
                     .body(body)
                     .build();
         }
-        // 5. Marshal + response filters — WriterInterceptors may throw:
-        //    route their exceptions via ExceptionMapper.
+        // 5. Marshal + response filters — WriterInterceptors can
+        //    throw exceptions: routed via ExceptionMapper.
         try {
             if (rctx != null && !filters.responseFilters().isEmpty()) {
                 return runResponseFiltersForResult(rctx, result, route, chosen);
@@ -831,10 +827,10 @@ public final class Invoker {
         CassiniResponseContext rctx2 = new CassiniResponseContext(status, entity,
                 entity == null ? null : entity.getClass(), headers);
         for (var fe : filters.responseFilters()) {
-            // route null = pre-matching abort/exception §6.5.2: only
-            // globally bound filters (without @NameBinding) apply.
-            // appliesTo(null,null) returns true for globals and false for
-            // NameBound — rely on that to filter.
+            // route null = pre-matching abort/exception §6.5.2: only globally
+            // bound filters (without @NameBinding) apply.
+            // appliesTo(null,null) returns true for globals and false
+            // for NameBound ones — rely on that for filtering.
             if (route == null) {
                 if (!fe.appliesTo(null, null)) continue;
             } else {
@@ -861,13 +857,13 @@ public final class Invoker {
             status = jr2.getStatus();
             for (var e : jr2.getStringHeaders().entrySet()) for (String v : e.getValue()) headers.add(e.getKey(), v);
             // Entity annotations are internal to CassiniResponse
-            // (§6.7.4: exposed via ContainerResponseContext.getEntityAnnotations).
+            // (§6.7.4: exposed through ContainerResponseContext.getEntityAnnotations).
             if (jr2 instanceof io.vidocq.cassini.internal.runtime.CassiniResponse cr) {
                 entityAnnotations = cr.entityAnnotations();
             }
         }
-        // §6.7.4: getEntityAnnotations() returns the resource method
-        // annotations merged with those passed explicitly to
+        // §6.7.4: getEntityAnnotations() returns the resource-method annotations
+        // merged with those explicitly passed to
         // ResponseBuilder.entity(Object, Annotation[]).
         if (route.javaMethod() != null) {
             Annotation[] methodAnns = route.javaMethod().getAnnotations();
@@ -908,7 +904,7 @@ public final class Invoker {
         MediaType mt = rctx.getMediaType() != null ? rctx.getMediaType() : chosen;
         // §6.7.4.2: if a ContainerResponseFilter wrapped the entityStream
         // via setEntityStream(), MBW.writeTo must write into that wrapper —
-        // the wrapper forwards to the originalStream that the runtime collects.
+        // the wrapper forwards to the originalStream collected by the runtime.
         if (rctx.getEntityStream() != rctx.originalStream()) {
             Class<?> type = entity.getClass();
             Type gt = rctx.getEntityType() == null ? type : rctx.getEntityType();
@@ -949,14 +945,14 @@ public final class Invoker {
 
     /** §9.2: injects the @Context fields of a singleton provider before
      *  the readFrom/writeTo call using the current match and request
-     *  (captured via ThreadLocal on the in-flight request).
+     *  (captured via ThreadLocal on the current request).
      *
      *  <p>M5a: routes injection through the generated adapter when available,
      *  keeping the reflective {@link FieldInjector} as a safety-net fallback.
      *  {@code injectParams=false} — providers carry only {@code @Context} fields,
      *  never {@code @PathParam}/{@code @QueryParam}/etc.</p> */
     private void injectProviderContexts(Object provider, CassiniHttpExchange requestOpt) {
-        // Skip internal built-in classes (no @Context in them, optimization).
+        // Skip les classes builtin internes (pas de @Context dedans, optimisation).
         Class<?> cls = provider.getClass();
         if (cls.getName().startsWith("io.vidocq.cassini.internal.MessageBodyRegistry$")) return;
         CassiniHttpExchange req = requestOpt != null ? requestOpt : CURRENT_REQUEST.get();
@@ -1014,7 +1010,7 @@ public final class Invoker {
         @SuppressWarnings({"rawtypes", "unchecked"})
         MessageBodyReader reader = registry.findReader(type, genericType, anns, ct).orElse(null);
         // §7.2: if no MBR matches initially but ReaderInterceptors are
-        // registered, defer the selection — an interceptor may rewrite
+        // registered, delay selection — an interceptor may rewrite
         // type/mediaType (setType, setMediaType) to match a different MBR.
         var rInterceptorsForChoice = route == null ? filters.readerInterceptorsFor(null, null)
                 : filters.readerInterceptorsFor(route.javaMethod(), route.beanClass());
@@ -1022,10 +1018,10 @@ public final class Invoker {
             throw new WebApplicationException(
                     "No MessageBodyReader for " + type.getName() + " / " + MediaTypes.format(ct), 415);
         }
-        // §9.2: @Context fields of user-level singleton providers are
+        // §9.2: @Context fields of user-level providers (singletons) are
         // re-injected on each call to expose the current context.
         if (reader != null) injectProviderContexts(reader, request);
-        // If @FormParam already consumed the body, replay from the cache (exchange attribute, M2h).
+        // If @FormParam already consumed the body, replay it from cache (exchange attribute, M2h).
         byte[] cached = (byte[]) request.getAttribute(FieldInjector.ATTR_BODY_CACHE);
         InputStream src;
         if (cached != null) {
@@ -1059,7 +1055,7 @@ public final class Invoker {
     private CassiniHttpResponse writeEntity(Object entity, Type genericType, Annotation[] anns,
                                  MediaType chosen, int status,
                                  Map<String, List<String>> extraHeaders, ResourceMethod route) throws IOException {
-        // §4.2.4: GenericEntity describes a parameterized type; unwrap and
+        // §4.2.4: GenericEntity describes a parameterized type; unwrap it and
         // use the effective "raw"/"genericType" for the MBW.
         if (entity instanceof jakarta.ws.rs.core.GenericEntity<?> ge) {
             genericType = ge.getType();
@@ -1071,8 +1067,8 @@ public final class Invoker {
         MessageBodyWriter writer = registry.findWriter(type, genericType, anns, mtSelect)
                 .orElseThrow(() -> new WebApplicationException(
                         "No MessageBodyWriter for " + type.getName() + " / " + MediaTypes.format(mtSelect), 500));
-        // §4.2.4: if the method didn't specify a Content-Type, inherit from
-        // the selected MBW's @Produces (first concrete declared media type).
+        // §4.2.4: if the method did not specify Content-Type, inherit it from
+        // the selected MBW's @Produces (first declared concrete media type).
         MediaType mt = mtSelect;
         if (mt.isWildcardType()) {
             jakarta.ws.rs.Produces wp = writer.getClass().getAnnotation(jakarta.ws.rs.Produces.class);
@@ -1086,13 +1082,13 @@ public final class Invoker {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         MultivaluedMap<String, Object> outHeaders = MessageBodyRegistry.outHeaders();
         // Populate outHeaders with extraHeaders BEFORE the interceptor chain
-        // so that WriterInterceptor.aroundWriteTo.getHeaders() sees what the
-        // ResourceMethod/ResponseBuilder produced. Interceptors can still
-        // mutate; we re-read afterwards for build.
+        // so WriterInterceptor.aroundWriteTo.getHeaders() sees what the
+        // ResourceMethod/ResponseBuilder produced. Interceptors
+        // may still mutate it; read it back afterwards for the build.
         for (var e : extraHeaders.entrySet())
             for (String v : e.getValue()) outHeaders.add(e.getKey(), v);
-        // §6.5.2: if route==null (pre-matching abort/exception), only
-        // globally bound writer interceptors apply.
+        // §6.5.2: if route==null (pre-matching abort/exception), only globally
+        // bound writer interceptors apply.
         var wInterceptors = route == null ? filters.writerInterceptorsFor(null, null)
                 : filters.writerInterceptorsFor(route.javaMethod(), route.beanClass());
         if (wInterceptors.isEmpty()) {
@@ -1126,13 +1122,13 @@ public final class Invoker {
         if (entity == null) {
             var b = CassiniHttpResponse.builder().status(status).body(new byte[0]);
             for (var e : headers.entrySet()) for (String v : e.getValue()) b.header(e.getKey(), v);
-            // User Content-Type: re-add it explicitly (filtered above).
+            // User Content-Type: re-emit it explicitly (filtered above).
             if (jr.getMediaType() != null) b.header("Content-Type", MediaTypes.format(jr.getMediaType()));
             return b.build();
         }
-        // §7.2 / §4.2.4: when the method declares Response as return type
-        // (wrapper), the genericType passed to MBW / WriterInterceptorContext
-        // is that of the real entity, not Response.class.
+        // §7.2 / §4.2.4: when the method declares a Response return (wrapper),
+        // the genericType passed to MBW / WriterInterceptorContext is that of
+        // the real entity, not Response.class.
         Type gt;
         if (route == null) {
             gt = entity.getClass();
@@ -1140,9 +1136,9 @@ public final class Invoker {
             Type ret = route.javaMethod().getGenericReturnType();
             gt = (ret == jakarta.ws.rs.core.Response.class) ? entity.getClass() : ret;
         }
-        // §4.2.4: if the user passed annotations via
-        // ResponseBuilder.entity(Object, Annotation[]), they take precedence
-        // over the method's for MessageBodyWriter.isWriteable / writeTo.
+        // §4.2.4: if the user passed annotations through
+        // ResponseBuilder.entity(Object, Annotation[]), they take precedence over
+        // method annotations for MessageBodyWriter.isWriteable / writeTo.
         Annotation[] anns = null;
         if (jr instanceof io.vidocq.cassini.internal.runtime.CassiniResponse cr) {
             Annotation[] entAnns = cr.entityAnnotations();
@@ -1156,7 +1152,7 @@ public final class Invoker {
 
     /**
      * If {@code chosen} is a wildcard (e.g. {@literal *}{@literal /}{@literal *}
-     * from an implicit Accept) and the entity type has a natural
+     * coming from an implicit Accept) and the entity type has a natural
      * Content-Type, substitute it. Otherwise respect the negotiated one.
      */
     private static MediaType defaultFor(MediaType chosen, Class<?> entityType) {
@@ -1170,10 +1166,10 @@ public final class Invoker {
         return chosen;
     }
 
-    /** §3.7.2: among candidates (same path+verb), pick the one whose
-     *  @Consumes matches Content-Type AND @Produces matches Accept (highest
-     *  specificity). If none matches, return the first (the Invoker will
-     *  surface 415 or 406 later). */
+    /** §3.7.2: among the candidates (same path+verb), choose the one whose
+     *  @Consumes matches Content-Type AND whose @Produces matches Accept (maximum
+     *  specificity). If none matches, return the first one (the Invoker will raise
+     *  415 or 406 later). */
     /** Returns the highest qs among the route's @Produces. */
     private static double sourceQuality(java.util.List<MediaType> produces) {
         double best = 0;
@@ -1197,7 +1193,7 @@ public final class Invoker {
             if (hasRequestBody(request) && !cons.isEmpty() && !MediaTypes.consumesMatches(ct, cons)) continue;
             var prod = MediaTypes.fromSet(c.method().produces());
             // §3.7.2: @Consumes specificity dominates @Produces (scaled ×10).
-            // text/plain > text/* > */* > no @Consumes (if ct present).
+            // text/plain > text/* > */* > absence of @Consumes (if ct is present).
             double consScore = consumesSpecificity(ct, cons);
             double prodScore = 0;
             if (!prod.isEmpty()) {
@@ -1205,7 +1201,7 @@ public final class Invoker {
                 if (pick.isEmpty()) continue;
                 // §3.7.2 / JAXRS:SPEC:25.11 + 26.8: order
                 //   primary   = q-value of the MOST SPECIFIC matching Accept
-                //               (see bestAcceptQuality)
+                //               (cf. bestAcceptQuality)
                 //   secondary = qs-value (source quality, server-side)
                 //   tertiary  = @Produces specificity (tie-break)
                 double acceptQ = bestAcceptQuality(accepts, prod);
@@ -1216,8 +1212,8 @@ public final class Invoker {
             // §3.7.2: URI template specificity dominates first (literalChars
             // desc, totalCaptures desc, defaultCaptures asc), then @Consumes,
             // then @Produces. Scales: classPathLiterals (×1e8) > template
-            // literalChars (×1e6) > totalCaptures (×1e3) > defaultCaptures
-            // inverted (×1) > consumes (×10) > produces.
+            // literalChars (×1e6) > totalCaptures (×1e3) > inverse defaultCaptures
+            // (×1) > consumes (×10) > produces.
             int classLits = c.method().classPathLiterals();
             int tplLits = c.method().template().literalChars();
             int totalCaps = c.method().template().totalCaptures();
@@ -1233,7 +1229,7 @@ public final class Invoker {
     }
 
     /** Specificity of the best-ranked @Produces matching an Accept, computed
-     *  on the annotation (not on the resolved type after wildcard expansion). */
+     *  from the annotation (not from the type resolved after wildcard expansion). */
     private static double producesAnnotationSpecificity(List<MediaType> accepts, List<MediaType> produces) {
         double best = 0;
         for (MediaType a : accepts) {
@@ -1246,13 +1242,13 @@ public final class Invoker {
         return best;
     }
 
-    /** q-value of the MOST SPECIFIC Accept that matches a @Produces.
+    /** q-value of the MOST SPECIFIC Accept matching an @Produces.
      *  §3.7.2 / §3.8: to resolve {@code clientImagePreferenceTest}
      *  (Accept "image/something;q=0.1, image/*;q=0.9" + @Produces "image/*"),
-     *  pick the most specific matching Accept: for @Produces image/* it is
-     *  image/something (concrete > wildcard) → q=0.1, not the wildcard's
-     *  q=0.9. This lets @Produces image/png (which only matches image/* with
-     *  q=0.9) win. */
+     *  we must keep the most precise matching Accept: for @Produces
+     *  image/*, that is image/something (concrete > wildcard) → q=0.1, not
+     *  the wildcard's q=0.9. This allows @Produces image/png (which only matches
+     *  image/* with q=0.9) to win. */
     private static double bestAcceptQuality(List<MediaType> accepts, List<MediaType> produces) {
         double bestQ = 0;
         int bestSpec = -1;
@@ -1270,7 +1266,7 @@ public final class Invoker {
         return bestQ;
     }
 
-    /** Returns the specificity of the most specific @Consumes matching ct. */
+    /** Returns the specificity of the most precise @Consumes that matches ct. */
     private static double consumesSpecificity(MediaType ct, java.util.List<MediaType> consumes) {
         if (ct == null || consumes.isEmpty()) return 0;
         double best = 0;
@@ -1321,10 +1317,10 @@ public final class Invoker {
         throw new RuntimeException(cause);
     }
 
-    /** §3.7.2 / §4.4: renders a response for an exception outside resolution
-     *  scope (no MatchResult — typically 404/405 from the bridge). Consults
-     *  application ExceptionMappers first; otherwise returns the Response
-     *  carried by the WAE, or a default 500. */
+    /** §3.7.2 / §4.4: renders a response for an exception outside the scope of
+     *  resolution (no MatchResult — typically 404/405 from the bridge).
+     *  Checks application ExceptionMappers first; otherwise returns the
+     *  Response carried by the WAE, or a default 500. */
     public CassiniHttpResponse renderThrowable(Throwable t, CassiniHttpExchange request) throws IOException {
         ParamExtractor.setProviders(new io.vidocq.cassini.internal.context.CassiniProviders(
                 registry, exceptionMappers, filters.contextResolvers()));
@@ -1348,9 +1344,9 @@ public final class Invoker {
         }
     }
 
-    /** §4.4: if a filter/interceptor throws, pass it to the ExceptionMapper
-     *  if any. Returns {@code null} if no mapper applies — the caller will
-     *  decide whether to propagate. */
+    /** §4.4: if a filter / interceptor throws an exception, pass it to the
+     *  ExceptionMapper if one exists. Returns {@code null} if no mapper
+     *  applies — the caller decides whether to rethrow it. */
     private CassiniHttpResponse mapFilterThrowable(Throwable t, ResourceMethod route, MediaType chosen,
                                         CassiniRequestContext rctx) throws IOException {
         Throwable cause = t;
@@ -1377,7 +1373,7 @@ public final class Invoker {
                 return runResponseFiltersAndWrite(rctx, r, route, chosen);
             return fromJaxRs(r, route, chosen);
         }
-        // §4.4: otherwise try the ExceptionMapper.
+        // §4.4: otherwise, try the ExceptionMapper.
         var mapped = exceptionMappers.map(wae);
         if (mapped.isPresent()) {
             jakarta.ws.rs.core.Response mr = mapped.get();

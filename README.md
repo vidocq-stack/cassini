@@ -1,3 +1,4 @@
+---
 <p align="center">
   <img src="cassini-logo.png" alt="Cassini" width="260">
 </p>
@@ -5,8 +6,8 @@
 <h1 align="center">Cassini</h1>
 
 <p align="center">
-  <strong>Implémentation Jakarta RESTful Web Services 4.0 — transport-agnostique, JPMS natif</strong><br>
-  <a href="https://jakarta.ee/specifications/restful-ws/4.0/">Jakarta REST 4.0</a> | Java SE Bootstrap | CDI optionnel | JDK 25
+  <strong>Jakarta RESTful Web Services 4.0 Implementation — transport-agnostic, native JPMS</strong><br>
+  <a href="https://jakarta.ee/specifications/restful-ws/4.0/">Jakarta REST 4.0</a> | Java SE Bootstrap | Optional CDI | JDK 25
 </p>
 
 <p align="center">
@@ -19,19 +20,19 @@
 
 ---
 
-## Qu'est-ce que Cassini ?
+## What is Cassini?
 
-Cassini est une implémentation complète de **Jakarta RESTful Web Services 4.0** (Core Profile / SE-Bootstrap) conçue pour être embarquée dans des serveurs Java SE. Elle est **transport-agnostique** : le moteur JAX-RS ne dépend d'aucun serveur HTTP particulier — le transport est branché via un SPI léger.
+Cassini is a complete implementation of **Jakarta RESTful Web Services 4.0** (Core Profile / SE-Bootstrap) designed to be embedded in Java SE servers. It is **transport-agnostic**: the JAX-RS engine does not depend on any particular HTTP server — transport is plugged in through a lightweight SPI.
 
 | | Jersey 4 | RESTEasy | **Cassini** |
 |---|---|---|---|
 | Transport | Grizzly/Jetty | Undertow | **SPI pluggable (Chappe, JDK HTTP, ...)** |
-| CDI | HK2 bridge | Weld intégré | **Optionnel — SPI `BeanProvider` (`cassini-cdi-vauban`, ...) ou aucun** |
-| JPMS | Partiel | Non | **Natif (`module-info.java` complet)** |
-| SE-Bootstrap | Via Grizzly | Non | **Natif** |
+| CDI | HK2 bridge | Integrated Weld | **Optional — `BeanProvider` SPI (`cassini-cdi-vauban`, ...) or none** |
+| JPMS | Partial | No | **Native (`module-info.java` complete)** |
+| SE-Bootstrap | Via Grizzly | No | **Native** |
 | JDK minimum | 17 | 11 | **25** |
 
-Cassini est le moteur REST de l'écosystème [Vidocq](https://github.com/VidocqMP/vidocq).
+Cassini is the REST engine of the [Vidocq](https://github.com/VidocqMP/vidocq) ecosystem.
 
 ---
 
@@ -40,31 +41,31 @@ Cassini est le moteur REST de l'écosystème [Vidocq](https://github.com/VidocqM
 ```mermaid
 graph TB
     subgraph "cassini-api — SPI public"
-        EXCHANGE[CassiniHttpExchange<br/><i>abstraction requête/réponse</i>]
+        EXCHANGE[CassiniHttpExchange<br/><i>request/response abstraction</i>]
         ADAPTER[CassiniHttpAdapter<br/><i>dispatch → CompletionStage</i>]
         FACTORY["ResourceFactory<br/><i>Mode A: new instance / Mode B: CDI</i>"]
     end
 
-    subgraph "cassini-core — moteur JAX-RS"
-        SCANNER[ResourceScanner<br/><i>découverte @Path, @Provider</i>]
-        ROUTER[UriRouter<br/><i>URI templates + négociation</i>]
-        INVOKER[Invoker<br/><i>filtres, params, MBR/MBW, mappers</i>]
+    subgraph "cassini-core — JAX-RS engine"
+        SCANNER[ResourceScanner<br/><i>discovery of @Path, @Provider</i>]
+        ROUTER[UriRouter<br/><i>URI templates + negotiation</i>]
+        INVOKER[Invoker<br/><i>filters, params, MBR/MBW, mappers</i>]
         BODIES[MessageBodyRegistry<br/><i>JSON-B, multipart built-in</i>]
     end
 
     subgraph "Transports"
         CHAPPE[cassini-chappe<br/><i>Chappe Handler + SE-Bootstrap</i>]
-        JDK[cassini-jdk-http<br/><i>JDK HttpServer, zéro dép externe</i>]
+        JDK[cassini-jdk-http<br/><i>JDK HttpServer, zero external deps</i>]
     end
 
-    subgraph "cassini-cdi-vauban — optionnel"
+    subgraph "cassini-cdi-vauban — optional"
         CDI[VaubanBeanProvider<br/><i>scopes + @Inject via VaubanContainer</i>]
-        BCE[CassiniScopeExtension<br/><i>BCE : @RequestScoped auto</i>]
+        BCE[CassiniScopeExtension<br/><i>BCE: auto @RequestScoped</i>]
     end
 
-    CHAPPE -->|implémente| ADAPTER
-    JDK -->|implémente| ADAPTER
-    CDI -->|implémente| FACTORY
+    CHAPPE -->|implements| ADAPTER
+    JDK -->|implements| ADAPTER
+    CDI -->|implements| FACTORY
     ADAPTER --> INVOKER
     SCANNER --> ROUTER
     ROUTER --> INVOKER
@@ -77,11 +78,11 @@ graph TB
     style CDI fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
 ```
 
-### Flux d'une requête
+### Request flow
 
 ```mermaid
 sequenceDiagram
-    participant C as Client HTTP
+    participant C as HTTP Client
     participant T as Transport<br/>(Chappe / JDK)
     participant A as HttpAdapter
     participant I as Invoker
@@ -105,39 +106,39 @@ sequenceDiagram
 
 ## Modules
 
-| Module | Rôle | Dépendances clés |
+| Module | Role | Key dependencies |
 |--------|------|------------------|
-| `cassini-api` | SPI public : `CassiniHttpExchange`, `CassiniHttpAdapter`, `ResourceFactory`, `BeanProvider` | `jakarta.ws.rs-api` uniquement |
-| `cassini-core` | Moteur complet : routing, table de routes, params, MBR/MBW, filtres, SSE, codegen (`RuntimeAdapterGenerator`, `AdapterRegistry`) | `cassini-api`, `champollion-jsonp`, `champollion-jsonb` (JSON-B) |
-| `cassini-client` | Client JAX-RS 4.0 : `ClientBuilder` zéro-dép sur `java.net.http` + virtual threads | `cassini-api`, `cassini-core`, `java.net.http` |
-| `cassini-cdi-vauban` | Adapter Vauban CDI : `VaubanBeanProvider` (SPI BeanProvider), BCE `@RequestScoped` auto | `cassini-api`, CDI 4.1, `io.vidocq.vauban.core` |
+| `cassini-api` | Public SPI: `CassiniHttpExchange`, `CassiniHttpAdapter`, `ResourceFactory`, `BeanProvider` | `jakarta.ws.rs-api` only |
+| `cassini-core` | Full engine: routing, route table, params, MBR/MBW, filters, SSE, codegen (`RuntimeAdapterGenerator`, `AdapterRegistry`) | `cassini-api`, `champollion-jsonp`, `champollion-jsonb` (JSON-B) |
+| `cassini-client` | JAX-RS 4.0 client: zero-dep `ClientBuilder` on `java.net.http` + virtual threads | `cassini-api`, `cassini-core`, `java.net.http` |
+| `cassini-cdi-vauban` | Vauban CDI adapter: `VaubanBeanProvider` (BeanProvider SPI), automatic BCE `@RequestScoped` | `cassini-api`, CDI 4.1, `io.vidocq.vauban.core` |
 | `cassini-chappe` | Adapter Chappe + `ChappeRuntimeDelegate` (SE-Bootstrap) | `cassini-core`, `io.vidocq.chappe` |
-| `cassini-jdk-http` | Adapter `com.sun.net.httpserver.HttpServer` (JDK pur) | `cassini-core` |
-| `cassini-processor` | Processeur APT : génère `$$CassiniAdapter` / `$$CassiniRoutes` à la compilation (AOT-safe) | `java.compiler`, `cassini-api` |
-| `cassini-maven-plugin` | Plugin Maven (`generate`, `process-classes`) : pré-génère les adapters des JARs de dépendances | — build-time |
-| `cassini-tck` | Runner TCK officiel Jakarta REST 4.0 (Arquillian) | — hors reactor |
+| `cassini-jdk-http` | Adapter `com.sun.net.httpserver.HttpServer` (pure JDK) | `cassini-core` |
+| `cassini-processor` | APT processor: generates `$$CassiniAdapter` / `$$CassiniRoutes` at compile time (AOT-safe) | `java.compiler`, `cassini-api` |
+| `cassini-maven-plugin` | Maven plugin (`generate`, `process-classes`): pre-generates adapters for dependency JARs | — build-time |
+| `cassini-tck` | Official Jakarta REST 4.0 TCK runner (Arquillian) | — outside the reactor |
 
 ---
 
-## Prérequis
+## Prerequisites
 
 ```bash
-# Avec SDKMAN! (recommandé)
-sdk env install    # lit .sdkmanrc → JDK 25 + Maven 3.9.16
+# With SDKMAN! (recommended)
+sdk env install    # reads .sdkmanrc → JDK 25 + Maven 3.9.16
 ```
 
 ```bash
-# Build du reactor
+# Build the reactor
 ./mvnw -ntp install -DskipTests
 ```
 
 ---
 
-## Mode A — Standalone JDK HTTP (zéro dépendance externe)
+## Mode A — Standalone JDK HTTP (zero external dependency)
 
-Le mode le plus léger : aucune dépendance hors du JDK. Idéal pour les outils CLI, les tests d'intégration ou tout environnement sans Chappe.
+The lightest mode: no dependency outside the JDK. Ideal for CLI tools, integration tests, or any environment without Chappe.
 
-### Dépendance Maven
+### Maven dependency
 
 ```xml
 <dependency>
@@ -152,7 +153,7 @@ Le mode le plus léger : aucune dépendance hors du JDK. Idéal pour les outils 
 </dependency>
 ```
 
-### Resource JAX-RS
+### JAX-RS resource
 
 ```java
 @Path("/hello")
@@ -168,7 +169,7 @@ public class HelloResource {
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Item getItem(@PathParam("id") long id) {
-        return new Item(id, "Article #" + id);
+        return new Item(id, "Item #" + id);
     }
 
     @POST
@@ -181,7 +182,7 @@ public class HelloResource {
 }
 ```
 
-### Démarrage
+### Startup
 
 ```java
 import io.vidocq.cassini.internal.ResourceScanner;
@@ -205,7 +206,7 @@ public class Main {
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         server.start();
 
-        System.out.println("Cassini démarré sur http://localhost:8080");
+        System.out.println("Cassini started on http://localhost:8080");
     }
 }
 ```
@@ -215,16 +216,16 @@ $ curl http://localhost:8080/hello?name=Cassini
 Hello, Cassini!
 
 $ curl http://localhost:8080/hello/42
-{"id":42,"name":"Article #42"}
+{"id":42,"name":"Item #42"}
 ```
 
 ---
 
-## Mode B — SE-Bootstrap avec Chappe (transport de référence)
+## Mode B — SE-Bootstrap with Chappe (reference transport)
 
-Le mode recommandé pour la production. `ChappeRuntimeDelegate` implémente le standard **Jakarta SE-Bootstrap** (`SeBootstrap.start()`), ce qui rend le démarrage indépendant du transport et conforme à la spécification.
+The recommended mode for production. `ChappeRuntimeDelegate` implements the **Jakarta SE-Bootstrap** standard (`SeBootstrap.start()`), making startup transport-independent and spec-compliant.
 
-### Dépendances Maven
+### Maven dependencies
 
 ```xml
 <dependency>
@@ -237,7 +238,7 @@ Le mode recommandé pour la production. `ChappeRuntimeDelegate` implémente le s
     <artifactId>cassini-chappe</artifactId>
     <version>${cassini.version}</version>
 </dependency>
-<!-- Transport Chappe -->
+<!-- Chappe transport -->
 <dependency>
     <groupId>io.vidocq.chappe</groupId>
     <artifactId>chappe-core</artifactId>
@@ -245,7 +246,7 @@ Le mode recommandé pour la production. `ChappeRuntimeDelegate` implémente le s
 </dependency>
 ```
 
-### Application JAX-RS
+### JAX-RS application
 
 ```java
 @ApplicationPath("/api")
@@ -262,9 +263,9 @@ public class MyApplication extends Application {
 }
 ```
 
-### Démarrage via SE-Bootstrap
+### Startup via SE-Bootstrap
 
-`ChappeRuntimeDelegate` est découverte automatiquement via ServiceLoader (JPMS `provides`).
+`ChappeRuntimeDelegate` is discovered automatically via ServiceLoader (JPMS `provides`).
 
 ```java
 import jakarta.ws.rs.SeBootstrap;
@@ -280,31 +281,31 @@ public class Main {
         SeBootstrap.start(MyApplication.class, config)
             .thenAccept(instance -> {
                 var actualPort = instance.configuration().port();
-                System.out.println("Cassini démarré sur http://localhost:" + actualPort);
+                System.out.println("Cassini started on http://localhost:" + actualPort);
             })
             .toCompletableFuture()
             .join();
 
-        Thread.currentThread().join(); // bloquer jusqu'à arrêt
+        Thread.currentThread().join(); // block until shutdown
     }
 }
 ```
 
-### Arrêt propre
+### Clean shutdown
 
 ```java
 SeBootstrap.Instance instance = SeBootstrap.start(MyApplication.class, config)
     .toCompletableFuture().get();
 
-// ... lors de l'arrêt
+// ... during shutdown
 instance.stop()
     .toCompletableFuture()
     .get();
 ```
 
-### Embedding dans un serveur Chappe existant
+### Embedding in an existing Chappe server
 
-`ChappeHttpAdapter` est un `Handler` Chappe standard — on peut l'enregistrer sur n'importe quel mount point :
+`ChappeHttpAdapter` is a standard Chappe `Handler` — it can be registered on any mount point:
 
 ```java
 import io.vidocq.cassini.chappe.ChappeHttpAdapter;
@@ -316,7 +317,7 @@ var invoker = new Invoker(cls -> cls.getDeclaredConstructor().newInstance(),
                           new MessageBodyRegistry());
 Handler cassiniHandler = new ChappeHttpAdapter(router, invoker);
 
-// Enregistrement dans un serveur Chappe
+// Registration in a Chappe server
 Server server = Server.builder()
     .host("0.0.0.0")
     .port(8080)
@@ -329,11 +330,11 @@ server.start();
 
 ## Mode C — CDI via SPI `BeanProvider`
 
-Cassini expose une SPI publique `io.vidocq.cassini.spi.bean.BeanProvider` qui découple le moteur de tout container DI. L'adapter de référence est `cassini-cdi-vauban` (CDI Vauban) ; n'importe quel autre adapter (Weld, OpenWebBeans, Pico, etc.) peut implémenter la même SPI et être enregistré via ServiceLoader.
+Cassini exposes a public SPI `io.vidocq.cassini.spi.bean.BeanProvider` that decouples the engine from any DI container. The reference adapter is `cassini-cdi-vauban` (Vauban CDI); any other adapter (Weld, OpenWebBeans, Pico, etc.) can implement the same SPI and be registered via ServiceLoader.
 
-`CassiniStack.builder()` détecte automatiquement la `BeanProvider.Factory` de plus haute priorité et l'applique. Le builder accepte aussi un `BeanProvider` explicite via `.beanProvider(provider)`.
+`CassiniStack.builder()` automatically detects the highest-priority `BeanProvider.Factory` and applies it. The builder also accepts an explicit `BeanProvider` via `.beanProvider(provider)`.
 
-### Dépendances Maven (Vauban)
+### Maven dependencies (Vauban)
 
 ```xml
 <dependency>
@@ -353,15 +354,15 @@ Cassini expose une SPI publique `io.vidocq.cassini.spi.bean.BeanProvider` qui d�
 </dependency>
 ```
 
-### Resource avec injection
+### Resource with injection
 
 ```java
 @Path("/items")
-@ApplicationScoped                 // ou @RequestScoped automatique via CassiniScopeExtension
+@ApplicationScoped                 // or auto @RequestScoped via CassiniScopeExtension
 public class ItemResource {
 
     @Inject
-    ItemService service;           // scoped bean injecté par CDI
+    ItemService service;           // scoped bean injected by CDI
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
@@ -369,7 +370,7 @@ public class ItemResource {
 }
 ```
 
-### Démarrage avec Vauban + SeBootstrap
+### Startup with Vauban + SeBootstrap
 
 ```java
 import io.vidocq.vauban.core.container.VaubanContainer;
@@ -383,21 +384,21 @@ public class Main {
                 .addBeanClass(ItemResource.class)
                 .build();
 
-        // Application vide : Cassini découvre le BeanProvider Vauban
-        // via ServiceLoader et scanne les classes @Path/@Provider du container.
+        // Empty application: Cassini discovers the Vauban BeanProvider
+        // via ServiceLoader and scans the container's @Path/@Provider classes.
         SeBootstrap.start(new Application() {},
                 SeBootstrap.Configuration.builder().host("0.0.0.0").port(8080).build());
     }
 }
 ```
 
-### `CassiniScopeExtension` — BCE auto-scope
+### `CassiniScopeExtension` — auto-scope BCE
 
-Quand `cassini-cdi-vauban` est sur le classpath, la Build Compatible Extension `CassiniScopeExtension` ajoute automatiquement `@RequestScoped` aux classes `@Path` sans scope explicite — aucune annotation supplémentaire requise.
+When `cassini-cdi-vauban` is on the classpath, the Build Compatible Extension `CassiniScopeExtension` automatically adds `@RequestScoped` to `@Path` classes without an explicit scope — no extra annotation required.
 
 ```java
 @Path("/users")
-public class UserResource {   // @RequestScoped implicite via BCE
+public class UserResource {   // implicit @RequestScoped via BCE
     @Inject UserRepository repo;
     // ...
 }
@@ -405,9 +406,9 @@ public class UserResource {   // @RequestScoped implicite via BCE
 
 ---
 
-## Client JAX-RS — `cassini-client`
+## JAX-RS client — `cassini-client`
 
-`cassini-client` fournit un `jakarta.ws.rs.client.ClientBuilder` zéro-dépendance bâti sur `java.net.http.HttpClient` + virtual threads, découvert via `ServiceLoader`. Il réutilise le `MessageBodyRegistry` de `cassini-core` : la (dé)sérialisation JSON-B est mutualisée avec le côté serveur.
+`cassini-client` provides a zero-dependency `jakarta.ws.rs.client.ClientBuilder` built on `java.net.http.HttpClient` + virtual threads, discovered via `ServiceLoader`. It reuses `cassini-core`'s `MessageBodyRegistry`: JSON-B (de)serialization is shared with the server side.
 
 ```xml
 <dependency>
@@ -421,7 +422,7 @@ public class UserResource {   // @RequestScoped implicite via BCE
 import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.ClientBuilder;
 
-try (Client client = ClientBuilder.newClient()) {   // résolu via ServiceLoader
+try (Client client = ClientBuilder.newClient()) {   // resolved via ServiceLoader
     User u = client.target("https://api.example.com")
         .path("/users/{id}").resolveTemplate("id", 42)
         .request(MediaType.APPLICATION_JSON)
@@ -429,7 +430,7 @@ try (Client client = ClientBuilder.newClient()) {   // résolu via ServiceLoader
 }
 ```
 
-Supporte les `ClientRequestFilter` / `ClientResponseFilter` (ordonnés par `@Priority`), l'invocation async sur virtual thread (`.async().get()`) et les `Feature` auto-enregistrées via `ServiceLoader` (ex. instrumentation MicroProfile Telemetry, sans `.register()` explicite).
+Supports `ClientRequestFilter` / `ClientResponseFilter` (ordered by `@Priority`), async invocation on virtual threads (`.async().get()`), and `Feature`s auto-registered via `ServiceLoader` (e.g. MicroProfile Telemetry instrumentation, without an explicit `.register()`).
 
 ---
 
@@ -449,7 +450,7 @@ public class NotFoundExceptionMapper implements ExceptionMapper<NotFoundExceptio
 }
 ```
 
-## Filtres et intercepteurs
+## Filters and interceptors
 
 ```java
 @Provider
@@ -480,59 +481,59 @@ public class LoggingFilter implements ContainerRequestFilter, ContainerResponseF
 
 ---
 
-## TCK Jakarta REST 4.0
+## Jakarta REST 4.0 TCK
 
 ```
 Tests run: 2670 — Pass: 2535 — Skip: 135 — Fail: 0 — Error: 0
 ```
 
-Cassini est conforme à la spécification **Jakarta RESTful Web Services 4.0 / Core Profile / SE-Bootstrap** — score certifiable TCK Process 1.4.1.
+Cassini conforms to the **Jakarta RESTful Web Services 4.0 / Core Profile / SE-Bootstrap** specification — certifiable TCK Process 1.4.1 score.
 
 ```bash
-# Pré-requis : jakarta.ws.rs:jakarta-restful-ws-tck:4.0.1 en M2 local (non-public)
+# Prerequisite: jakarta.ws.rs:jakarta-restful-ws-tck:4.0.1 in local M2 (non-public)
 
-# Smoke test (rapide)
+# Smoke test (quick)
 ./run-official-tck-restful-4.0.sh
 
-# Suite complète (~10 min)
+# Full suite (~10 min)
 ./run-official-tck-restful-4.0.sh all
 
-# Test ciblé
+# Targeted test
 ./run-official-tck-restful-4.0.sh -Dtest=JAXRSClientIT
 ```
 
-Les 135 tests ignorés couvrent : `servlet` (hors SE-Bootstrap), `xml_binding` (JAXB, hors Core Profile) et 6 challenges documentés dans [`TCK.md`](TCK.md).
+The 135 skipped tests cover: `servlet` (outside SE-Bootstrap), `xml_binding` (JAXB, outside Core Profile), and 6 challenges documented in [`TCK.md`](TCK.md).
 
 ---
 
 ## Roadmap
 
-### M2h — Async non-bloquant + virtual threads
+### M2h — Non-blocking async + virtual threads
 
-- `@Suspended AsyncResponse` non-bloquant
-- `CompletionStage` propagé de la resource jusqu'au transport (SPI déjà signé)
-- Virtual threads natifs dans `cassini-chappe`
-- Lifecycle callbacks `addCompletionCallback` / `addConnectionCallback`
-- Débloque tous les tests `@Tag("async")` actuellement en attente
+- non-blocking `@Suspended AsyncResponse`
+- `CompletionStage` propagated from the resource to the transport (SPI already signed)
+- Native virtual threads in `cassini-chappe`
+- lifecycle callbacks `addCompletionCallback` / `addConnectionCallback`
+- unlocks all currently pending `@Tag("async")` tests
 
-### M2i — SSE streaming réel *(dépend de M2h)*
+### M2i — Real SSE streaming *(depends on M2h)*
 
-- Refactoring `CassiniSseEventSink` → push chunked au fil de l'eau via `CassiniStreamingSink`
-- Débloque les challenges SSE (`sseBroadcastTest`, `closeTest`)
+- Refactoring `CassiniSseEventSink` → streaming chunked push via `CassiniStreamingSink`
+- unlocks the SSE challenges (`sseBroadcastTest`, `closeTest`)
 
 ---
 
 ## Build
 
 ```bash
-./mvnw -ntp install            # build + tests unitaires du reactor
-./mvnw -ntp install -DskipTests  # build seul
+./mvnw -ntp install            # reactor build + unit tests
+./mvnw -ntp install -DskipTests  # build only
 ```
 
-Le module `cassini-tck` est **hors reactor** (POM Model 4.0.0 standalone) pour contourner une incompatibilité ShrinkWrap. Utiliser le script dédié `./run-official-tck-restful-4.0.sh`.
+The `cassini-tck` module is **outside the reactor** (standalone POM Model 4.0.0) to work around a ShrinkWrap incompatibility. Use the dedicated script `./run-official-tck-restful-4.0.sh`.
 
 ---
 
-## Licence
+## License
 
 [Apache License 2.0](LICENSE)

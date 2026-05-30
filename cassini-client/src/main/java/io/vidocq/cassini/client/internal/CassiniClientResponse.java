@@ -31,10 +31,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Client-side {@link Response} implementation — wraps a {@code byte[]} body and exposes
+ * Client-side implementation of {@link Response} — wraps a byte[] body and exposes
  * {@code readEntity(Class<T>)} for {@code String}, {@code byte[]}, {@code InputStream}.
- * Complex types (JSON-B, XML…) will arrive with the {@code MessageBodyRegistry}
- * integration in commit #3.
+ * Complex types (JSON-B, XML…) will come with the integration of
+ * {@code MessageBodyRegistry} in commit #3.
  */
 final class CassiniClientResponse extends Response {
 
@@ -67,9 +67,9 @@ final class CassiniClientResponse extends Response {
 
     /**
      * Builds a {@code CassiniClientResponse} from the data of a
-     * {@link CassiniClientResponseContext} after the {@code ClientResponseFilter}
-     * chain has been applied. Headers are already in String form and may have
-     * been mutated by the filters.
+     * {@link CassiniClientResponseContext} after applying the
+     * {@code ClientResponseFilter} chain. Headers are already in String form and
+     * may have been mutated by the filters.
      */
     static CassiniClientResponse fromBufferedBody(int status, byte[] body,
                                                     MultivaluedMap<String, String> stringHeaders) {
@@ -109,7 +109,7 @@ final class CassiniClientResponse extends Response {
     @Override public <T> T readEntity(GenericType<T> type, Annotation[] annotations) { return readEntity(type); }
 
     @Override public boolean hasEntity() { return body != null && body.length > 0; }
-    @Override public boolean bufferEntity() { return true; /* already buffered */ }
+    @Override public boolean bufferEntity() { return true; /* déjà buffered */ }
     @Override public void close() { closed = true; }
 
     @Override

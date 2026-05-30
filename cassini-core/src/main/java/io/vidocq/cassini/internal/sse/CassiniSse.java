@@ -12,9 +12,9 @@ import java.lang.reflect.Type;
 /**
  * Cassini implementation of {@link Sse} (server-side factory).
  *
- * <p>Minimal implementation to pass the TCK §11:
+ * <p>Minimal implementation to pass TCK §11:
  *  {@link #newEventBuilder()} produces a {@link CassiniOutboundSseEventBuilder};
- *  {@link #newBroadcaster()} returns a single-threaded in-memory broadcaster.</p>
+ *  {@link #newBroadcaster()} returns a single-thread in-memory broadcaster.</p>
  */
 public final class CassiniSse implements Sse {
 
@@ -38,7 +38,7 @@ public final class CassiniSse implements Sse {
         return new CassiniSseBroadcaster();
     }
 
-    /** Immutable representation of an OutboundSseEvent. */
+    /** Représentation immuable d'un OutboundSseEvent. */
     static final class CassiniOutboundSseEvent implements OutboundSseEvent {
         private final String id;
         private final String name;

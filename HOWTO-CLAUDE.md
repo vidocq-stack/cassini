@@ -1,87 +1,87 @@
-# HOWTO — Cassini avec Claude Code
+# HOWTO — Cassini with Claude Code
 
-Documentation rapide pour les futurs sessions Claude Code sur ce projet.
+Quick documentation for future Claude Code sessions on this project.
 
-## Contexte
+## Context
 
-Cassini est l'**implémentation Jakarta REST 4.0 standalone** extraite de
-`vidocq` en avril 2026. Ses 6 modules :
+Cassini is the **standalone Jakarta REST 4.0 implementation** extracted from
+`vidocq` in April 2026. Its 6 modules:
 
-| Module | Rôle |
+| Module | Role |
 |--------|------|
-| `cassini-api` | SPI HTTP (CassiniHttpExchange/Adapter/AsyncContext/StreamingSink + ResourceFactory + BeanProvider) |
-| `cassini-core` | Moteur REST 4.0 (Invoker, ResourceScanner, MessageBodyRegistry, providers built-in) |
-| `cassini-cdi-vauban` | Adapter Vauban CDI (Mode B) — VaubanBeanProvider via SPI BeanProvider + CassiniScopeExtension (BCE) |
-| `cassini-chappe` | Adapter HTTP Chappe (transport de référence, utilisé par le TCK) |
-| `cassini-jdk-http` | Adapter HTTP JDK natif (Mode A pur, zéro dép externe) |
-| `cassini-tck` | Runner Arquillian + harness officiel Jakarta REST 4.0 |
+| `cassini-api` | HTTP SPI (CassiniHttpExchange/Adapter/AsyncContext/StreamingSink + ResourceFactory + BeanProvider) |
+| `cassini-core` | REST 4.0 engine (Invoker, ResourceScanner, MessageBodyRegistry, built-in providers) |
+| `cassini-cdi-vauban` | Vauban CDI adapter (Mode B) — VaubanBeanProvider via SPI BeanProvider + CassiniScopeExtension (BCE) |
+| `cassini-chappe` | Chappe HTTP adapter (reference transport, used by the TCK) |
+| `cassini-jdk-http` | Native JDK HTTP adapter (pure Mode A, zero external deps) |
+| `cassini-tck` | Arquillian runner + official Jakarta REST 4.0 harness |
 
 ## Architecture
 
-- **`cassini-core`** : zéro dépendance à Chappe, code transport-agnostique. Branchable
-  via le SPI HTTP de `cassini-api`.
-- **CDI provided** : `cassini-core` accepte CDI en `<scope>provided</scope>` —
-  `Invoker.forBeanManager(bm)` si l'utilisateur en fournit un.
-- **Découplage transport** : Tous les usages de Chappe sont confinés à `cassini-chappe`
+- **`cassini-core`**: zero dependency on Chappe, transport-agnostic code. Pluggable
+  through the HTTP SPI of `cassini-api`.
+- **CDI provided**: `cassini-core` accepts CDI in `<scope>provided</scope>` —
+  `Invoker.forBeanManager(bm)` if the user provides one.
+- **Transport decoupling**: All usages of Chappe are confined to `cassini-chappe`
   (`ChappeHttpAdapter` + `ChappeHttpExchange` + `ChappeRuntimeDelegate`).
 
-## Commandes essentielles
+## Essential commands
 
-### Build complet du reactor
+### Full reactor build
 ```bash
 mvn install -DskipTests
 ```
 
-Note : `cassini-tck` est volontairement **hors reactor** (Model 4.0.0 standalone)
-pour contourner ShrinkWrap Maven Resolver 3.3 vs Model 4.1.0.
+Note: `cassini-tck` is intentionally **outside the reactor** (standalone Model 4.0.0)
+to work around ShrinkWrap Maven Resolver 3.3 vs Model 4.1.0.
 
 ### TCK
 ```bash
 ./run-official-tck-restful-4.0.sh           # smoke (CassiniHarnessSmokeTest)
-./run-official-tck-restful-4.0.sh all       # 2670 tests, attendu : 2535 PASS / 135 SKIP / 0 ERR
-./run-official-tck-restful-4.0.sh -Dtest=X  # ciblé
+./run-official-tck-restful-4.0.sh all       # 2670 tests, expected: 2535 PASS / 135 SKIP / 0 ERR
+./run-official-tck-restful-4.0.sh -Dtest=X  # targeted
 ```
 
-Pré-requis : `jakarta.ws.rs:jakarta-restful-ws-tck:4.0.1` installé en M2 local
-(non-public — TCK officiel Jakarta).
+Prerequisite: `jakarta.ws.rs:jakarta-restful-ws-tck:4.0.1` installed in the local M2
+(non-public — official Jakarta TCK).
 
-### Tests unitaires
+### Unit tests
 ```bash
 mvn test
 ```
 
 ## Conventions
 
-- **Java 25** + **Maven 3.9.16** (cf. `.sdkmanrc`)
-- **Java modules explicites** : tous les modules ont un `module-info.java`
-- **Packages** :
-  - `io.vidocq.cassini.spi.*` — public SPI (stabilité sémantique)
-  - `io.vidocq.cassini.internal.*` — interne (peut casser entre versions)
-- **groupId Maven** : `io.vidocq.cassini` (cohérent `io.vidocq.chappe`, `io.vidocq.vauban`)
-- **License** : Apache 2.0
-- **License headers** : pas obligatoires en MVP
+- **Java 25** + **Maven 3.9.16** (see `.sdkmanrc`)
+- **Explicit Java modules**: all modules have a `module-info.java`
+- **Packages**:
+  - `io.vidocq.cassini.spi.*` — public SPI (semantic stability)
+  - `io.vidocq.cassini.internal.*` — internal (may break between versions)
+- **Maven groupId**: `io.vidocq.cassini` (consistent with `io.vidocq.chappe`, `io.vidocq.vauban`)
+- **License**: Apache 2.0
+- **License headers**: not required in the MVP
 
-## Points d'attention pour Claude Code
+## Things to watch for in Claude Code
 
-1. **Ne jamais réintroduire d'import `fr.vidocq.chappe`** dans `cassini-core` — le
-   découplage est une contrainte d'architecture (cf. `cassini-migration.md` §4).
+1. **Never reintroduce an import of `fr.vidocq.chappe`** into `cassini-core` — the
+   decoupling is an architectural constraint (see `cassini-migration.md` §4).
 
-2. **Préserver les invariants async (M2h)** : `Invoker.invoke()` retourne
-   `CassiniHttpResponse` synchrone aujourd'hui ; M2h propagera `CompletionStage`
-   sans bloquer (`awaitBlocking()` à isoler).
+2. **Preserve async invariants (M2h)**: `Invoker.invoke()` returns a synchronous
+   `CassiniHttpResponse` today; M2h will propagate `CompletionStage`
+   without blocking (`awaitBlocking()` must be isolated).
 
-3. **TCK 2535/2535 est un contrat** : toute modification de `cassini-core` doit
-   préserver ce score (run avant commit pour les changements importants).
+3. **TCK 2535/2535 is a contract**: any change to `cassini-core` must
+   preserve this score (run it before committing important changes).
 
-4. **Module-info `provides RuntimeDelegate`** : seul `cassini-chappe` (et plus tard
-   `cassini-jdk-http`) déclare ce service. `cassini-core` ne l'expose plus pour
-   éviter les collisions ServiceLoader.
+4. **Module-info `provides RuntimeDelegate`**: only `cassini-chappe` (and later
+   `cassini-jdk-http`) declares this service. `cassini-core` no longer exposes it to
+   avoid ServiceLoader collisions.
 
-5. **Le `cassini-tck/pom.xml` est en Model 4.0.0** — ne pas le passer en 4.1.0
-   tant que ShrinkWrap n'est pas mis à jour.
+5. **`cassini-tck/pom.xml` is in Model 4.0.0** — do not switch it to 4.1.0
+   until ShrinkWrap is updated.
 
-6. **MEMO Q3** : `groupId` Chappe est canonique `io.vidocq.chappe` (pas `fr.vidocq.chappe`).
+6. **MEMO Q3**: the canonical Chappe `groupId` is `io.vidocq.chappe` (not `fr.vidocq.chappe`).
 
 ## Roadmap
 
-Voir [`README.md`](README.md) pour M2h (async + virtual threads) et M2i (SSE streaming).
+See [`README.md`](README.md) for M2h (async + virtual threads) and M2i (SSE streaming).
