@@ -123,7 +123,7 @@ sequenceDiagram
 
 ```bash
 # Avec SDKMAN! (recommandé)
-sdk env install    # lit .sdkmanrc → JDK 25 + Maven 4.0.0-rc-5
+sdk env install    # lit .sdkmanrc → JDK 25 + Maven 3.9.16
 ```
 
 ```bash

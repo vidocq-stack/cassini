@@ -6,7 +6,7 @@ Three minutes to serve a `@Path` resource over HTTP. Cassini is deployed via the
 
 == Prerequisites
 
-* **Java 25** + **Maven 4.0.0-rc-5** — `.sdkmanrc` at the repo root (`sdk env` to align).
+* **Java 25** + **Maven 3.9.16** — `.sdkmanrc` at the repo root (`sdk env` to align).
 * The official Jakarta REST 4.0 TCK is required only for conformance — not for application development.
 
 == Maven coordinates

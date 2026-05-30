@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.1.0"
+<project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.1.0 http://maven.apache.org/xsd/maven-4.1.0.xsd"
-         root="true">
-    <modelVersion>4.1.0</modelVersion>
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+         >
+    <modelVersion>4.0.0</modelVersion>
 
     <parent>
         <groupId>io.vidocq</groupId>
         <artifactId>vidocq-parent</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>0.1.1-SNAPSHOT</version>
         <relativePath/>
     </parent>
 
@@ -68,17 +68,17 @@
         les POMs Model 4.1.0. Il est invoqué par run-official-tck-restful-4.0.sh
         après installation locale du reactor.
     -->
-    <subprojects>
-        <subproject>cassini-api</subproject>
-        <subproject>cassini-core</subproject>
-        <subproject>cassini-processor</subproject>
-        <subproject>cassini-maven-plugin</subproject>
-        <subproject>cassini-cdi-vauban</subproject>
-        <subproject>cassini-chappe</subproject>
-        <subproject>cassini-jdk-http</subproject>
-        <subproject>cassini-client</subproject>
-        <subproject>cassini-examples</subproject>
-    </subprojects>
+    <modules>
+        <module>cassini-api</module>
+        <module>cassini-core</module>
+        <module>cassini-processor</module>
+        <module>cassini-maven-plugin</module>
+        <module>cassini-cdi-vauban</module>
+        <module>cassini-chappe</module>
+        <module>cassini-jdk-http</module>
+        <module>cassini-client</module>
+        <module>cassini-examples</module>
+    </modules>
 
     <dependencyManagement>
         <dependencies>

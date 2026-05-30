@@ -46,7 +46,7 @@
 cassini/
 ├── .forgejo/workflows/ci.yml         ← repris de chappe (build + deploy SNAPSHOT à chaque push)
 ├── .mvn/maven.config                 ← repris de chappe (preemptive auth)
-├── .sdkmanrc                         ← java=25-tem, maven=4.0.0-rc-5
+├── .sdkmanrc                         ← java=25-tem, maven=3.9.16
 ├── .gitignore
 ├── LICENSE                           ← Apache 2.0
 ├── README.md                         ← présentation + roadmap M2h/M2i
@@ -188,7 +188,7 @@ public interface ResourceFactory {
 
 ### Phase 0 — Bootstrap repo (≈ 0,5 j)
 - [ ] `git init` dans `/Users/yblazart/projects/perso/vidocq/cassini`
-- [ ] Copier `.sdkmanrc` (java=25-tem, maven=4.0.0-rc-5), `.mvn/maven.config`, `.forgejo/workflows/ci.yml` depuis chappe (adapter le secret `MAVEN_DEPLOY_TOKEN`)
+- [ ] Copier `.sdkmanrc` (java=25-tem, maven=3.9.16), `.mvn/maven.config`, `.forgejo/workflows/ci.yml` depuis chappe (adapter le secret `MAVEN_DEPLOY_TOKEN`)
 - [ ] `LICENSE` Apache 2.0 (cohérent vidocq/chappe)
 - [ ] `.gitignore` (repris de chappe)
 - [ ] `pom.xml` parent (Model 4.1.0, groupId `io.vidocq.cassini`, artifactId `cassini-parent`, version `0.1.0-SNAPSHOT`, packaging `pom`, distributionManagement `repo.vidocq.dev`, `<subprojects>` × 4)

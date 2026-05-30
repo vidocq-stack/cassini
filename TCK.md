@@ -67,7 +67,7 @@ Six tests sont désactivés via la classe
 
 ### Pré-requis
 
-1. **Java 25** + **Maven 4.0.0-rc-5** (cf. `.sdkmanrc`)
+1. **Java 25** + **Maven 3.9.16** (cf. `.sdkmanrc`)
 2. **TCK officiel installé localement** :
    ```bash
    mvn install:install-file \
