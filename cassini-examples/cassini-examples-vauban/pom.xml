@@ -14,6 +14,11 @@
     <name>Cassini :: Examples :: Vauban CDI</name>
     <description>Exemple Cassini avec intégration Vauban CDI — SeBootstrap + auto-discovery du BeanProvider Vauban</description>
 
+    <properties>
+        <!-- Example code — never deployed to Maven Central. -->
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
+
     <dependencies>
         <!-- API compile : SeBootstrap + CDI + JSON-B -->
         <dependency>

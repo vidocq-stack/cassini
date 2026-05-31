@@ -14,6 +14,11 @@
     <name>Cassini :: Examples :: JDK HttpServer Standalone</name>
     <description>Exemple Cassini avec transport JDK natif (com.sun.net.httpserver) — bootstrap manuel via CassiniStack</description>
 
+    <properties>
+        <!-- Example code — never deployed to Maven Central. -->
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>io.vidocq.cassini</groupId>
