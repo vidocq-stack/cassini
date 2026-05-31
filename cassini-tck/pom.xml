@@ -33,7 +33,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>25</maven.compiler.release>
         <cassini.version>0.1.0-SNAPSHOT</cassini.version>
-        <chappe.version>0.1.0-SNAPSHOT</chappe.version>
+        <chappe.version>0.2.0-SNAPSHOT</chappe.version>
     </properties>
 
     <repositories>

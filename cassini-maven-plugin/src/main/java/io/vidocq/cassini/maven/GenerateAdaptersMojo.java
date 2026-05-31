@@ -1,6 +1,7 @@
 package io.vidocq.cassini.maven;
 
 import io.vidocq.cassini.internal.gen.RuntimeAdapterGenerator;
+import io.vidocq.cassini.internal.gen.RuntimeRoutesGenerator;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -314,8 +315,16 @@ public class GenerateAdaptersMojo extends AbstractMojo {
                 adapterEntries.add(new String[]{adapterName});
                 adapterBytecodes.add(bc);
                 getLog().info("  + woven adapter for " + cls.getName());
+
+                // Also weave the $$CassiniRoutes provider so RouteRegistry uses pre-generated routes
+                // (full AOT coverage) instead of the reflective ResourceScanner fallback.
+                byte[] routesBc = RuntimeRoutesGenerator.toBytecode(cls);
+                String routesName = RuntimeRoutesGenerator.routesClassName(cls).replace('.', '/') + ".class";
+                adapterEntries.add(new String[]{routesName});
+                adapterBytecodes.add(routesBc);
+                getLog().info("  + woven routes for " + cls.getName());
             } catch (Exception e) {
-                getLog().warn("Cannot generate adapter for " + className + ": " + e.getMessage());
+                getLog().warn("Cannot generate adapter/routes for " + className + ": " + e.getMessage());
             }
         }
 
@@ -323,8 +332,22 @@ public class GenerateAdaptersMojo extends AbstractMojo {
         try (JarFile orig = new JarFile(originalJar);
              java.util.jar.JarOutputStream jos = new java.util.jar.JarOutputStream(
                      Files.newOutputStream(repackJar.toPath()))) {
-            // Copy original entries
+            // Copy original entries. The module-info.class is rewritten so the woven adapters
+            // (which implement io.vidocq.cassini.spi.gen.ResourceAdapter and use InjectionSupport,
+            // both in module io.vidocq.cassini.api) can link at runtime — otherwise the derived
+            // module would not read cassini.api and the adapters would be unusable.
             for (java.util.zip.ZipEntry entry : java.util.Collections.list(orig.entries())) {
+                if (entry.getName().equals("module-info.class")) {
+                    byte[] mi;
+                    try (InputStream in = orig.getInputStream(entry)) {
+                        mi = in.readAllBytes();
+                    }
+                    byte[] patched = addModuleRequires(mi, "io.vidocq.cassini.api");
+                    jos.putNextEntry(new java.util.jar.JarEntry(entry.getName()));
+                    jos.write(patched);
+                    jos.closeEntry();
+                    continue;
+                }
                 jos.putNextEntry(new java.util.jar.JarEntry(entry.getName()));
                 try (InputStream in = orig.getInputStream(entry)) {
                     in.transferTo(jos);
@@ -416,5 +439,48 @@ public class GenerateAdaptersMojo extends AbstractMojo {
             getLog().debug("Cannot detect module name from " + jar + ": " + e.getMessage());
         }
         return "<unknown>";
+    }
+
+    /**
+     * Returns a copy of the given {@code module-info.class} bytes with an extra
+     * {@code requires <requiredModule>} directive added to its {@code Module} attribute
+     * (no-op if already present). The woven {@code $$CassiniAdapter} classes implement
+     * {@code io.vidocq.cassini.spi.gen.ResourceAdapter} and use {@code InjectionSupport},
+     * both in module {@code io.vidocq.cassini.api}; without this directive the repackaged
+     * module would not read {@code cassini.api} and the adapters would fail to link at runtime.
+     */
+    private byte[] addModuleRequires(byte[] moduleInfo, String requiredModule)
+            throws MojoExecutionException {
+        try {
+            var cf = java.lang.classfile.ClassFile.of();
+            var cm = cf.parse(moduleInfo);
+            return cf.transformClass(cm, cm.thisClass(), (cb, ce) -> {
+                if (ce instanceof java.lang.classfile.attribute.ModuleAttribute ma) {
+                    boolean present = ma.requires().stream().anyMatch(
+                            r -> r.requires().name().stringValue().equals(requiredModule));
+                    if (present) {
+                        cb.with(ce);
+                        return;
+                    }
+                    var newMa = java.lang.classfile.attribute.ModuleAttribute.of(
+                            ma.moduleName().asSymbol(), b -> {
+                                b.moduleFlags(ma.moduleFlagsMask());
+                                ma.moduleVersion().ifPresent(v -> b.moduleVersion(v.stringValue()));
+                                ma.requires().forEach(b::requires);
+                                b.requires(java.lang.constant.ModuleDesc.of(requiredModule), 0, null);
+                                ma.exports().forEach(b::exports);
+                                ma.opens().forEach(b::opens);
+                                ma.uses().forEach(b::uses);
+                                ma.provides().forEach(b::provides);
+                            });
+                    cb.with(newMa);
+                } else {
+                    cb.with(ce);
+                }
+            });
+        } catch (Exception e) {
+            throw new MojoExecutionException("Failed to add 'requires " + requiredModule
+                    + "' to repackaged module-info.class", e);
+        }
     }
 }
