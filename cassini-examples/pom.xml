@@ -15,6 +15,11 @@
     <description>Exemples d'utilisation de Cassini (Chappe standalone et Vauban CDI)</description>
     <packaging>pom</packaging>
 
+    <properties>
+        <!-- Example aggregator: never deployed to Maven Central. -->
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
+
     <modules>
         <module>cassini-examples-chappe</module>
         <module>cassini-examples-jdkhttp</module>
