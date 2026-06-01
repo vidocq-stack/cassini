@@ -43,4 +43,25 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+                Vauban codegen : génère META-INF/vauban-beans.list + _ClientProxy/_Factory pour que le
+                runtime Vidocq (scanClasspath) découvre les beans CDI. BCE (CassiniScopeExtension) dans un
+                package exporté → pas d'opens. Sortie inerte (Weld-safe), comme knock-cdi-vauban.
+            -->
+            <plugin>
+                <groupId>io.vidocq.vauban</groupId>
+                <artifactId>vauban-maven-plugin</artifactId>
+                <version>${vauban.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate</id>
+                        <goals><goal>generate</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>
