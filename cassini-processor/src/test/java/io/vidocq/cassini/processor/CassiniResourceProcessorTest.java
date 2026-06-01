@@ -220,6 +220,44 @@ class CassiniResourceProcessorTest {
      * and test both injectFields and invoke on it.
      */
     @Test
+    void processorGeneratesAdapterForExceptionMapperOfThrowable() throws Throwable {
+        // Regression: a @Provider implementing ExceptionMapper<E extends Throwable> exposes the
+        // interface method toResponse(E) to the APT lang model with E as a type variable. The
+        // processor used to erase a type variable to Object, generating an invoke case that called
+        // target.toResponse((Object) args[0]) — which does not compile ("Object cannot be converted
+        // to Throwable"). The fix erases a type variable to its leftmost bound (Throwable), so the
+        // cast is valid and the method de-dups against the concrete toResponse(Throwable) override.
+        String source = """
+                package io.vidocq.cassini.test.apt;
+
+                import jakarta.ws.rs.core.Response;
+                import jakarta.ws.rs.ext.ExceptionMapper;
+                import jakarta.ws.rs.ext.Provider;
+
+                @Provider
+                public class BoomMapper implements ExceptionMapper<Throwable> {
+                    @Override
+                    public Response toResponse(Throwable t) {
+                        return Response.status(500).entity(String.valueOf(t.getMessage())).build();
+                    }
+                }
+                """;
+
+        File src = writeSource("io/vidocq/cassini/test/apt/BoomMapper.java", source);
+        File outDir = tempDir.resolve("out-em").toFile();
+        outDir.mkdirs();
+
+        // compileWithProcessor asserts a successful compilation — before the fix this threw.
+        URLClassLoader loader = compileWithProcessor(outDir, src);
+
+        Class<?> adapter = loader.loadClass("io.vidocq.cassini.test.apt.BoomMapper$$CassiniAdapter");
+        assertNotNull(adapter, "$$CassiniAdapter must be generated + compiled for ExceptionMapper<Throwable>");
+        assertTrue(ResourceAdapter.class.isAssignableFrom(adapter));
+        // Resolving the adapter's methods must not raise (a malformed nested/erased descriptor would).
+        assertNotNull(adapter.getDeclaredMethods());
+    }
+
+    @Test
     void processorGeneratesAdapterWithInjectAndInvoke() throws Throwable {
         // Source: a @Path resource with a private @Context SecurityContext field,
         // a @QueryParam String field, and two resource methods.

@@ -413,7 +413,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                 TypeElement te = (TypeElement) ((DeclaredType) t).asElement();
                 yield elements.getBinaryName(te).toString();
             }
-            case TYPEVAR -> "java.lang.Object";
+            case TYPEVAR -> jvmBinaryName(types.erasure(t)); // erase to leftmost bound (e.g. Throwable)
             default -> "java.lang.Object";
         };
     }
@@ -1075,7 +1075,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                 String binary = elements.getBinaryName(te).toString().replace('.', '/');
                 yield "L" + binary + ";";
             }
-            case TYPEVAR -> "Ljava/lang/Object;"; // erased
+            case TYPEVAR -> toJvmDescriptor(types.erasure(t)); // erase to leftmost bound (e.g. Throwable)
             default -> "Ljava/lang/Object;";
         };
     }
@@ -1097,7 +1097,10 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                 TypeElement te = (TypeElement) ((DeclaredType) t).asElement();
                 yield elements.getBinaryName(te).toString().replace('$', '.');
             }
-            case TYPEVAR -> "Object"; // erased
+            // A type variable erases to its leftmost bound (e.g. ExceptionMapper<E extends Throwable>
+            // → Throwable, not Object), so the generated cast matches the concrete override and the
+            // method de-dups against it. Unbounded vars still erase to Object.
+            case TYPEVAR -> javaTypeName(types.erasure(t));
             default -> "Object";
         };
     }
