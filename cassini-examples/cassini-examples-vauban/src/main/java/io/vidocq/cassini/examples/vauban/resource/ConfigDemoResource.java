@@ -27,17 +27,19 @@ import java.util.Optional;
 @Path("/config")
 public class ConfigDemoResource {
 
+    // Package-private (not private): the Vauban-APT-generated _VaubanComponents.injectField writes
+    // these with an in-package putfield, so the container needs no `opens … to io.vidocq.vauban.core`.
     @Inject
     @ConfigProperty(name = "app.greeting", defaultValue = "Hello from Ravel")
-    private String greeting;
+    String greeting;
 
     @Inject
     @ConfigProperty(name = "app.version", defaultValue = "0.0.0")
-    private String version;
+    String version;
 
     @Inject
     @ConfigProperty(name = "app.env")
-    private Optional<String> environment;
+    Optional<String> environment;
 
     /**
      * Returns a greeting message configured via @ConfigProperty.

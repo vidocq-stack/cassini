@@ -101,6 +101,25 @@
                             <artifactId>vauban-processor</artifactId>
                             <version>${vauban.version}</version>
                         </path>
+                        <!-- cassini-processor generates <Resource>$$CassiniAdapter + $$CassiniRoutes at
+                             build time, so cassini.core dispatches/injects through the in-package adapter
+                             (no reflective setAccessible) — together with Mode-B instantiation by Vauban,
+                             this removes the need to open the resource package to cassini.core. -->
+                        <path>
+                            <groupId>io.vidocq.cassini</groupId>
+                            <artifactId>cassini-processor</artifactId>
+                            <version>${project.version}</version>
+                        </path>
+                        <path>
+                            <groupId>io.vidocq.cassini</groupId>
+                            <artifactId>cassini-api</artifactId>
+                            <version>${project.version}</version>
+                        </path>
+                        <path>
+                            <groupId>jakarta.ws.rs</groupId>
+                            <artifactId>jakarta.ws.rs-api</artifactId>
+                            <version>${jakarta.ws.rs.version}</version>
+                        </path>
                     </annotationProcessorPaths>
                     <compilerArgs>
                         <!-- ConfigDemoResource injects @ConfigProperty String/Optional<String> values,
