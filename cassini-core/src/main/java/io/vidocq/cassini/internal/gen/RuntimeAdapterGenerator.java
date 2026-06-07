@@ -183,7 +183,21 @@ public final class RuntimeAdapterGenerator {
                 generateNewInstance(clb, resourceCD);
             }
             // else: leave the default UnsupportedOperationException impl from the interface
+
+            // resourceClass() — ServiceLoader keying (zero-export JPMS apps), parity with the APT.
+            generateResourceClass(clb, resourceCD);
         });
+    }
+
+    /** Emits {@code public Class<?> resourceClass() { return Resource.class; }} (ldc + areturn). */
+    private static void generateResourceClass(java.lang.classfile.ClassBuilder clb, ClassDesc resourceCD) {
+        clb.withMethodBody("resourceClass",
+                MethodTypeDesc.of(CD_Class),
+                ClassFile.ACC_PUBLIC,
+                cob -> {
+                    cob.ldc(resourceCD);
+                    cob.areturn();
+                });
     }
 
     /**

@@ -59,6 +59,7 @@ public final class RuntimeRoutesGenerator {
         List<ResourceMethod> routes = hasLocators ? List.of() : ResourceScanner.discover(resourceClass);
 
         ClassDesc providerCD = ClassDesc.of(routesClassName(resourceClass));
+        ClassDesc resourceCD = ClassDesc.of(resourceClass.getName());
 
         return ClassFile.of().build(providerCD, clb -> {
             clb.withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER | ClassFile.ACC_FINAL);
@@ -96,6 +97,14 @@ public final class RuntimeRoutesGenerator {
                         // return List.of(tmp);
                         cob.invokestatic(CD_List, "of",
                                 MethodTypeDesc.of(CD_List, CD_Object.arrayType()), true);
+                        cob.areturn();
+                    });
+
+            // public Class<?> resourceClass() { return Resource.class; }
+            // ServiceLoader keying (zero-export JPMS apps), parity with the APT.
+            clb.withMethodBody("resourceClass", MethodTypeDesc.of(CD_Class),
+                    ClassFile.ACC_PUBLIC, cob -> {
+                        cob.ldc(resourceCD);
                         cob.areturn();
                     });
         });
