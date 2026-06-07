@@ -14,23 +14,29 @@ module io.vidocq.cassini.examples.vauban {
     requires io.vidocq.ravel.api;
     requires io.vidocq.ravel.cdi.vauban;
 
-    // Zero opens. cassini.core instantiates the build-time generated <Resource>$$CassiniAdapter /
-    // $$CassiniRoutes (public, in this package) via Class.forName + public reflection — it needs an
-    // EXPORT, not an opens (same pattern as knock-jaxrs/cervantes-jaxrs in production). With the
-    // adapter present, dispatch and @*Param coercion run in-package; no reflective setAccessible on
-    // the resource methods.
-    exports io.vidocq.cassini.examples.vauban.resource;
-    // Exported (not opened): vauban.core instantiates the @ApplicationScoped TodoService's generated
-    // public TodoService_ClientProxy via public reflection — an export suffices, no opens needed (same
-    // mechanism as the resource package above and as knock-jaxrs/cervantes-jaxrs in production).
-    exports io.vidocq.cassini.examples.vauban.service;
-    // R-3 — Champollion resolves records via publicLookup, just exports.
+    // ZERO opens AND zero exports on the resource/service packages — a full Mode-B (CDI) zero-export
+    // app. Both the Cassini dispatch path and the Vauban proxy path now run in-module:
+    //  • cassini-core obtains each <Resource>$$CassiniAdapter / $$CassiniRoutes through ServiceLoader
+    //    (the `provides` below); the module system instantiates them from the closed package, so
+    //    cassini-core never reflects into it (dispatch + @*Param coercion run in the adapter).
+    //  • vauban-core creates the @ApplicationScoped beans' <Bean>_ClientProxy in-module via the
+    //    per-package _VaubanComponents provider (createClientProxy → `new <Bean>_ClientProxy()`), and
+    //    field-injects @Inject members in-package (package-private putfield) — no opens, no exports.
+    // R-3 — only the model package stays exported (Champollion resolves records via publicLookup).
     exports io.vidocq.cassini.examples.vauban.model;
 
-    // Vauban instantiates the @ApplicationScoped resources and service AND field-injects them
-    // in-module through the APT-generated per-package _VaubanComponents providers (their @Inject
-    // fields are package-private — in-package putfield), so vauban.core needs no opens into these
-    // packages.
+    // Cassini dispatch metadata as ServiceLoader providers (keeps the resource package closed).
+    provides io.vidocq.cassini.spi.gen.ResourceAdapter
+            with io.vidocq.cassini.examples.vauban.resource.GreetingResource$$CassiniAdapter,
+                 io.vidocq.cassini.examples.vauban.resource.TodoResource$$CassiniAdapter,
+                 io.vidocq.cassini.examples.vauban.resource.ConfigDemoResource$$CassiniAdapter;
+    provides io.vidocq.cassini.spi.gen.RouteProvider
+            with io.vidocq.cassini.examples.vauban.resource.GreetingResource$$CassiniRoutes,
+                 io.vidocq.cassini.examples.vauban.resource.TodoResource$$CassiniRoutes,
+                 io.vidocq.cassini.examples.vauban.resource.ConfigDemoResource$$CassiniRoutes;
+
+    // Vauban instantiates the @ApplicationScoped beans, their client proxies, and field-injects them
+    // in-module through the APT-generated per-package _VaubanComponents providers.
     provides io.vidocq.vauban.api.VaubanComponentProvider
             with io.vidocq.cassini.examples.vauban.resource._VaubanComponents,
                  io.vidocq.cassini.examples.vauban.service._VaubanComponents;
