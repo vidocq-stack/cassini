@@ -56,14 +56,34 @@ Three levels of adapter generation (`<Class>$$CassiniAdapter`), from most prefer
    files to disk. AOT-safe.
 3. **Runtime generator (`RuntimeAdapterGenerator.generate`)** — JVM-only fallback. Not AOT-compatible.
 
-`AdapterRegistry.lookup` first tries `Class.forName(<class>$$CassiniAdapter)` (APT/plugin
-path), then the runtime generator, then returns the SENTINEL (reflective fallback).
+`AdapterRegistry.lookup` resolves in this order: (0) a **`ServiceLoader`-registered adapter**
+(module-path `provides io.vidocq.cassini.spi.gen.ResourceAdapter with <Class>$$CassiniAdapter`, or
+classpath `META-INF/services`), keyed by `ResourceAdapter.resourceClass()`; (1) `Class.forName(<class>$$CassiniAdapter)`
+(APT/plugin path); (2) the runtime generator; (3) the SENTINEL (reflective fallback). The
+ServiceLoader step is what lets a strict-JPMS app keep its resource package **closed** (neither
+`opens` nor `exports`): the module system instantiates the provider from the encapsulated package,
+so cassini-core never reflects into it. That step also populates the per-class `methodId` map (via
+`RuntimeAdapterGenerator.collectMethods`, public-method enumeration — no `setAccessible`), so
+`adapter.invoke()` does the typed dispatch instead of a reflective `Method.invoke`. On the classpath
+and for the TCK no provider is registered, so the map is empty and lookup falls through to
+`Class.forName` exactly as before (zero behaviour change). cassini-core `uses` both SPIs.
+
+> **Zero-export proof:** `cassini-examples-jdkhttp` (pure Mode A) keeps its `resource` package fully
+> encapsulated — `java --describe-module` shows `contains …resource` (no `opens`, no `exports`), only
+> `provides ResourceAdapter/RouteProvider with …$$CassiniAdapter/$$CassiniRoutes`. All HTTP dispatch
+> tests pass on the module-path. (Mode-B Vauban apps additionally need Vauban to instantiate the
+> normal-scoped client proxy in-module — the separate BCE-static-metadata chantier — before they can
+> drop `exports` too.) Follow-up: `cassini-maven-plugin`/`RuntimeAdapterGenerator.toBytecode` do **not**
+> yet emit `resourceClass()`, so plugin-pre-generated external module-path jars still need `Class.forName`
+> (i.e. an `exports`); only APT-generated adapters are ServiceLoader-keyable today.
 
 **Generated route table (M5b):** in addition to the adapter, each `@Path` class without a sub-resource
 locator gets a `<Class>$$CassiniRoutes` (SPI `RouteProvider`) exposing the route table as
-literals (`RouteDescriptor`). `RouteRegistry` tries `Class.forName(<class>$$CassiniRoutes)` then
-converts each descriptor into a `ResourceMethod` via a targeted `getDeclaredMethod(...)` (no annotation
-scan). Classes with locators set `hasLocators()` and fall back to
+literals (`RouteDescriptor`). `RouteRegistry` resolves a provider the same way as `AdapterRegistry`
+(ServiceLoader by `RouteProvider.resourceClass()` first, then `Class.forName(<class>$$CassiniRoutes)`),
+then converts each descriptor into a `ResourceMethod` via a targeted `getDeclaredMethod(...)` (no
+annotation scan; the descriptor `Method`'s `setAccessible` is best-effort — a closed package relies on
+`adapter.invoke`). Classes with locators set `hasLocators()` and fall back to
 `ResourceScanner.discover`.
 
 **JPMS named-module rule (plugin):** adapters live in the resource package.
@@ -74,7 +94,7 @@ Classpath JARs → write into `target/classes`. JPMS named-module → fail build
 - `ResourceScanner` at startup (JAX-RS annotation scan, only once).
 - Resource and bean instantiation (`getDeclaredConstructor().newInstance()`) — one-time, outside the hot path.
 - `InjectionSupportImpl.beanParam`: instantiation is still reflective; bean field injection goes through its generated adapter (P4), or reflective fallback if the adapter cannot be generated (closed module, private superclass).
-- Runtime fallback (SENTINEL + `FieldInjector.inject` as a safety net) in two **irreducible by codegen** cases: (a) closed application module (no `opens`) → `privateLookupIn` fails; (b) **field whose TYPE is a package-private class from ANOTHER package** than the resource (e.g. TCK `ParamEntityWithConstructor` injected into `*.locator`/`*.sub`) → `findVarHandle` requires access to the field type, impossible by language rules even for an adapter generated in the resource package; only `Field.setAccessible(true)` works around it. These two cases are NOT bugs. (The M6d bug — array-type params `Annotation[]`/`byte[]` crashing generation via `ClassDesc.of(getName())` — is fixed: those provider classes are now generated.)
+- Runtime fallback (SENTINEL + `FieldInjector.inject` as a safety net) in two cases: (a) closed application module that does **not** register its APT adapter as a `ServiceLoader` provider → cassini-core cannot reach `<Class>$$CassiniAdapter` (no `opens`/`exports`, no `provides`) and `privateLookupIn` fails. **Resolvable** by adding `provides ResourceAdapter with <Class>$$CassiniAdapter` (+ `RouteProvider`) to the app `module-info` — then the package stays closed and dispatch/injection run in-module (see `cassini-examples-jdkhttp`). (b) **field whose TYPE is a package-private class from ANOTHER package** than the resource (e.g. TCK `ParamEntityWithConstructor` injected into `*.locator`/`*.sub`) → `findVarHandle` requires access to the field type, impossible by language rules even for an adapter generated in the resource package; only `Field.setAccessible(true)` works around it — this one is genuinely **irreducible by codegen**. Neither case is a bug. (The M6d bug — array-type params `Annotation[]`/`byte[]` crashing generation via `ClassDesc.of(getName())` — is fixed: those provider classes are now generated.)
 - `@Context` injection into singleton providers (filters, MBW/MBR) via `FieldInjector.inject` — outside the resource hot path.
 - `@*Param` field coercion: **generated inline** by the three generators (runtime `RuntimeAdapterGenerator` = M6b, APT `cassini-processor` = M6c, plugin via `toBytecode`) for String/CharSequence, primitives+wrappers, enum (`fromString` or `Enum.valueOf`), public `valueOf`/`fromString`/ctor `(String)`, and `List`/`Set`/`SortedSet`/`Collection` collections of those types. Reflective fallback `support.param` (→ `ParamValueConverter`) only for non-inlineable forms: `PathSegment`, non-public types/members, raw collections.
 - **Method parameter** coercion: still handled through `ParamExtractor` + `ParamValueConverter` (`ParamConverterProvider`-aware resolution on first call per type, not per request). **Intentionally not inlined** — PCP precedence is what broke 23 tests on the first P1b attempt.

@@ -40,6 +40,13 @@ module io.vidocq.cassini.core {
     provides io.vidocq.cassini.spi.http.CassiniStack.BuilderFactory
             with io.vidocq.cassini.internal.CassiniStackBuilderFactory;
 
+    // ServiceLoader-registered, build-time generated dispatch metadata. An application that
+    // `provides ResourceAdapter with <Class>$$CassiniAdapter` (and likewise RouteProvider) lets the
+    // module system instantiate the providers from its CLOSED resource package, so cassini-core
+    // never reflects into it — no `opens`, no `exports` required (AdapterRegistry / RouteRegistry).
+    uses io.vidocq.cassini.spi.gen.ResourceAdapter;
+    uses io.vidocq.cassini.spi.gen.RouteProvider;
+
     // jakarta.ws.rs.ext.RuntimeDelegate provided by cassini-chappe or
     // cassini-jdk-http (transport-specific for SeBootstrap). Cassini-core
     // does not expose its CassiniRuntimeDelegate via ServiceLoader to avoid

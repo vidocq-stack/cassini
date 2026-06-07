@@ -66,4 +66,26 @@ public interface ResourceAdapter {
         throw new UnsupportedOperationException(
                 "No generated newInstance() — no public/package no-arg constructor or generation skipped");
     }
+
+    /**
+     * Returns the resource class this adapter was generated for, or {@code null} when the
+     * adapter does not advertise it.
+     *
+     * <p><b>ServiceLoader keying:</b> when an adapter is registered as a {@code ServiceLoader}
+     * provider (module-path {@code provides ResourceAdapter with <Class>$$CassiniAdapter}, or a
+     * {@code META-INF/services} entry), {@code AdapterRegistry} builds a {@code Class → adapter}
+     * map keyed by this method. This lets a strict JPMS application keep its resource package
+     * <em>closed</em> (neither {@code opens} nor {@code exports}): the module system instantiates
+     * the provider from the closed package, so cassini-core never reflects into it.</p>
+     *
+     * <p>APT- and plugin-generated adapters override this with {@code return <Class>.class;}.
+     * The default returns {@code null}: runtime-generated adapters (never registered as services)
+     * and the registry sentinel are simply skipped when the {@code ServiceLoader} map is built —
+     * they continue to be resolved through the {@code Class.forName} / runtime-generator fallback.</p>
+     *
+     * @return the resource class, or {@code null} if not advertised
+     */
+    default Class<?> resourceClass() {
+        return null;
+    }
 }

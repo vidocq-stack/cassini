@@ -217,6 +217,10 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             w.println("    }");
         }
 
+        w.println();
+        // resourceClass() — ServiceLoader keying (zero-export JPMS apps)
+        emitResourceClass(w, resourceBinaryName);
+
         w.println("}");
     }
 
@@ -544,8 +548,23 @@ public class CassiniResourceProcessor extends AbstractProcessor {
 
         // newInstance() — M6a
         emitNewInstance(w, resourceBinaryName, hasNoArgCtor);
+        w.println();
+
+        // resourceClass() — ServiceLoader keying (zero-export JPMS apps)
+        emitResourceClass(w, resourceBinaryName);
 
         w.println("}");
+    }
+
+    /**
+     * Emits the {@code resourceClass()} override returning the resource class literal. Used by
+     * {@code AdapterRegistry}/{@code RouteRegistry} to key {@code ServiceLoader}-registered providers,
+     * so an application that {@code provides} this generated class can keep its package closed.
+     */
+    private void emitResourceClass(PrintWriter w, String resourceBinaryName) {
+        String resourceRef = resourceBinaryName.replace('$', '.');
+        w.println("    @Override");
+        w.println("    public Class<?> resourceClass() { return " + resourceRef + ".class; }");
     }
 
     // -------------------------------------------------------------------------

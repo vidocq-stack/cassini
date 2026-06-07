@@ -38,4 +38,25 @@ public interface RouteProvider {
     default boolean hasLocators() {
         return false;
     }
+
+    /**
+     * Returns the {@code @Path} resource class this provider was generated for, or {@code null}
+     * when it does not advertise it.
+     *
+     * <p><b>ServiceLoader keying:</b> when a route provider is registered as a {@code ServiceLoader}
+     * provider (module-path {@code provides RouteProvider with <Class>$$CassiniRoutes}, or a
+     * {@code META-INF/services} entry), {@code RouteRegistry} builds a {@code Class → provider} map
+     * keyed by this method, so a strict JPMS application can keep its resource package <em>closed</em>
+     * (no {@code opens}, no {@code exports}) — the module system instantiates the provider and
+     * cassini-core never calls {@code Class.forName} into the package.</p>
+     *
+     * <p>APT-generated providers override this with {@code return <Class>.class;}. The default
+     * returns {@code null}, which simply excludes the provider from the {@code ServiceLoader} map;
+     * resolution then falls back to {@code Class.forName} / {@code ResourceScanner}.</p>
+     *
+     * @return the resource class, or {@code null} if not advertised
+     */
+    default Class<?> resourceClass() {
+        return null;
+    }
 }
