@@ -235,6 +235,15 @@ public class GenerateAdaptersMojo extends AbstractMojo {
             if (excludeArtifacts.contains(ga)) continue;
             File jar = artifact.getFile();
             if (jar == null || !jar.getName().endsWith(".jar") || !jar.exists()) continue;
+            // Auto-scope: never seal cassini's own infra (a module that `requires io.vidocq.cassini.*`
+            // is implementation-specific, not an agnostic wrapper — e.g. cassini-cdi-vauban whose
+            // package vauban.core must read for its BCE). Lets `sealModules=true` stay safe-by-default
+            // without a hand-maintained includeArtifacts allowlist.
+            if (sealModules && requiresCassini(jar)) {
+                getLog().info("cassini:seal — skipping infra module " + ga
+                        + " (requires io.vidocq.cassini.*)");
+                continue;
+            }
             count += scanJar(jar, artifact, cl);
         }
         return count;
@@ -467,6 +476,34 @@ public class GenerateAdaptersMojo extends AbstractMojo {
             getLog().debug("Cannot detect module name from " + jar + ": " + e.getMessage());
         }
         return "<unknown>";
+    }
+
+    /**
+     * Returns {@code true} when the dependency's {@code module-info} {@code requires} any
+     * {@code io.vidocq.cassini.*} module — i.e. it is cassini infrastructure (not an
+     * implementation-agnostic JAX-RS wrapper) and must NOT be sealed: its package may be read by
+     * cassini/vauban (e.g. {@code cassini-cdi-vauban}'s BCE that {@code vauban.core} accesses).
+     * Reuses the same Class-File module-info parsing as {@link #detectModuleName}.
+     * Package-visible for unit testing.
+     */
+    boolean requiresCassini(File jar) {
+        try (JarFile jf = new JarFile(jar)) {
+            java.util.zip.ZipEntry mi = jf.getEntry("module-info.class");
+            if (mi == null) return false;
+            try (InputStream is = jf.getInputStream(mi)) {
+                var cf = java.lang.classfile.ClassFile.of().parse(is.readAllBytes());
+                var opt = cf.findAttribute(java.lang.classfile.Attributes.module());
+                if (opt.isEmpty()) return false;
+                for (var req : opt.get().requires()) {
+                    if (req.requires().name().stringValue().startsWith("io.vidocq.cassini.")) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            getLog().debug("Cannot read requires from " + jar + ": " + e.getMessage());
+        }
+        return false;
     }
 
     /**

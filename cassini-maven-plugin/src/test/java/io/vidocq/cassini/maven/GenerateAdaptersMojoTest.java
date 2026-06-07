@@ -109,7 +109,46 @@ class GenerateAdaptersMojoTest {
         assertTrue(hasModuleInfo, "JAR with module-info.class must be detected as named module");
     }
 
+    @Test
+    void requiresCassini_trueForInfraModule_falseForAgnosticWrapper() throws Exception {
+        var mojo = new GenerateAdaptersMojo();
+
+        // Infra module: requires io.vidocq.cassini.api -> must be detected (auto-skip from sealing).
+        File infra = jarWithModuleInfo("io.vidocq.cassini.cdi.vauban",
+                "java.base", "io.vidocq.cassini.api", "jakarta.ws.rs");
+        assertTrue(mojo.requiresCassini(infra),
+                "a module that requires io.vidocq.cassini.* is cassini infra and must not be sealed");
+
+        // Agnostic wrapper: only Jakarta APIs, no cassini -> must NOT be flagged (sealable).
+        File wrapper = jarWithModuleInfo("io.vidocq.knock.jaxrs",
+                "java.base", "jakarta.ws.rs", "io.vidocq.vauban.api");
+        assertFalse(mojo.requiresCassini(wrapper),
+                "an implementation-agnostic wrapper does not require cassini and is sealable");
+    }
+
     // ---- Helpers ----
+
+    /** Builds a jar containing a real (parseable) module-info.class with the given requires. */
+    private File jarWithModuleInfo(String moduleName, String... requires) throws IOException {
+        byte[] mi = ClassFile.of().buildModule(
+                java.lang.classfile.attribute.ModuleAttribute.of(
+                        java.lang.constant.ModuleDesc.of(moduleName),
+                        b -> {
+                            for (String r : requires) {
+                                int flags = r.equals("java.base")
+                                        ? java.lang.classfile.ClassFile.ACC_MANDATED : 0;
+                                b.requires(java.lang.constant.ModuleDesc.of(r), flags, null);
+                            }
+                        }));
+        File tmp = File.createTempFile("modinfo-", ".jar");
+        tmp.deleteOnExit();
+        try (var jos = new java.util.jar.JarOutputStream(Files.newOutputStream(tmp.toPath()))) {
+            jos.putNextEntry(new java.util.jar.JarEntry("module-info.class"));
+            jos.write(mi);
+            jos.closeEntry();
+        }
+        return tmp;
+    }
 
     private boolean hasModuleInfo(File jar) throws IOException {
         try (var jf = new java.util.jar.JarFile(jar)) {
