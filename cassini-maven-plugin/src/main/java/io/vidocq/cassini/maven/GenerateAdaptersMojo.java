@@ -114,6 +114,21 @@ public class GenerateAdaptersMojo extends AbstractMojo {
     private boolean repackageModularDependencies;
 
     /**
+     * When {@code true} (and {@link #repackageModularDependencies} is on): the repackaged module is
+     * <em>sealed</em> — its resource packages are no longer {@code exports}ed, and the woven adapters
+     * are published as {@code ServiceLoader} providers ({@code provides
+     * io.vidocq.cassini.spi.gen.ResourceAdapter/RouteProvider with <Class>$$Cassini*}). cassini-core
+     * then obtains them through the module system from the closed package, so the repackaged
+     * dependency needs neither {@code opens} nor {@code exports} (deployment-side zero-export for an
+     * implementation-agnostic JAX-RS wrapper whose adapter is woven at packaging time).
+     *
+     * <p>When {@code false} (default) the repackaged module keeps its original {@code exports} and the
+     * adapters are resolved by {@code Class.forName} (public reflection) — backward compatible.</p>
+     */
+    @Parameter(property = "cassini.sealModules", defaultValue = "false")
+    private boolean sealModules;
+
+    /**
      * Output directory where generated adapter {@code .class} files are written.
      * Defaults to the project's main output directory ({@code target/classes}).
      * Set to {@code ${project.build.testOutputDirectory}} when generating adapters
@@ -307,6 +322,10 @@ public class GenerateAdaptersMojo extends AbstractMojo {
         // Generate adapter bytecodes
         List<String[]> adapterEntries = new ArrayList<>(); // [0]=entryName [1]=...stored separately
         List<byte[]> adapterBytecodes = new ArrayList<>();
+        // For sealing: the woven provider FQNs and the resource packages to close.
+        List<String> adapterFqns = new ArrayList<>();
+        List<String> routesFqns = new ArrayList<>();
+        java.util.Set<String> resourcePackages = new java.util.LinkedHashSet<>();
         for (String className : resourceClasses) {
             try {
                 Class<?> cls = cl.loadClass(className);
@@ -314,14 +333,18 @@ public class GenerateAdaptersMojo extends AbstractMojo {
                 String adapterName = (cls.getName() + ADAPTER_SUFFIX).replace('.', '/') + ".class";
                 adapterEntries.add(new String[]{adapterName});
                 adapterBytecodes.add(bc);
+                adapterFqns.add(cls.getName() + ADAPTER_SUFFIX);
+                resourcePackages.add(cls.getPackageName());
                 getLog().info("  + woven adapter for " + cls.getName());
 
                 // Also weave the $$CassiniRoutes provider so RouteRegistry uses pre-generated routes
                 // (full AOT coverage) instead of the reflective ResourceScanner fallback.
                 byte[] routesBc = RuntimeRoutesGenerator.toBytecode(cls);
-                String routesName = RuntimeRoutesGenerator.routesClassName(cls).replace('.', '/') + ".class";
+                String routesFqn = RuntimeRoutesGenerator.routesClassName(cls);
+                String routesName = routesFqn.replace('.', '/') + ".class";
                 adapterEntries.add(new String[]{routesName});
                 adapterBytecodes.add(routesBc);
+                routesFqns.add(routesFqn);
                 getLog().info("  + woven routes for " + cls.getName());
             } catch (Exception e) {
                 getLog().warn("Cannot generate adapter/routes for " + className + ": " + e.getMessage());
@@ -342,7 +365,12 @@ public class GenerateAdaptersMojo extends AbstractMojo {
                     try (InputStream in = orig.getInputStream(entry)) {
                         mi = in.readAllBytes();
                     }
-                    byte[] patched = addModuleRequires(mi, "io.vidocq.cassini.api");
+                    // Always ensure `requires io.vidocq.cassini.api` so the woven adapters link.
+                    // When sealing, additionally close the resource packages (drop their exports) and
+                    // publish the adapters/routes as ServiceLoader providers.
+                    byte[] patched = sealModules
+                            ? sealAndProvide(mi, resourcePackages, adapterFqns, routesFqns)
+                            : addModuleRequires(mi, "io.vidocq.cassini.api");
                     jos.putNextEntry(new java.util.jar.JarEntry(entry.getName()));
                     jos.write(patched);
                     jos.closeEntry();
@@ -481,6 +509,65 @@ public class GenerateAdaptersMojo extends AbstractMojo {
         } catch (Exception e) {
             throw new MojoExecutionException("Failed to add 'requires " + requiredModule
                     + "' to repackaged module-info.class", e);
+        }
+    }
+
+    /**
+     * Rewrites a {@code module-info.class} to <em>seal</em> a repackaged JAX-RS wrapper: ensures
+     * {@code requires io.vidocq.cassini.api}, drops the {@code exports} of every {@code resourcePackage}
+     * (so the package becomes encapsulated), and adds {@code provides
+     * io.vidocq.cassini.spi.gen.ResourceAdapter with <adapters…>} and {@code … RouteProvider with
+     * <routes…>}. cassini-core then loads the woven adapters/routes through {@link java.util.ServiceLoader}
+     * from the closed package — no {@code opens}, no {@code exports} (deployment-side zero-export).
+     */
+    private byte[] sealAndProvide(byte[] moduleInfo, java.util.Set<String> resourcePackages,
+            List<String> adapterFqns, List<String> routesFqns) throws MojoExecutionException {
+        try {
+            var cf = java.lang.classfile.ClassFile.of();
+            var cm = cf.parse(moduleInfo);
+            // Resource packages in internal (slash) form for matching ModuleExportInfo entries.
+            var closedInternal = new java.util.HashSet<String>();
+            for (String p : resourcePackages) closedInternal.add(p.replace('.', '/'));
+            var adapterSvc = java.lang.constant.ClassDesc.of("io.vidocq.cassini.spi.gen.ResourceAdapter");
+            var routeSvc   = java.lang.constant.ClassDesc.of("io.vidocq.cassini.spi.gen.RouteProvider");
+            return cf.transformClass(cm, cm.thisClass(), (cb, ce) -> {
+                if (ce instanceof java.lang.classfile.attribute.ModuleAttribute ma) {
+                    var newMa = java.lang.classfile.attribute.ModuleAttribute.of(
+                            ma.moduleName().asSymbol(), b -> {
+                                b.moduleFlags(ma.moduleFlagsMask());
+                                ma.moduleVersion().ifPresent(v -> b.moduleVersion(v.stringValue()));
+                                ma.requires().forEach(b::requires);
+                                if (ma.requires().stream().noneMatch(
+                                        r -> r.requires().name().stringValue().equals("io.vidocq.cassini.api"))) {
+                                    b.requires(java.lang.constant.ModuleDesc.of("io.vidocq.cassini.api"), 0, null);
+                                }
+                                // Drop the exports of the (now sealed) resource packages.
+                                ma.exports().forEach(ex -> {
+                                    if (!closedInternal.contains(ex.exportedPackage().name().stringValue())) {
+                                        b.exports(ex);
+                                    }
+                                });
+                                ma.opens().forEach(b::opens);
+                                ma.uses().forEach(b::uses);
+                                ma.provides().forEach(b::provides);
+                                if (!adapterFqns.isEmpty()) {
+                                    b.provides(java.lang.classfile.attribute.ModuleProvideInfo.of(
+                                            adapterSvc,
+                                            adapterFqns.stream().map(java.lang.constant.ClassDesc::of).toList()));
+                                }
+                                if (!routesFqns.isEmpty()) {
+                                    b.provides(java.lang.classfile.attribute.ModuleProvideInfo.of(
+                                            routeSvc,
+                                            routesFqns.stream().map(java.lang.constant.ClassDesc::of).toList()));
+                                }
+                            });
+                    cb.with(newMa);
+                } else {
+                    cb.with(ce);
+                }
+            });
+        } catch (Exception e) {
+            throw new MojoExecutionException("Failed to seal repackaged module-info.class", e);
         }
     }
 }
