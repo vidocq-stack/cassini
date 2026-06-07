@@ -83,19 +83,42 @@
 
     <build>
         <plugins>
-            <!-- Génère META-INF/vauban-beans.list à la compile en scannant les
-                 annotations CDI (@ApplicationScoped, @RequestScoped, etc.).
-                 Le runtime Vauban lira ce fichier via scanClasspath() — fonctionne
-                 aussi en JPMS named module (les ressources META-INF/ sont toujours
-                 accessibles, contrairement au scan de packages). -->
+            <!-- Vauban codegen runs as an ANNOTATION PROCESSOR on this example's own beans
+                 (@ApplicationScoped service + @Path resources). It generates _ClientProxy/_Factory,
+                 an in-module _VaubanComponents per bean package and META-INF/vauban-beans.list, which
+                 the Vauban runtime reads via scanClasspath() — works in a JPMS named module too
+                 (META-INF/ resources stay accessible). Build-time only, inert under a standard CDI
+                 container (Weld). The Maven plugin is reserved for freezing external dependency jars.
+                 The module-info already `requires io.vidocq.vauban.core` (which reads vauban-api
+                 transitively), so no extra dependency is needed. -->
             <plugin>
-                <groupId>io.vidocq.vauban</groupId>
-                <artifactId>vauban-maven-plugin</artifactId>
-                <version>${vauban.version}</version>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>io.vidocq.vauban</groupId>
+                            <artifactId>vauban-processor</artifactId>
+                            <version>${vauban.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                    <compilerArgs>
+                        <!-- ConfigDemoResource injects @ConfigProperty String/Optional<String> values,
+                             satisfied at runtime by the ravel-cdi-vauban producer (another module). The
+                             APT cannot see beans from dependency modules, so its compile-time
+                             bean-resolution check would fail; full validation happens at runtime
+                             assembly (Vidocq / Vauban container). -->
+                        <arg>-Avauban.validation=false</arg>
+                    </compilerArgs>
+                </configuration>
                 <executions>
+                    <!-- Test fixtures are not application beans. Running the APT over them would
+                         emit a provider for nested test classes (bogus package / cannot find symbol). -->
                     <execution>
-                        <id>generate</id>
-                        <goals><goal>generate</goal></goals>
+                        <id>default-testCompile</id>
+                        <configuration>
+                            <proc>none</proc>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
