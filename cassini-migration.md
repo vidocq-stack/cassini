@@ -385,7 +385,7 @@ Sub-step D: tests
 
 | File | Action |
 |------|--------|
-| `cassini-tck/src/test/java/.../arquillian/VidocqCassiniDeployableContainer.java` | **REFACTOR** → use `cassini-chappe` directly, not `vidocq-runtime-chappe-extension` |
+| `cassini-tck/src/test/java/.../arquillian/VidocqCassiniDeployableContainer.java` | **REFACTOR** → use `cassini-chappe` directly, not `vidocq-runtime-chappe-webserver-extension` |
 | `cassini-tck/src/test/java/.../arquillian/BasicAuthHandler.java` | **REFACTOR** → same |
 | `cassini-tck/src/main/java/.../CassiniTestHarness.java` | **REFACTOR** → same |
 
