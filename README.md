@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/Maven-4.0--rc--5-purple" alt="Maven">
   <img src="https://img.shields.io/badge/Jakarta_REST-4.0-blue" alt="Jakarta REST">
   <img src="https://img.shields.io/badge/TCK-2535%2F2535-brightgreen" alt="TCK">
-  <img src="https://img.shields.io/badge/license-Apache_2.0-green" alt="License">
+  <img src="https://img.shields.io/badge/license-EPL--2.0%20OR%20EUPL--1.2%20OR%20GPL--2.0--or--later-blue.svg" alt="License">
 </p>
 
 ---
@@ -536,4 +536,4 @@ The `cassini-tck` module is **outside the reactor** (standalone POM Model 4.0.0)
 
 ## License
 
-[Apache License 2.0](LICENSE)
+[EPL-2.0 OR EUPL-1.2 OR GPL-2.0-or-later](LICENSE)
