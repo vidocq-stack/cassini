@@ -82,13 +82,13 @@ public final class Invoker {
     }
 
     /** Sets the per-request match/request slots in the active scope. */
-    private static void publishCurrent(MatchResult match, CassiniHttpExchange request) {
+    static void publishCurrent(MatchResult match, CassiniHttpExchange request) {
         var scope = RequestScope.current();
         scope.match = match;
         scope.request = request;
     }
 
-    private final Function<Class<?>, Object> resolver;
+    final Function<Class<?>, Object> resolver;
     private final MessageBodyRegistry registry;
     private final ExceptionMapperRegistry exceptionMappers;
     private FilterRegistry filters = new FilterRegistry();
@@ -99,6 +99,8 @@ public final class Invoker {
     /** Optional — allows de-proxying a CDI bean (real contextual instance)
      *  before {@code @Context} injection. {@code null} in {@code newInstance} mode. */
     private io.vidocq.cassini.spi.bean.BeanProvider beanProvider;
+    // §3.4.1 dynamic sub-resource dispatch (extracted - this class stays the facade)
+    private final DynamicLocatorDispatch dynamicDispatch = new DynamicLocatorDispatch(this);
 
     public void setFilters(FilterRegistry f) { this.filters = f == null ? new FilterRegistry() : f; }
     public FilterRegistry filters() { return filters; }
@@ -112,7 +114,7 @@ public final class Invoker {
      * delegates to that same instance in the active scope — otherwise {@code @Context}
      * fields injected reflectively on the proxy are never seen by the method body.
      */
-    private Object injectionTarget(Class<?> beanClass, Object resolved) {
+    Object injectionTarget(Class<?> beanClass, Object resolved) {
         return (beanProvider != null && resolved != null)
                 ? beanProvider.contextualInstance(beanClass, resolved) : resolved;
     }
@@ -175,7 +177,7 @@ public final class Invoker {
             // returning Object is resolved at runtime — invoke the chain,
             // scan the effective class of the returned instance, then delegate.
             if (route.dynamicLocator()) {
-                return invokeDynamicLocator(match, request);
+                return dynamicDispatch.invokeDynamicLocator(match, request);
             }
             CassiniHttpResponse resp = invokeInternal(match, request, route);
             // §5.1: if Request.selectVariant was called during invocation,
@@ -211,323 +213,6 @@ public final class Invoker {
         return b.build();
     }
 
-    /** §3.4.1: executes a dynamic-locator chain (return Object), scans
-     *  the effective class of the returned instance, and delegates sub-routing
-     *  to a temporary mini-router. If the sub-method is itself a dynamic
-     *  locator (Object → Object → final), recurse. */
-    private CassiniHttpResponse invokeDynamicLocator(MatchResult match, CassiniHttpExchange request) throws Exception {
-        ResourceMethod route = match.method();
-        // 1. Instantiate root + invoke the locator chain
-        Object root;
-        try {
-            root = resolver.apply(route.rootBeanClass());
-        } catch (RuntimeException e) {
-            return renderWebAppException(
-                    new WebApplicationException("Cannot resolve root " + route.rootBeanClass().getName(), 500),
-                    route, MediaType.WILDCARD_TYPE, null);
-        }
-        injectFields(route.rootBeanClass(), injectionTarget(route.rootBeanClass(), root), match, request, true);
-        java.util.List<Object> matched = new java.util.ArrayList<>();
-        matched.add(root);
-        publishCurrent(match, request);
-        request.setAttribute(ATTR_MATCHED_RESOURCES, matched);
-        Object intermediate = root;
-        for (java.lang.reflect.Method locStep : route.locatorChain()) {
-            Parameter[] lps = locStep.getParameters();
-            Object[] lArgs = lps.length == 0 ? new Object[0]
-                    : ParamExtractor.resolveConstructorArgs(lps, match, request);
-            locStep.setAccessible(true);
-            try {
-                intermediate = locStep.invoke(intermediate, lArgs);
-            } catch (InvocationTargetException ite) {
-                Throwable cause = ite.getCause();
-                if (cause instanceof WebApplicationException wae) {
-                    return renderWebAppException(wae, route, MediaType.WILDCARD_TYPE, null);
-                }
-                if (cause instanceof Exception ex) throw ex;
-                throw new RuntimeException(cause);
-            }
-            if (intermediate == null) {
-                return renderWebAppException(
-                        new WebApplicationException("Sub-resource locator returned null", 404),
-                        route, MediaType.WILDCARD_TYPE, null);
-            }
-            if (intermediate instanceof Class<?> cls) {
-                // M6a: prefer generated adapter newInstance() over reflection
-                Object created = instantiateSubResourceClass(cls, route, MediaType.WILDCARD_TYPE, null);
-                if (created instanceof CassiniHttpResponse) return (CassiniHttpResponse) created;
-                intermediate = created;
-            }
-            injectFields(intermediate.getClass(), intermediate, match, request, false);
-            matched.add(0, intermediate);
-        }
-        // 2. Compute the remaining path from capture {__rest:.*}
-        String rest = "";
-        if (match.pathParams().containsKey("__rest")) {
-            var vs = match.pathParams().get("__rest");
-            if (vs != null && !vs.isEmpty() && vs.get(0) != null) rest = vs.get(0);
-        }
-        String remaining = rest.isEmpty() ? "/" : "/" + rest;
-        return dispatchOnInstance(intermediate, remaining, request, matched);
-    }
-
-    /** §3.4.1: dynamically scans {@code instance.getClass()} and resolves the
-     *  best route for {@code remaining}+request HTTP method.
-     *  Reuses {@link #invokeInternal} while passing the already-created instance
-     *  via an ad-hoc resolver to avoid re-instantiation. */
-    private CassiniHttpResponse dispatchOnInstance(Object instance, String remaining, CassiniHttpExchange request,
-                                        java.util.List<Object> matchedSoFar) throws Exception {
-        Class<?> cls = instance.getClass();
-        // §3.6: if the runtime class has no root @Path, simulate it by
-        // adding @Path("") through a scan wrapper. ResourceScanner.discover
-        // requires @Path on the class — work around that by scanning locators
-        // from a fake locator chain.
-        java.util.List<ResourceMethod> subRoutes = scanInstanceClass(cls);
-        if (subRoutes.isEmpty()) {
-            return renderWebAppException(new jakarta.ws.rs.NotFoundException(),
-                    null, MediaType.WILDCARD_TYPE, null);
-        }
-        UriRouter subRouter = new UriRouter(subRoutes);
-        String httpMethod = request.method() == null ? "GET" : request.method();
-        java.util.List<MatchResult> subCandidates = subRouter.matchAll(httpMethod, remaining);
-        if (subCandidates.isEmpty()) {
-            // 405 if another HTTP method matches the path
-            var allowed = subRouter.methodsAllowedFor(remaining);
-            if (!allowed.isEmpty()) {
-                return renderWebAppException(
-                        new jakarta.ws.rs.NotAllowedException(allowed.get(0),
-                                allowed.subList(1, allowed.size()).toArray(String[]::new)),
-                        null, MediaType.WILDCARD_TYPE, null);
-            }
-            return renderWebAppException(new jakarta.ws.rs.NotFoundException(),
-                    null, MediaType.WILDCARD_TYPE, null);
-        }
-        MatchResult subMatch = pickBestMatch(subCandidates, request);
-        ResourceMethod subRoute = subMatch.method();
-        // Recurse if the sub-route is itself a dynamic locator
-        if (subRoute.dynamicLocator()) {
-            // Move up one level: invoke the sub-chain on the current instance
-            return invokeDynamicLocatorWithInstance(subMatch, request, instance, matchedSoFar);
-        }
-        // Invoke the final method on the current instance through an ad-hoc resolver
-        return invokeFinalOnInstance(subMatch, request, instance, matchedSoFar);
-    }
-
-    /** Variant of {@link #invokeDynamicLocator} starting from an already
-     *  resolved instance (instead of the root class). */
-    private CassiniHttpResponse invokeDynamicLocatorWithInstance(MatchResult match, CassiniHttpExchange request,
-                                                      Object startInstance,
-                                                      java.util.List<Object> matchedSoFar) throws Exception {
-        ResourceMethod route = match.method();
-        Object intermediate = startInstance;
-        publishCurrent(match, request);
-        request.setAttribute(ATTR_MATCHED_RESOURCES, matchedSoFar);
-        for (java.lang.reflect.Method locStep : route.locatorChain()) {
-            // Skip locators already executed (present at the top of the current
-            // instance chain). A locator already run is recognized by being
-            // declared on an "ancestor" class; here there are none,
-            // because scanning restarted from intermediate.getClass(), so we
-            // execute the whole sub-chain.
-            Parameter[] lps = locStep.getParameters();
-            Object[] lArgs = lps.length == 0 ? new Object[0]
-                    : ParamExtractor.resolveConstructorArgs(lps, match, request);
-            locStep.setAccessible(true);
-            try {
-                intermediate = locStep.invoke(intermediate, lArgs);
-            } catch (InvocationTargetException ite) {
-                Throwable cause = ite.getCause();
-                if (cause instanceof WebApplicationException wae) {
-                    return renderWebAppException(wae, route, MediaType.WILDCARD_TYPE, null);
-                }
-                if (cause instanceof Exception ex) throw ex;
-                throw new RuntimeException(cause);
-            }
-            if (intermediate == null) {
-                return renderWebAppException(
-                        new WebApplicationException("Sub-resource locator returned null", 404),
-                        route, MediaType.WILDCARD_TYPE, null);
-            }
-            if (intermediate instanceof Class<?> cls) {
-                // M6a: prefer generated adapter newInstance() over reflection
-                Object created = instantiateSubResourceClass(cls, route, MediaType.WILDCARD_TYPE, null);
-                if (created instanceof CassiniHttpResponse) return (CassiniHttpResponse) created;
-                intermediate = created;
-            }
-            injectFields(intermediate.getClass(), intermediate, match, request, false);
-            matchedSoFar.add(0, intermediate);
-        }
-        String rest = "";
-        if (match.pathParams().containsKey("__rest")) {
-            var vs = match.pathParams().get("__rest");
-            if (vs != null && !vs.isEmpty() && vs.get(0) != null) rest = vs.get(0);
-        }
-        String remaining = rest.isEmpty() ? "/" : "/" + rest;
-        return dispatchOnInstance(intermediate, remaining, request, matchedSoFar);
-    }
-
-    /** Invokes the final method of a sub-route using {@code instance}
-     *  as the target (instead of re-instantiating via {@code resolver}). Uses
-     *  an ad-hoc resolver that returns the instance for the expected class. */
-    private CassiniHttpResponse invokeFinalOnInstance(MatchResult match, CassiniHttpExchange request,
-                                           Object instance,
-                                           java.util.List<Object> matchedSoFar) throws Exception {
-        ResourceMethod route = match.method();
-        // Reproduce a subset of the flow here (no filters, no
-        // pre/post-matching for this synthetic dynamic-dispatch route).
-        // §3.7.2 Accept/Content-Type negotiation applied.
-        String ctHeader = request.firstHeader("Content-Type");
-        MediaType contentType = MediaTypes.parse(ctHeader);
-        java.util.List<MediaType> consumes = MediaTypes.fromSet(route.consumes());
-        boolean checkConsumes = hasRequestBody(request) || ctHeader != null;
-        if (checkConsumes && !consumes.isEmpty() && !MediaTypes.consumesMatches(contentType, consumes)) {
-            return renderWebAppException(new jakarta.ws.rs.NotSupportedException(), route, null, null);
-        }
-        java.util.List<MediaType> accepts = MediaTypes.parseList(request.firstHeader("Accept"));
-        java.util.List<MediaType> produces = MediaTypes.fromSet(route.produces());
-        Optional<MediaType> negotiated = MediaTypes.pickProduced(accepts, produces);
-        if (negotiated.isEmpty() && !produces.isEmpty()) {
-            return renderWebAppException(new jakarta.ws.rs.NotAcceptableException(), route, null, null);
-        }
-        MediaType chosen = negotiated.orElse(MediaType.WILDCARD_TYPE);
-
-        // Resolve args
-        ParamExtractor.ResolvedArgs resolved;
-        Object[] args;
-        try {
-            resolved = ParamExtractor.resolve(route, match, request);
-            args = resolved.args();
-            if (resolved.bodyIndex() >= 0) {
-                Parameter p = route.javaMethod().getParameters()[resolved.bodyIndex()];
-                MediaType readMt = (ctHeader == null) ? MediaType.APPLICATION_OCTET_STREAM_TYPE : contentType;
-                args[resolved.bodyIndex()] = readEntity(p, readMt, request, route);
-            }
-        } catch (WebApplicationException wae) {
-            return renderWebAppException(wae, route, chosen, null);
-        }
-
-        // §3.4.1 : sub-resource via dynamic locator → pas d'injection @*Param
-        injectFields(instance.getClass(), instance, match, request, false);
-        Object result;
-        // P1b: use the bean class of the route (not the dynamic instance class) for adapter lookup
-        Class<?> beanClassForLookup = route.beanClass();
-        var adapterFinal = AdapterRegistry.lookup(beanClassForLookup);
-        int midFinal = adapterFinal.isPresent()
-                ? AdapterRegistry.methodId(beanClassForLookup, route.javaMethod()) : -1;
-        if (adapterFinal.isPresent() && midFinal >= 0) {
-            try {
-                result = adapterFinal.get().invoke(midFinal, instance, args);
-            } catch (Throwable t) {
-                return handleResourceThrowable(t, route, chosen, null);
-            }
-        } else {
-            try {
-                route.javaMethod().setAccessible(true);
-                result = route.javaMethod().invoke(instance, args);
-            } catch (InvocationTargetException ite) {
-                return handleResourceThrowable(ite.getCause(), route, chosen, null);
-            }
-        }
-        if (result instanceof java.util.concurrent.CompletionStage<?> cs) {
-            // TODO(M2h): propagate the non-blocking stage all the way to the transport
-            // (cf. CassiniHttpAdapter.dispatch returns CompletionStage<Void>).
-            // This try/get block is isolated via Async.awaitBlocking in all
-            // other occurrences; we keep it inline here because the WAE branch
-            // must be handled locally (renderWebAppException).
-            try { result = cs.toCompletableFuture().get(); }
-            catch (java.util.concurrent.ExecutionException ee) {
-                Throwable cause = ee.getCause();
-                if (cause instanceof WebApplicationException wae) {
-                    return renderWebAppException(wae, route, chosen, null);
-                }
-                if (cause instanceof Exception ex) throw ex;
-                throw new RuntimeException(cause);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Interrupted", ie);
-            }
-        }
-        return marshal(result, route, chosen);
-    }
-
-    /** Scans {@code cls} as a resource class (implicit @Path("") added if
-     *  missing) to produce local routes. Used in dynamic dispatch when the class
-     *  comes from a runtime sub-resource locator, without a root @Path. */
-    private static java.util.List<ResourceMethod> scanInstanceClass(Class<?> cls) {
-        // ResourceScanner.discover requires @Path on the class; for sub-resource
-        // classes without @Path, simulate it via scanLocatorType from basePath="/".
-        // But scanLocatorType is private — use the standard workaround:
-        // discover() works if the class has @Path. If it does not, we
-        // use light reflection to build routes.
-        Path p = cls.getAnnotation(Path.class);
-        if (p != null) {
-            // The class is itself @Path → scan normally and
-            // strip the prefix corresponding to the class (routing is done
-            // on remaining which does not have the root @Path).
-            return ResourceScanner.discover(cls);
-        }
-        return scanSubResourceClass(cls);
-    }
-
-    /** Scans a sub-resource class (without a root @Path) by producing
-     *  ResourceMethods whose template is only @Path(method) (resource methods + sub
-     *  locators). No recursion for locators returning Object —
-     *  they emit dynamic routes in turn. */
-    private static java.util.List<ResourceMethod> scanSubResourceClass(Class<?> cls) {
-        java.util.List<ResourceMethod> out = new java.util.ArrayList<>();
-        for (java.lang.reflect.Method m : cls.getMethods()) {
-            if (!java.lang.reflect.Modifier.isPublic(m.getModifiers())) continue;
-            if (m.getDeclaringClass() == Object.class) continue;
-            String verb = resolveHttpMethodOf(m);
-            Path subPath = m.getAnnotation(Path.class);
-            String path = subPath == null ? "/" : normalizeFwd(subPath.value());
-            java.util.Set<String> mp = setOf(m.getAnnotation(Produces.class));
-            java.util.Set<String> mc = setOf(m.getAnnotation(Consumes.class));
-            if (verb != null) {
-                m.setAccessible(true);
-                out.add(new ResourceMethod(cls, m, verb,
-                        UriTemplate.compile(path), mp, mc));
-                continue;
-            }
-            if (subPath == null) continue;
-            // Sub-resource locator inside a sub-resource class:
-            // emits a dynamic route that re-injects runtime dispatch.
-            Class<?> ret = m.getReturnType();
-            if (ret == void.class || ret == null) continue;
-            m.setAccessible(true);
-            // chain contains only this method; the current dispatcher
-            // will invoke it on the already-resolved instance (not through root).
-            java.util.List<java.lang.reflect.Method> chain = java.util.List.of(m);
-            out.add(new ResourceMethod(Object.class, m, "*",
-                    UriTemplate.compile(path),
-                    mp, mc, cls, chain, 0, true));
-            String wildcardPath = path.equals("/") ? "/{__rest:.*}" : path + "/{__rest:.*}";
-            out.add(new ResourceMethod(Object.class, m, "*",
-                    UriTemplate.compile(wildcardPath),
-                    mp, mc, cls, chain, 0, true));
-        }
-        return out;
-    }
-
-    private static String resolveHttpMethodOf(java.lang.reflect.Method m) {
-        for (java.lang.annotation.Annotation a : m.getAnnotations()) {
-            jakarta.ws.rs.HttpMethod meta = a.annotationType().getAnnotation(jakarta.ws.rs.HttpMethod.class);
-            if (meta != null) return meta.value();
-        }
-        return null;
-    }
-
-    private static java.util.Set<String> setOf(java.lang.annotation.Annotation ann) {
-        if (ann instanceof Produces p) return new java.util.LinkedHashSet<>(java.util.List.of(p.value()));
-        if (ann instanceof Consumes c) return new java.util.LinkedHashSet<>(java.util.List.of(c.value()));
-        return java.util.Set.of();
-    }
-
-    private static String normalizeFwd(String raw) {
-        if (raw == null || raw.isEmpty() || "/".equals(raw)) return "/";
-        String s = raw.startsWith("/") ? raw : "/" + raw;
-        if (s.length() > 1 && s.endsWith("/")) s = s.substring(0, s.length() - 1);
-        return s;
-    }
 
     /**
      * §6.6.1: result of pre-matching filter execution.
@@ -1030,7 +715,7 @@ public final class Invoker {
      * @param request      the HTTP exchange
      * @param injectParams whether to inject @*Param fields (false for sub-resource roots per §3.4.1)
      */
-    private void injectFields(Class<?> beanClass, Object target,
+    void injectFields(Class<?> beanClass, Object target,
                               MatchResult match, CassiniHttpExchange request, boolean injectParams) {
         var adapter = AdapterRegistry.lookup(beanClass);
         if (adapter.isPresent()) {
@@ -1040,14 +725,14 @@ public final class Invoker {
         }
     }
 
-    private boolean hasRequestBody(CassiniHttpExchange request) {
+    boolean hasRequestBody(CassiniHttpExchange request) {
         long len = request.contentLength();
         if (len > 0) return true;
         // chunked encoding → contentLength may be -1 ; rely on presence of Content-Type
         return request.firstHeader("Content-Type") != null && len != 0;
     }
 
-    private Object readEntity(Parameter p, MediaType ct, CassiniHttpExchange request, ResourceMethod route) throws IOException {
+    Object readEntity(Parameter p, MediaType ct, CassiniHttpExchange request, ResourceMethod route) throws IOException {
         Class<?> type = p.getType();
         Type genericType = p.getParameterizedType();
         Annotation[] anns = p.getAnnotations();
@@ -1087,7 +772,7 @@ public final class Invoker {
         }
     }
 
-    private CassiniHttpResponse marshal(Object result, ResourceMethod route, MediaType chosen) throws IOException {
+    CassiniHttpResponse marshal(Object result, ResourceMethod route, MediaType chosen) throws IOException {
         if (result == null) {
             return CassiniHttpResponse.status(204);
         }
@@ -1228,7 +913,7 @@ public final class Invoker {
         return best;
     }
 
-    private MatchResult pickBestMatch(java.util.List<MatchResult> candidates, CassiniHttpExchange request) {
+    MatchResult pickBestMatch(java.util.List<MatchResult> candidates, CassiniHttpExchange request) {
         if (candidates.size() == 1) return candidates.get(0);
         MediaType ct = MediaTypes.parse(request.firstHeader("Content-Type"));
         java.util.List<MediaType> accepts = MediaTypes.parseList(request.firstHeader("Accept"));
@@ -1343,7 +1028,7 @@ public final class Invoker {
      * @return a response if the exception was mapped; otherwise never returns (throws)
      * @throws Exception rethrown if not mapped
      */
-    private CassiniHttpResponse handleResourceThrowable(Throwable cause,
+    CassiniHttpResponse handleResourceThrowable(Throwable cause,
                                                         ResourceMethod route,
                                                         MediaType chosen,
                                                         CassiniRequestContext rctx) throws Exception {
@@ -1415,7 +1100,7 @@ public final class Invoker {
         return null;
     }
 
-    private CassiniHttpResponse renderWebAppException(WebApplicationException wae, ResourceMethod route,
+    CassiniHttpResponse renderWebAppException(WebApplicationException wae, ResourceMethod route,
                                            MediaType chosen, CassiniRequestContext rctx) throws IOException {
         jakarta.ws.rs.core.Response r = wae.getResponse();
         // §4.3.1: if the embedded response has an entity, the mapper MUST NOT be invoked.
@@ -1452,7 +1137,7 @@ public final class Invoker {
      *
      * @param rctx may be {@code null} (in dynamic-locator paths that run before post-matching filters)
      */
-    private Object instantiateSubResourceClass(Class<?> cls, ResourceMethod route,
+    Object instantiateSubResourceClass(Class<?> cls, ResourceMethod route,
                                                 MediaType chosen, CassiniRequestContext rctx) throws IOException {
         // M6a: try generated adapter newInstance() first
         var adapter = AdapterRegistry.lookup(cls);
