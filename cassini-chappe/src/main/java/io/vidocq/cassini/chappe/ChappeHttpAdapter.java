@@ -26,7 +26,6 @@ import io.vidocq.chappe.api.Response;
 import io.vidocq.chappe.api.StatusCode;
 import io.vidocq.cassini.spi.http.CassiniHttpAdapter;
 
-import java.io.PipedInputStream;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -68,17 +67,55 @@ public final class ChappeHttpAdapter implements Handler {
      * This guarantees: (1) isolation of request-scope ScopedValues,
      * (2) no platform-thread starvation if the resource method blocks
      * on I/O or waits for a CompletionStage.
+     *
+     * <p>M2i (SSE streaming): the caller does not wait for dispatch
+     * completion unconditionally any more. A latch is released either by
+     * {@link ChappeHttpExchange#openForStreaming} — in which case the chunked
+     * {@code Body.streaming} response is returned immediately while the
+     * resource method keeps writing events on its own virtual thread — or
+     * when dispatch completes (buffered mode, previous behaviour).
      */
     @Override
     public Response handle(Request request) throws Exception {
+        var exchange = new ChappeHttpExchange(request);
+        var streamingReady = new java.util.concurrent.CountDownLatch(1);
+        exchange.setStreamingLatch(streamingReady);
         var future = new CompletableFuture<Response>();
+
         Thread.ofVirtual().name("cassini-req").start(() -> {
             try {
-                future.complete(dispatchOnCurrentThread(request));
+                final Object[] error = {null};
+                scoped.runInScope(() -> {
+                    try {
+                        engine.dispatch(exchange).toCompletableFuture().get();
+                    } catch (Exception e) {
+                        error[0] = e;
+                    }
+                });
+                if (error[0] instanceof Exception ex) {
+                    future.completeExceptionally(ex);
+                } else {
+                    future.complete(buildChappeResponse(exchange));
+                }
             } catch (Throwable t) {
                 future.completeExceptionally(t);
+            } finally {
+                // Buffered mode: unblock the caller once the response is ready.
+                streamingReady.countDown();
             }
         });
+
+        streamingReady.await();
+
+        var streaming = exchange.streamingInfo();
+        if (streaming != null) {
+            // Streaming mode: headers/status snapshot taken at openForStreaming
+            // time (the dispatch may still be mutating the exchange concurrently).
+            var b = Response.builder().status(StatusCode.of(streaming.status()));
+            streaming.headers().forEach((k, vs) -> vs.forEach(v -> b.header(k, v)));
+            return b.body(Body.streaming(streaming.input())).build();
+        }
+
         try {
             return future.get();
         } catch (ExecutionException ee) {
@@ -89,31 +126,6 @@ public final class ChappeHttpAdapter implements Handler {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Interrupted waiting for virtual thread", ie);
         }
-    }
-
-    private Response dispatchOnCurrentThread(Request request) throws Exception {
-        ChappeHttpExchange exchange = new ChappeHttpExchange(request);
-
-        final Object[] error = {null};
-        scoped.runInScope(() -> {
-            try {
-                engine.dispatch(exchange).toCompletableFuture().get();
-            } catch (Exception e) {
-                error[0] = e;
-            }
-        });
-        if (error[0] instanceof Exception ex) throw ex;
-
-        // SSE streaming: Body.streaming(pis)
-        PipedInputStream streamingPis =
-                (PipedInputStream) exchange.getAttribute("cassini.streaming_pis");
-        if (streamingPis != null) {
-            var b = Response.builder().status(StatusCode.of(exchange.collectedStatus()));
-            exchange.collectedHeaders().forEach((k, vs) -> vs.forEach(v -> b.header(k, v)));
-            return b.body(Body.streaming(streamingPis)).build();
-        }
-
-        return buildChappeResponse(exchange);
     }
 
     private static Response buildChappeResponse(ChappeHttpExchange exchange) {

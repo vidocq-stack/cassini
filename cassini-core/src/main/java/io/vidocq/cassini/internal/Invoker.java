@@ -192,6 +192,24 @@ public final class Invoker {
             FieldInjector.clearFormCache();
             publishCurrent(null, null);
             io.vidocq.cassini.internal.runtime.CassiniResponseBuilder.clearBaseUri();
+            // §8.2: the async request processing is over — fire the registered
+            // CompletionCallbacks. Normal/mapped paths report success (null);
+            // the unmapped-throwable path already fired with the cause (the
+            // once-guard in fireCompletion makes this a no-op then).
+            if (request.getAttribute(CassiniAsyncResponseImpl.ATTR_KEY)
+                    instanceof CassiniAsyncResponseImpl ar) {
+                ar.fireCompletion(null);
+            }
+        }
+    }
+
+    /** M2i: best-effort close of a streaming SSE sink on a resource error —
+     *  the chunked headers are already committed, EOF is the only signal left. */
+    private static void closeStreamingSinkQuietly(io.vidocq.cassini.internal.sse.CassiniSseEventSink sink) {
+        if (sink != null && sink.isStreaming()) {
+            try {
+                sink.close();
+            } catch (Exception ignored) { /* best effort */ }
         }
     }
 
@@ -456,6 +474,9 @@ public final class Invoker {
                 try {
                     result = adapter.get().invoke(mid, target, args);
                 } catch (Throwable t) {
+                    // M2i: if streaming already started, the headers are committed —
+                    // close the pipe so the client sees EOF instead of hanging.
+                    closeStreamingSinkQuietly(sseSink);
                     return handleResourceThrowable(t, route, chosen, rctx);
                 }
             } else {
@@ -472,6 +493,7 @@ public final class Invoker {
                     }
                     throw new RuntimeException(sb.toString(), iae);
                 } catch (InvocationTargetException ite) {
+                    closeStreamingSinkQuietly(sseSink);
                     return handleResourceThrowable(ite.getCause(), route, chosen, rctx);
                 }
             }
@@ -489,6 +511,10 @@ public final class Invoker {
                 }
                 var mapped = exceptionMappers.map(cause);
                 if (mapped.isPresent()) return runResponseFiltersAndWrite(rctx, mapped.get(), route, chosen);
+                // §8.2: the processing ends with an UNMAPPED throwable —
+                // CompletionCallback.onComplete receives it (mapped/WAE paths
+                // fire onComplete(null) from invokeInScope's finally).
+                asyncResponse.fireCompletion(cause);
                 if (cause instanceof Exception ex) throw ex;
                 throw new RuntimeException(cause);
             } catch (InterruptedException ie) {
@@ -521,7 +547,11 @@ public final class Invoker {
         if (sseSink != null) {
             ParamExtractor.clearCurrentSink();
             if (sseSink.isStreaming()) {
-                // Streaming mode (JDK): the response has already been sent on the wire.
+                // M2i: the method returned normally — force the lazy transport
+                // commit so a sink registered for later events (broadcaster
+                // pattern) keeps its connection open even with zero events sent.
+                sseSink.commitStreaming();
+                // Streaming mode: the response is (being) sent on the wire.
                 return CassiniHttpResponse.builder().status(200).body(new byte[0]).build();
             }
             // Buffered mode: wait for sink.close() then send the whole buffer at once.

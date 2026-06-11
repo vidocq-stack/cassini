@@ -75,11 +75,23 @@ public final class CassiniSseEventSink implements SseEventSink {
     @SuppressWarnings({"rawtypes", "unchecked"})
     @Override
     public CompletionStage<?> send(OutboundSseEvent event) {
-        if (closed) return CompletableFuture.completedFuture(null);
+        // §11: invoking send on a closed sink throws IllegalStateException
+        // (TCK sseeventsink#closeTest).
+        if (closed) throw new IllegalStateException("SseEventSink is closed");
+        // M2i: the transport write end died (client disconnected) — flip to
+        // closed so server-side loops polling isClosed() terminate
+        // (TCK sseeventsource#closeTest), and report the failure on the stage.
+        if (streamingSink != null && !streamingSink.isOpen()) {
+            closed = true;
+            return CompletableFuture.failedFuture(
+                    new IOException("SSE connection closed by the client"));
+        }
         try {
             byte[] chunk = serializeEvent(event);
-            if (streamingSink != null && streamingSink.isOpen()) {
-                return streamingSink.writeChunk(chunk).thenCompose(__ -> streamingSink.flush());
+            if (streamingSink != null) {
+                return streamingSink.writeChunk(chunk)
+                        .thenCompose(__ -> streamingSink.flush())
+                        .whenComplete((r, t) -> { if (t != null) closed = true; });
             }
             buffer.write(chunk);
         } catch (IOException e) {
@@ -137,6 +149,19 @@ public final class CassiniSseEventSink implements SseEventSink {
 
     /** True if this sink pushes events directly to the wire (no buffering). */
     public boolean isStreaming() { return streamingSink != null; }
+
+    /**
+     * M2i: forces the lazy streaming commit (transport-side) when the resource
+     * method returns normally without having produced any event yet — the
+     * broadcaster pattern: register the sink, return, events come later from
+     * another thread. A flush on the transport sink commits the chunked
+     * response so the connection stays open for those future events.
+     */
+    public void commitStreaming() {
+        if (streamingSink != null && !closed && streamingSink.isOpen()) {
+            streamingSink.flush();
+        }
+    }
 
     /**
      * Blocks the current virtual thread until {@link #close()} is called.

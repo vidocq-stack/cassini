@@ -19,7 +19,7 @@ mvn test
 # TCK — smoke test only
 ./run-official-tck-restful-4.0.sh
 
-# TCK — full suite (2670 tests, expected: 2535 PASS / 135 SKIP / 0 ERR)
+# TCK — full suite (2670 tests, expected: 2538 PASS / 132 SKIP / 0 ERR)
 ./run-official-tck-restful-4.0.sh all
 
 # TCK — targeted test
@@ -120,8 +120,8 @@ Classpath JARs → write into `target/classes`. JPMS named-module → fail build
 
 ## Current roadmap
 
-- **M2h** — Non-blocking async + virtual threads: `@Suspended AsyncResponse`, `CompletionStage` propagation to the transport, lifecycle callbacks. The async invariants are already prepared in `cassini-core/internal/Async.java` and `CassiniAsyncContext` (SPI). The `@Tag("async")` tests are disabled for now.
-- **M2i** — Real SSE streaming: refactoring `CassiniSseEventSink` for progressive chunked push (depends on M2h).
+- **M2h** — largely DONE (2026-06-11): cassini-core is ThreadLocal-free (`RequestScope` ScopedValue), `@Suspended AsyncResponse` + `CompletionStage` returns work (blocking-on-VT), CompletionCallback wired. Remaining: `CompletionStage` propagation to the transport (true non-blocking, needs a Chappe async SPI — see ASYNC.md) and ConnectionCallback disconnect notification.
+- **M2i** — DONE (2026-06-11): real chunked SSE streaming on Chappe (lazy-commit latch + thread-agnostic chunk queue, see ASYNC.md). The 3 SSE TCK challenges are lifted (2538 PASS).
 
 ## Unit tests
 
