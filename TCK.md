@@ -8,8 +8,8 @@
 | TCK | `jakarta.ws.rs:jakarta-restful-ws-tck:4.0.1` |
 | JDK | Eclipse Temurin 25 |
 | TCK `@Test` tests | **2670** |
-| Tests applicable to profile | **2535** (134 excluded via `@Tag`, 6 official challenges) |
-| **Passed** | **2535** |
+| Tests applicable to profile | **2538** (134 excluded via `@Tag`, 3 official challenges) |
+| **Passed** | **2538** |
 | Failures + Errors | **0** |
 | Skipped | **135** (134 out-of-profile tags + 6 challenges + 1 internal exemption) |
 | **Conformance score** | **100.00 %** of applicable tests |
@@ -59,7 +59,7 @@ Six tests are disabled via the class
 | `spec.resource.requestmatching.JAXRSClientIT#locatorNameTooLongAgainTest` | spec interpretation | Per §3.7.2 step 2(g) literal, `@GET @Path("locator/locator/locator")` matches `/locator/locator/locator` → 200 expected. The test enforces a non-portable segment-by-segment interpretation. |
 | `signaturetest.jaxrs.JAXRSSigTestIT#signatureTest` | TCK environment | JDK 2.5 sigtest requires a complete TCK layout. The `jakarta.ws.rs` API is not modified by Cassini — this test evaluates the TCK environment, not Cassini conformance. |
 | `jaxrs31.ee.multipart.MultipartSupportIT#basicTest` + `multiFormParamTest` | client harness | Cassini SERVER fully implements §3.5.4 EntityPart. The test blocks on the Jersey CLIENT side. |
-| `jaxrs21.ee.sse.ssebroadcaster.JAXRSClientIT#sseBroadcastTest`, `sseeventsink.JAXRSClientIT#closeTest`, `sseeventsource.JAXRSClientIT#closeTest` | streaming infrastructure | §11 real SSE streaming. `CassiniSseEventSink` buffers then emits in bulk. True chunked streaming via Chappe requires an architectural change in `ChappeHttpAdapter` (concurrent VT + latch). See `ASYNC.md` §"SSE streaming with Chappe". |
+| ~~3 SSE streaming challenges~~ | — | **Lifted (M2i, 2026-06-11)**: real chunked SSE streaming on Chappe (lazy-commit latch + thread-agnostic chunk queue, see `ASYNC.md`). `sseBroadcastTest`, `sseeventsink#closeTest`, `sseeventsource#closeTest` now PASS. |
 
 ---
 
@@ -124,7 +124,7 @@ cassini/
 | §6.5.5 DynamicFeature | ✅ | `cassini-core/internal/filter/CassiniDynamicFeatureContext` |
 | §7 ContextResolver/Providers | ✅ | `cassini-core/internal/context/CassiniProviders` |
 | §10 Application/ApplicationPath | ✅ | `cassini-chappe/ChappeRuntimeDelegate` |
-| §11 SSE | ✅ (buffered) | `cassini-core/internal/sse/CassiniSse{,EventSink,Broadcaster}` |
+| §11 SSE | ✅ (chunked streaming on Chappe + JDK, M2i) | `cassini-core/internal/sse/CassiniSse{,EventSink,Broadcaster}` |
 | §11.2 BASIC auth | ✅ | `cassini-core/internal/context/CassiniSecurityContext` + `cassini-tck/.../BasicAuthHandler` |
 
 ### Decoupled architecture
@@ -152,7 +152,7 @@ Two transports are provided:
 - Lifecycle callbacks `addCompletionCallback` / `addConnectionCallback`
 - Unblocks currently prepared `@Tag("async")` tests
 
-### M2i — Real SSE streaming (~1 day, independent of M2h)
+### M2i — Real SSE streaming — ✅ DONE (2026-06-11)
 - `ChappeHttpAdapter`: execute Invoker on a separate VT + `CountDownLatch`
   to signal "pipe ready" and immediately return `Body.streaming(pis)`
 - `ChappeHttpExchange.openForStreaming()`: create pipe + release latch
@@ -163,5 +163,5 @@ Two transports are provided:
 | Mode | TCK scope | Status |
 |------|-----------|--------|
 | **A** Cassini "pure" + cassini-jdk-http | REST 4.0 excluding CDI tests | immediate target |
-| **B** Cassini + Vauban (full CDI) | REST 4.0 complete | **2535/2535 ✅ achieved** |
+| **B** Cassini + Vauban (full CDI) | REST 4.0 complete | **2538/2538 ✅ achieved** |
 | **C** Full Vidocq MPS | Core Profile 11 + MicroProfile | post-M2h |

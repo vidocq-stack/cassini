@@ -1,6 +1,6 @@
 # Async, SSE and streaming in Cassini
 
-## Current state (post-commit `4ca6b0e`)
+## Current state (M2i, 2026-06-11)
 
 ### What works
 
@@ -8,15 +8,33 @@
 |---|---|---|---|
 | `@Suspended AsyncResponse` | Chappe + JDK | Blocks a virtual thread until `resume()` | ✅ passes |
 | `CompletionStage<T>` return | Chappe + JDK | Blocks a virtual thread until completion | ✅ passes |
-| Buffered SSE | Chappe | Events accumulated in memory, sent in one block on `sink.close()` | ✅ passes (except 3 streaming tests) |
+| **Chunked SSE streaming** | **Chappe** | VT + lazy-commit latch (see below) — the 3 SSE challenges are lifted, TCK 2538 PASS | ✅ passes |
 | Chunked SSE streaming | JDK | Progressive push through direct `OutputStream` | ✅ passes |
+| `CompletionCallback` | all | Registered on `CassiniAsyncResponseImpl`, fired by the Invoker when async processing ends (unmapped throwable passed per §8.2) | ✅ |
+| `ConnectionCallback` | all | Registration supported; `onDisconnect` firing needs a transport disconnect notification Chappe does not expose yet (deferred with the CompletionStage chantier) | — |
 
-### What does not work
+### Implementation notes (M2i, the hard-won ones)
 
-| Functionality | Transport | Reason |
-|---|---|---|
-| Chunked SSE streaming | Chappe | Architectural deadlock (see below) |
-| `addCompletionCallback` / `addConnectionCallback` | all | Not implemented (`CassiniAsyncContext` declared, not wired) |
+- **Lazy commit**: `openForStreaming` prepares the stream but commits the
+  chunked response only on the first write/flush (or on the Invoker's
+  explicit `commitStreaming()` when the method returns normally — the
+  broadcaster registers a sink and returns without sending). A `close()`
+  without prior write does NOT commit: the Invoker opens the sink before
+  invoking the method, and a method that throws before any event (503 +
+  Retry-After throttling, TCK `wait2Seconds`) must still get its error
+  response out through the buffered path.
+- **No `PipedInputStream`**: piped streams track the last writer *thread*
+  and throw `"Pipe broken"` once it dies — the broadcaster pattern exactly
+  (the registering request's VT ends, events come later from other threads;
+  this also explains the historical `wait2Seconds` hang). Replaced by
+  `ChunkQueueInputStream` (bounded queue, thread-agnostic, chunk-atomic,
+  natural backpressure). Chappe consumes it in try-with-resources and
+  flushes per chunk, so client disconnects surface as a closed consumer →
+  `SseEventSink.isClosed()` flips (TCK `sseeventsource#closeTest`).
+- **Spec edges**: `send()` on a closed sink throws `IllegalStateException`
+  (TCK `sseeventsink#closeTest`); a transport-dead sink flips to closed and
+  fails the returned stage instead of throwing (the TCK server loop polls
+  `isClosed()` with no try/catch around `send`).
 
 ---
 

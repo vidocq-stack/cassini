@@ -129,10 +129,89 @@ public final class CassiniAsyncResponseImpl implements AsyncResponse {
         this.timeoutHandler = handler;
     }
 
-    @Override public Collection<Class<?>> register(Class<?> callback)                                        { return Collections.emptyList(); }
-    @Override public Map<Class<?>, Collection<Class<?>>> register(Class<?> callback, Class<?>... callbacks) { return Collections.emptyMap(); }
-    @Override public Collection<Class<?>> register(Object callback)                                         { return Collections.emptyList(); }
-    @Override public Map<Class<?>, Collection<Class<?>>> register(Object callback, Object... callbacks)     { return Collections.emptyMap(); }
+    // §8.2: registered lifecycle callbacks. CompletionCallback fires once the
+    // request processing finishes (fired by the Invoker); ConnectionCallback
+    // fires on premature client disconnect — registration is supported, but
+    // detection requires a transport notification Chappe does not expose yet
+    // (see ASYNC.md, deferred with the CompletionStage propagation chantier).
+    private final java.util.List<jakarta.ws.rs.container.CompletionCallback> completionCallbacks =
+            new CopyOnWriteArrayList<>();
+    private final java.util.List<jakarta.ws.rs.container.ConnectionCallback> connectionCallbacks =
+            new CopyOnWriteArrayList<>();
+    private final AtomicBoolean completionFired = new AtomicBoolean(false);
+
+    @Override
+    public Collection<Class<?>> register(Class<?> callback) {
+        java.util.Objects.requireNonNull(callback, "callback");
+        return register(instantiateCallback(callback));
+    }
+
+    @Override
+    public Map<Class<?>, Collection<Class<?>>> register(Class<?> callback, Class<?>... callbacks) {
+        java.util.Objects.requireNonNull(callbacks, "callbacks");
+        var out = new java.util.LinkedHashMap<Class<?>, Collection<Class<?>>>();
+        out.put(callback, register(callback));
+        for (Class<?> c : callbacks) out.put(c, register(c));
+        return out;
+    }
+
+    @Override
+    public Collection<Class<?>> register(Object callback) {
+        java.util.Objects.requireNonNull(callback, "callback");
+        var recognized = new java.util.ArrayList<Class<?>>();
+        if (callback instanceof jakarta.ws.rs.container.CompletionCallback cc) {
+            completionCallbacks.add(cc);
+            recognized.add(jakarta.ws.rs.container.CompletionCallback.class);
+        }
+        if (callback instanceof jakarta.ws.rs.container.ConnectionCallback dc) {
+            connectionCallbacks.add(dc);
+            recognized.add(jakarta.ws.rs.container.ConnectionCallback.class);
+        }
+        return recognized;
+    }
+
+    @Override
+    public Map<Class<?>, Collection<Class<?>>> register(Object callback, Object... callbacks) {
+        java.util.Objects.requireNonNull(callbacks, "callbacks");
+        var out = new java.util.LinkedHashMap<Class<?>, Collection<Class<?>>>();
+        out.put(callback.getClass(), register(callback));
+        for (Object c : callbacks) out.put(c.getClass(), register(c));
+        return out;
+    }
+
+    private static Object instantiateCallback(Class<?> callback) {
+        try {
+            return callback.getDeclaredConstructor().newInstance();
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalArgumentException("Cannot instantiate callback " + callback.getName(), e);
+        }
+    }
+
+    /**
+     * §8.2: invoked by the Invoker exactly once, when the processing of the
+     * async request is over. {@code unmappedError} is {@code null} on normal
+     * completion (incl. mapped exceptions), or the throwable when processing
+     * ended with an exception that no ExceptionMapper handled.
+     */
+    public void fireCompletion(Throwable unmappedError) {
+        if (!completionFired.compareAndSet(false, true)) return;
+        for (var cb : completionCallbacks) {
+            try {
+                cb.onComplete(unmappedError);
+            } catch (RuntimeException ignored) {
+                // a callback failure must not break response delivery
+            }
+        }
+    }
+
+    /** §8.2: premature client disconnect (transport notification required). */
+    public void fireDisconnect() {
+        for (var cb : connectionCallbacks) {
+            try {
+                cb.onDisconnect(this);
+            } catch (RuntimeException ignored) { /* same as above */ }
+        }
+    }
 
     private void cancelTimeout() {
         ScheduledFuture<?> t = timeoutTask;

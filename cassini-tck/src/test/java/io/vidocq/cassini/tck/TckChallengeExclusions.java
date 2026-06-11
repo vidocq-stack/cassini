@@ -63,17 +63,14 @@ import java.util.Set;
  *       not by Cassini; Cassini SERVER can parse received multiparts when the
  *       wire Content-Type has a correct boundary (tested via other tests that
  *       POST multipart manually).</li>
- *   <li>{@code jaxrs21.ee.sse.ssebroadcaster.JAXRSClientIT#sseBroadcastTest},
- *       {@code jaxrs21.ee.sse.sseeventsink.JAXRSClientIT#closeTest},
- *       {@code jaxrs21.ee.sse.sseeventsource.JAXRSClientIT#closeTest} —
- *       §11 real SSE streaming. Our {@code CassiniSseEventSink} buffers events
- *       and then emits the response in bulk at the end of the resource method.
- *       To pass these tests, the {@code SseEventSink} must push events to the
- *       wire incrementally (chunked transfer streaming), and the HTTP connection
- *       must remain open after {@code resource.method} until {@code sink.close()}.
- *       This requires a major refactor of the Chappe engine (async handler +
- *       chunked streaming). Out of MVP scope, challenge documented.</li>
  * </ul>
+ *
+ * <p>M2i (2026-06-11): the three §11 SSE streaming challenges
+ * ({@code ssebroadcaster#sseBroadcastTest}, {@code sseeventsink#closeTest},
+ * {@code sseeventsource#closeTest}) were lifted — {@code ChappeHttpExchange}
+ * now opens real chunked streaming (pipe + latch in {@code ChappeHttpAdapter},
+ * see ASYNC.md), so events reach the wire incrementally and the connection
+ * stays open until {@code sink.close()}.</p>
  */
 public final class TckChallengeExclusions implements ExecutionCondition {
 
@@ -84,13 +81,7 @@ public final class TckChallengeExclusions implements ExecutionCondition {
             "ee.jakarta.tck.ws.rs.signaturetest.jaxrs.JAXRSSigTestIT",
                     Set.of("signatureTest"),
             "ee.jakarta.tck.ws.rs.jaxrs31.ee.multipart.MultipartSupportIT",
-                    Set.of("basicTest", "multiFormParamTest"),
-            "ee.jakarta.tck.ws.rs.jaxrs21.ee.sse.ssebroadcaster.JAXRSClientIT",
-                    Set.of("sseBroadcastTest"),
-            "ee.jakarta.tck.ws.rs.jaxrs21.ee.sse.sseeventsink.JAXRSClientIT",
-                    Set.of("closeTest"),
-            "ee.jakarta.tck.ws.rs.jaxrs21.ee.sse.sseeventsource.JAXRSClientIT",
-                    Set.of("closeTest")
+                    Set.of("basicTest", "multiFormParamTest")
     );
 
     private static final ConditionEvaluationResult ENABLED =
