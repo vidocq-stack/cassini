@@ -34,3 +34,30 @@ method's signature matches the concrete override, so it de-dups to a single invo
 type variables still erase to `Object` (unchanged). Regression:
 `CassiniResourceProcessorTest.processorGeneratesAdapterForExceptionMapperOfThrowable`.
 REST 4.0 TCK preserved: 2535 PASS / 135 SKIP.
+
+## CASSINI-002 — Request-remapping wrappers silently drop per-request attributes
+- **Date**: 2026-06-11 — **Status**: FIXED
+- **Severity**: low before M2h (latent — nothing flowed through the wrappers' attributes);
+  high during M2h (3 SecurityContext TCK tests errored)
+- **Surfaced by**: the M2h ThreadLocal→ScopedValue migration (auth handed over via Chappe
+  per-request attributes instead of an InheritableThreadLocal).
+
+### Symptom
+After migrating `CURRENT_AUTH` to a Chappe request attribute (`cassini.auth`), the REST TCK
+errored on `requestcontext.security.getSecurityContextTest` and
+`securitycontext.basic.basicAuthorization{Admin,StandardUser}Test`: the resource saw an
+anonymous SecurityContext although `BasicAuthHandler` had validated the credentials.
+
+### Cause
+Three anonymous `Request` wrappers (context-prefix remapping in
+`VidocqCassiniDeployableContainer`, `CassiniTestHarness.ContextStrippingHandler`, and
+`ChappeRuntimeDelegate`) override the path/context methods but not
+`attribute(String)`/`attribute(String, Object)`. The Chappe interface defaults for those are
+**no-ops** (`return null` / `return this`), so any attribute written by an upstream handler on
+the wrapped request was silently dropped before reaching `ChappeHttpExchange`.
+
+### Fix
+The three wrappers now delegate both `attribute` methods to the wrapped request.
+`ChappeHttpExchange.getAttribute` also falls back to the Chappe request attributes, so
+upstream handlers can hand state to Cassini across the per-request virtual-thread boundary.
+REST 4.0 TCK: 2535 PASS / 135 SKIP / 0 ERROR.

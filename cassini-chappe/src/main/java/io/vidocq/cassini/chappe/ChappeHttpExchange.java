@@ -118,5 +118,16 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
     @Override public boolean isUserInRole(String role) { return false; }
 
     @Override public void setAttribute(String key, Object value) { attributes.put(key, value); }
-    @Override public Object getAttribute(String key) { return attributes.get(key); }
+
+    /**
+     * Reads first from the exchange-local store, then falls back to the
+     * Chappe per-request attributes. The fallback is what lets an upstream
+     * Chappe {@code Handler} (auth bridge, servlet glue) hand request state
+     * to Cassini across the per-request virtual-thread boundary (M2h) —
+     * e.g. {@code cassini.auth} set before dispatch.
+     */
+    @Override public Object getAttribute(String key) {
+        Object v = attributes.get(key);
+        return v != null ? v : request.attribute(key);
+    }
 }

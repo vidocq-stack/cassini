@@ -66,37 +66,48 @@ public final class ParamExtractor {
 
     public record ResolvedArgs(Object[] args, int bodyIndex) {}
 
-    private static ThreadLocal<Providers> CURRENT_PROVIDERS = new ThreadLocal<>();
-    // InheritableThreadLocal: inherited by the virtual threads created in the adapter (M2h).
-    private static final ThreadLocal<jakarta.ws.rs.core.Application> CURRENT_APPLICATION =
-            new InheritableThreadLocal<>();
-    public static void setApplication(jakarta.ws.rs.core.Application app) { CURRENT_APPLICATION.set(app); }
-    public static void clearApplication() { CURRENT_APPLICATION.remove(); }
-    public static jakarta.ws.rs.core.Application currentApplication() { return CURRENT_APPLICATION.get(); }
+    // M2h: all per-request slots live in the RequestScope binding (one per
+    // dispatch, virtual-thread-safe). The static accessors below keep their
+    // historical signatures and are no-ops / return null outside a dispatch.
+
+    public static void setApplication(jakarta.ws.rs.core.Application app) {
+        var s = RequestScope.current();
+        if (s != null) s.application = app;
+    }
+    public static void clearApplication() { setApplication(null); }
+    public static jakarta.ws.rs.core.Application currentApplication() {
+        var s = RequestScope.current();
+        return s == null ? null : s.application;
+    }
 
     /** Allows the Invoker to expose a Providers to resolveContext for the duration of a request. */
-    public static void setProviders(Providers p) { CURRENT_PROVIDERS.set(p); }
-    public static void clearProviders() { CURRENT_PROVIDERS.remove(); }
-    public static Providers currentProviders() { return CURRENT_PROVIDERS.get(); }
-
-    private static final ThreadLocal<java.util.List<jakarta.ws.rs.ext.ParamConverterProvider>> CURRENT_PCPS =
-            new ThreadLocal<>();
-    public static void setParamConverterProviders(java.util.List<jakarta.ws.rs.ext.ParamConverterProvider> ps) {
-        CURRENT_PCPS.set(ps);
+    public static void setProviders(Providers p) {
+        var s = RequestScope.current();
+        if (s != null) s.providers = p;
     }
-    public static void clearParamConverterProviders() { CURRENT_PCPS.remove(); }
+    public static void clearProviders() { setProviders(null); }
+    public static Providers currentProviders() {
+        var s = RequestScope.current();
+        return s == null ? null : s.providers;
+    }
+
+    public static void setParamConverterProviders(java.util.List<jakarta.ws.rs.ext.ParamConverterProvider> ps) {
+        var s = RequestScope.current();
+        if (s != null) s.paramConverterProviders = ps;
+    }
+    public static void clearParamConverterProviders() { setParamConverterProviders(null); }
 
     /** §11.1 (SSE): shared sink+sse for the duration of the invocation
      *  of a resource method with @Produces text/event-stream. */
-    private static final ThreadLocal<io.vidocq.cassini.internal.sse.CassiniSseEventSink> CURRENT_SINK =
-            new ThreadLocal<>();
     public static void setCurrentSink(io.vidocq.cassini.internal.sse.CassiniSseEventSink s) {
-        CURRENT_SINK.set(s);
+        var scope = RequestScope.current();
+        if (scope != null) scope.sink = s;
     }
     public static io.vidocq.cassini.internal.sse.CassiniSseEventSink currentSink() {
-        return CURRENT_SINK.get();
+        var s = RequestScope.current();
+        return s == null ? null : s.sink;
     }
-    public static void clearCurrentSink() { CURRENT_SINK.remove(); }
+    public static void clearCurrentSink() { setCurrentSink(null); }
 
     private ParamExtractor() {}
 
@@ -289,7 +300,7 @@ public final class ParamExtractor {
             return filterSc != null ? filterSc : new CassiniSecurityContext(request);
         }
         if (type == Providers.class) {
-            Providers p = CURRENT_PROVIDERS.get();
+            Providers p = currentProviders();
             if (p != null) return p;
         }
         if (type == jakarta.ws.rs.container.ContainerRequestContext.class) {
@@ -310,7 +321,7 @@ public final class ParamExtractor {
             // §9.4: Application is the user-level instance if the harness
             // (or integration) published one via setCurrentApplication()
             // — otherwise we return a minimal Application.
-            jakarta.ws.rs.core.Application app = CURRENT_APPLICATION.get();
+            jakarta.ws.rs.core.Application app = currentApplication();
             if (app != null) {
                 // §9.2: @Context fields on the Application subclass must
                 // expose the current context (per-request proxy injection).
@@ -321,7 +332,7 @@ public final class ParamExtractor {
             return new jakarta.ws.rs.core.Application();
         }
         if (type == jakarta.ws.rs.ext.ContextResolver.class) {
-            Providers p = CURRENT_PROVIDERS.get();
+            Providers p = currentProviders();
             if (p != null) return p;
         }
         if (type == jakarta.ws.rs.container.ResourceContext.class) {
@@ -344,7 +355,7 @@ public final class ParamExtractor {
             return new io.vidocq.cassini.internal.sse.CassiniSse();
         }
         if (type == jakarta.ws.rs.sse.SseEventSink.class) {
-            var s = CURRENT_SINK.get();
+            var s = currentSink();
             if (s != null) return s;
             // No current sink: §11.1 expects us to construct a new one.
             return new io.vidocq.cassini.internal.sse.CassiniSseEventSink(null);
@@ -411,7 +422,8 @@ public final class ParamExtractor {
      *  the converted object (or null if raws is empty and the converter accepts ""). */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static Object tryUserParamConverter(Class<?> raw, Class<?> element, Parameter p, List<String> raws) {
-        java.util.List<jakarta.ws.rs.ext.ParamConverterProvider> pcps = CURRENT_PCPS.get();
+        var scope = RequestScope.current();
+        java.util.List<jakarta.ws.rs.ext.ParamConverterProvider> pcps = scope == null ? null : scope.paramConverterProviders;
         if (pcps == null || pcps.isEmpty()) return USE_FALLBACK;
         // §6.1.4: we first offer the 'raw' type (collection or direct) then
         // the element type (for List<X> with a converter for X).

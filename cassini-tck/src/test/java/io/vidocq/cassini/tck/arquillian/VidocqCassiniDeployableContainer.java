@@ -134,6 +134,11 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
                 @Override public String contextPath() { return finalPrefix; }
                 @Override public String pathInfo() { return newPath; }
                 @Override public boolean isSecure() { return request.isSecure(); }
+                // Delegate per-request attributes to the wrapped request — the
+                // interface defaults are no-ops and would silently drop state
+                // set by upstream handlers (e.g. cassini.auth from BASIC auth).
+                @Override public Object attribute(String key) { return request.attribute(key); }
+                @Override public Request attribute(String key, Object value) { request.attribute(key, value); return this; }
             };
             return best.handle(remapped);
         };
@@ -342,7 +347,7 @@ public class VidocqCassiniDeployableContainer implements DeployableContainer<Vid
         // No no-arg constructor: §4.5 selects the public constructor with
         // the most parameters each of which has a resolvable @Context type.
         // Values are dynamic proxies that delegate to the current request
-        // (ThreadLocal Invoker.CURRENT_REQUEST + CURRENT_MATCH).
+        // (per-request scope via Invoker.currentRequest()/currentMatch()).
         java.lang.reflect.Constructor<?> best = null;
         int bestParams = -1;
         for (var c : cls.getConstructors()) {

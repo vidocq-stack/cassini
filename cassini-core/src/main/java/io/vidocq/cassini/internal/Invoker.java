@@ -59,22 +59,43 @@ import java.util.function.Function;
  */
 public final class Invoker {
 
-    /** Context exposed during the {@link #resolver} call to let resolvers
-     *  (e.g. TCK harnesses) create instances with constructor injection
-     *  §3.1.1.
-     *
-     *  <p>TODO(M2h): migrate to a portable virtual-thread-safe {@code RequestContext}
-     *  (ScopedValue or context attached to {@link CassiniHttpExchange}).
-     *  ThreadLocals break with virtual threads when the Invoker yields. */
-    public static final ThreadLocal<MatchResult> CURRENT_MATCH = new ThreadLocal<>();
-    public static final ThreadLocal<CassiniHttpExchange> CURRENT_REQUEST = new ThreadLocal<>();
     /** Exchange attribute key for the matched-instance chain (M2h). */
     public static final String ATTR_MATCHED_RESOURCES = "cassini.matched_resources";
+
+    /** Context exposed during the {@link #resolver} call to let resolvers
+     *  (e.g. TCK harnesses) create instances with constructor injection
+     *  §3.1.1. M2h: carried by the per-request {@link RequestScope} binding
+     *  (virtual-thread-safe, bounded lifetime) — no ThreadLocal.
+     *
+     *  @return the routing result of the request being processed, or
+     *          {@code null} outside a dispatch. */
+    public static MatchResult currentMatch() {
+        var scope = RequestScope.current();
+        return scope == null ? null : scope.match;
+    }
+
+    /** @return the exchange of the request being processed, or {@code null}
+     *          outside a dispatch. See {@link #currentMatch()}. */
+    public static CassiniHttpExchange currentRequest() {
+        var scope = RequestScope.current();
+        return scope == null ? null : scope.request;
+    }
+
+    /** Sets the per-request match/request slots in the active scope. */
+    private static void publishCurrent(MatchResult match, CassiniHttpExchange request) {
+        var scope = RequestScope.current();
+        scope.match = match;
+        scope.request = request;
+    }
 
     private final Function<Class<?>, Object> resolver;
     private final MessageBodyRegistry registry;
     private final ExceptionMapperRegistry exceptionMappers;
     private FilterRegistry filters = new FilterRegistry();
+    /** Deployment-level JAX-RS Application exposed via {@code @Context Application}
+     *  (M2h: instance field seeded into the request scope — replaces the
+     *  InheritableThreadLocal that crossed the per-request VT spawn). */
+    private jakarta.ws.rs.core.Application application;
     /** Optional — allows de-proxying a CDI bean (real contextual instance)
      *  before {@code @Context} injection. {@code null} in {@code newInstance} mode. */
     private io.vidocq.cassini.spi.bean.BeanProvider beanProvider;
@@ -82,6 +103,7 @@ public final class Invoker {
     public void setFilters(FilterRegistry f) { this.filters = f == null ? new FilterRegistry() : f; }
     public FilterRegistry filters() { return filters; }
     public void setBeanProvider(io.vidocq.cassini.spi.bean.BeanProvider bp) { this.beanProvider = bp; }
+    public void setApplication(jakarta.ws.rs.core.Application app) { this.application = app; }
 
     /**
      * {@code @Context} injection target for a resolved instance: the real
@@ -121,7 +143,12 @@ public final class Invoker {
      *  Accept/Content-Type (§3.7.2). Then calls the canonical
      *  invoke(MatchResult, Request) with the winner. */
     public CassiniHttpResponse invoke(java.util.List<MatchResult> candidates, CassiniHttpExchange request) throws Exception {
+        return RequestScope.call(() -> invokeInScope(candidates, request));
+    }
+
+    private CassiniHttpResponse invokeInScope(java.util.List<MatchResult> candidates, CassiniHttpExchange request) throws Exception {
         if (candidates.isEmpty()) throw new IllegalArgumentException("no candidates");
+        if (application != null) RequestScope.current().application = application;
         MatchResult match = pickBestMatch(candidates, request);
         ResourceMethod route = match.method();
         ParamExtractor.setProviders(new io.vidocq.cassini.internal.context.CassiniProviders(
@@ -159,8 +186,7 @@ public final class Invoker {
             ParamExtractor.clearProviders();
             ParamExtractor.clearParamConverterProviders();
             FieldInjector.clearFormCache();
-            CURRENT_MATCH.remove();
-            CURRENT_REQUEST.remove();
+            publishCurrent(null, null);
             io.vidocq.cassini.internal.runtime.CassiniResponseBuilder.clearBaseUri();
         }
     }
@@ -203,8 +229,7 @@ public final class Invoker {
         injectFields(route.rootBeanClass(), injectionTarget(route.rootBeanClass(), root), match, request, true);
         java.util.List<Object> matched = new java.util.ArrayList<>();
         matched.add(root);
-        CURRENT_MATCH.set(match);
-        CURRENT_REQUEST.set(request);
+        publishCurrent(match, request);
         request.setAttribute(ATTR_MATCHED_RESOURCES, matched);
         Object intermediate = root;
         for (java.lang.reflect.Method locStep : route.locatorChain()) {
@@ -295,8 +320,7 @@ public final class Invoker {
                                                       java.util.List<Object> matchedSoFar) throws Exception {
         ResourceMethod route = match.method();
         Object intermediate = startInstance;
-        CURRENT_MATCH.set(match);
-        CURRENT_REQUEST.set(request);
+        publishCurrent(match, request);
         request.setAttribute(ATTR_MATCHED_RESOURCES, matchedSoFar);
         for (java.lang.reflect.Method locStep : route.locatorChain()) {
             // Skip locators already executed (present at the top of the current
@@ -515,7 +539,12 @@ public final class Invoker {
 
     /** §6.6.1: executes pre-matching filters before routing. */
     public PreMatchResult runPreMatching(CassiniHttpExchange request) throws Exception {
+        return RequestScope.call(() -> runPreMatchingInScope(request));
+    }
+
+    private PreMatchResult runPreMatchingInScope(CassiniHttpExchange request) throws Exception {
         if (filters.preMatching().isEmpty()) return new PreMatchResult(null, null);
+        if (application != null) RequestScope.current().application = application;
         ParamExtractor.setProviders(new io.vidocq.cassini.internal.context.CassiniProviders(
                 registry, exceptionMappers, filters.contextResolvers()));
         try {
@@ -633,12 +662,11 @@ public final class Invoker {
             rctx = new CassiniRequestContext(request, new CassiniUriInfo(
                     request, request.contextPath(), match.pathParams()));
             rctx.markPostMatching();
-            // §9.2: set CURRENT_MATCH/REQUEST so injectProviderContexts can
+            // §9.2: publish match/request in the scope so injectProviderContexts can
             // populate provider @Context fields (ResourceInfo, UriInfo, etc.).
             // Note: for singleton filters, in-place writes to shared fields
             // are not thread-safe — acceptable as long as we have no per-thread proxy.
-            CURRENT_MATCH.set(match);
-            CURRENT_REQUEST.set(request);
+            publishCurrent(match, request);
             for (var fe : filters.postMatching()) {
                 if (!fe.appliesTo(route.javaMethod(), route.beanClass())) continue;
                 // §9.2 : injection @Context dans le provider (filter) singleton.
@@ -661,8 +689,7 @@ public final class Invoker {
 
         // 4. Invoke
         Object target;
-        CURRENT_MATCH.set(match);
-        CURRENT_REQUEST.set(request);
+        publishCurrent(match, request);
         java.util.List<Object> matched = new java.util.ArrayList<>();
         request.setAttribute(ATTR_MATCHED_RESOURCES, matched);
         try {
@@ -964,7 +991,7 @@ public final class Invoker {
 
     /** §9.2: injects the @Context fields of a singleton provider before
      *  the readFrom/writeTo call using the current match and request
-     *  (captured via ThreadLocal on the current request).
+     *  (carried by the per-request scope).
      *
      *  <p>M5a: routes injection through the generated adapter when available,
      *  keeping the reflective {@link FieldInjector} as a safety-net fallback.
@@ -974,8 +1001,8 @@ public final class Invoker {
         // Skip les classes builtin internes (pas de @Context dedans, optimisation).
         Class<?> cls = provider.getClass();
         if (cls.getName().startsWith("io.vidocq.cassini.internal.MessageBodyRegistry$")) return;
-        CassiniHttpExchange req = requestOpt != null ? requestOpt : CURRENT_REQUEST.get();
-        MatchResult match = CURRENT_MATCH.get();
+        CassiniHttpExchange req = requestOpt != null ? requestOpt : currentRequest();
+        MatchResult match = currentMatch();
         if (req == null || match == null) return;
         // M5a: prefer generated adapter (VarHandle, no per-request reflection); fall back
         // to FieldInjector when the adapter cannot be generated (private cross-package field,
@@ -1341,6 +1368,11 @@ public final class Invoker {
      *  Checks application ExceptionMappers first; otherwise returns the
      *  Response carried by the WAE, or a default 500. */
     public CassiniHttpResponse renderThrowable(Throwable t, CassiniHttpExchange request) throws IOException {
+        return RequestScope.call(() -> renderThrowableInScope(t, request));
+    }
+
+    private CassiniHttpResponse renderThrowableInScope(Throwable t, CassiniHttpExchange request) throws IOException {
+        if (application != null) RequestScope.current().application = application;
         ParamExtractor.setProviders(new io.vidocq.cassini.internal.context.CassiniProviders(
                 registry, exceptionMappers, filters.contextResolvers()));
         try {
