@@ -175,14 +175,18 @@ public final class CassiniResponseBuilder extends Response.ResponseBuilder {
         return this;
     }
 
-    /** ThreadLocal baseUri to resolve relative URIs per §6.7. */
-    private static final ThreadLocal<URI> BASE_URI = new ThreadLocal<>();
-    public static void setBaseUri(URI base) { BASE_URI.set(base); }
-    public static void clearBaseUri() { BASE_URI.remove(); }
+    /** Base URI to resolve relative URIs per §6.7 — carried by the
+     *  per-request scope (M2h), null when building outside a dispatch. */
+    public static void setBaseUri(URI base) {
+        var s = io.vidocq.cassini.internal.RequestScope.current();
+        if (s != null) s.baseUri(base);
+    }
+    public static void clearBaseUri() { setBaseUri(null); }
 
     private static URI resolveAgainstBase(URI location) {
         if (location.isAbsolute()) return location;
-        URI base = BASE_URI.get();
+        var s = io.vidocq.cassini.internal.RequestScope.current();
+        URI base = s == null ? null : s.baseUri();
         if (base == null) return location;
         return base.resolve(location);
     }

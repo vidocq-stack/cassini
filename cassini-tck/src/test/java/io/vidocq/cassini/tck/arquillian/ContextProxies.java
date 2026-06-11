@@ -35,9 +35,9 @@ import java.lang.reflect.Proxy;
  * §4.5 / §9.2: dynamic proxies for @Context constructor parameters of a
  * singleton provider. The provider is instantiated at deploy time but its
  * methods (writeTo, getContext, toResponse...) are only called at request
- * time. Each proxy therefore delegates to the current request (ThreadLocal
- * Invoker.CURRENT_REQUEST + CURRENT_MATCH) to resolve the effective value
- * at invocation time.
+ * time. Each proxy therefore delegates to the current request (the per-request
+ * scope exposed by Invoker.currentRequest()/currentMatch()) to resolve the
+ * effective value at invocation time.
  */
 final class ContextProxies {
 
@@ -72,13 +72,13 @@ final class ContextProxies {
     }
 
     private static Object resolve(Class<?> type) {
-        var request = Invoker.CURRENT_REQUEST.get();
+        var request = Invoker.currentRequest();
         if (request == null) return null;
         if (type == jakarta.ws.rs.core.HttpHeaders.class) return new CassiniHttpHeaders(request);
         if (type == jakarta.ws.rs.core.Request.class) return new CassiniRequest(request);
         if (type == jakarta.ws.rs.core.SecurityContext.class) return new CassiniSecurityContext(request);
         if (type == jakarta.ws.rs.ext.Providers.class) return ParamExtractor.currentProviders();
-        MatchResult match = Invoker.CURRENT_MATCH.get();
+        MatchResult match = Invoker.currentMatch();
         if (type == jakarta.ws.rs.core.UriInfo.class) {
             return new CassiniUriInfo(request, request.contextPath(),
                     match == null ? java.util.Map.of() : match.pathParams());

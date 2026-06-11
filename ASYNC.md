@@ -184,19 +184,26 @@ vs MB for an OS thread).
 | `Invoker.java:768` | `asyncResponse.completionFuture().get()` | M2h: same |
 | `Invoker.java:816` | `sseSink.awaitClose()` (buffered mode) | M2i: SSE streaming → no longer needed |
 
-### ThreadLocals to migrate for real M2h
+### ThreadLocals to migrate for real M2h — ✅ DONE (2026-06-11)
 
-If we want fully non-blocking async (no blocking even on VT),
-ThreadLocals break when the VT yields between two accesses:
+`cassini-core` is now **ThreadLocal-free**. One `RequestScope` (a per-request
+holder carried by a `ScopedValue`, bound once per dispatch in
+`DefaultCassiniHttpAdapter` and defensively by the public `Invoker` entry
+points) replaced them all:
 
-| File | ThreadLocal | Target migration |
+| File | Was | Now |
 |---|---|---|
-| `Invoker.java` | `CURRENT_MATCH`, `CURRENT_REQUEST`, `CURRENT_MATCHED_RESOURCES` | `ScopedValue` or `CassiniHttpExchange` attribute |
-| `CassiniRequest.java` | `PENDING_VARY` | `CassiniHttpExchange` attribute |
-| `CassiniSecurityContext.java` | `CURRENT_AUTH` | `CassiniHttpExchange` attribute |
-| `FieldInjector.java` | `FORM_CACHE`, `FORM_CACHE_ENCODED`, `BODY_CACHE` | `CassiniHttpExchange` attribute |
-| `ParamExtractor.java` | `PROVIDERS`, etc. | `ScopedValue` |
-| `CassiniResponseBuilder.java` | `BASE_URI` | `ScopedValue` |
+| `Invoker.java` | `CURRENT_MATCH`, `CURRENT_REQUEST` | `RequestScope` slots (`Invoker.currentMatch()/currentRequest()`) |
+| `CassiniRequest.java` | `PENDING_VARY` | `CassiniHttpExchange` attribute (earlier chantier) |
+| `CassiniSecurityContext.java` | `CURRENT_AUTH` (inheritable) | exchange attribute `cassini.auth` (captured by reference — readable from async-spawned threads) |
+| `FieldInjector.java` | `FORM_CACHE`, etc. | `CassiniHttpExchange` attributes (earlier chantier) |
+| `ParamExtractor.java` | `PROVIDERS`, `APPLICATION` (inheritable), `PCPS`, `SINK` | `RequestScope` slots; the Application is an `Invoker` field seeded per request |
+| `CassiniResponseBuilder.java` | `BASE_URI` | `RequestScope` slot |
+| `ExceptionMapperRegistry.java` | `MAPPING` recursion guard | lexical `ScopedValue` rebinding |
+
+Note: the upstream→Cassini handover (BASIC auth set before the per-request VT
+spawn) goes through the Chappe per-request attributes, bridged by
+`ChappeHttpExchange.getAttribute` (cf. CASSINI-002 in BUG.md).
 
 ### Estimated effort for full M2h
 

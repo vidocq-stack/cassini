@@ -76,13 +76,13 @@ final class BasicAuthHandler implements Handler {
         AuthEntry entry = USERS.get(new Credentials(user, password));
         if (entry == null) return challenge();
 
-        CassiniSecurityContext.CURRENT_AUTH.set(new CassiniSecurityContext.AuthInfo(
+        // M2h: hand the AuthInfo to Cassini through the per-request Chappe
+        // attribute (bridged by ChappeHttpExchange.getAttribute) — it crosses
+        // the per-request virtual-thread spawn and stays readable from threads
+        // spawned by async resource methods, with no thread-bound state.
+        request.attribute(CassiniSecurityContext.ATTR_AUTH, new CassiniSecurityContext.AuthInfo(
                 entry.username(), "BASIC", entry.roles()));
-        try {
-            return delegate.handle(request);
-        } finally {
-            CassiniSecurityContext.CURRENT_AUTH.remove();
-        }
+        return delegate.handle(request);
     }
 
     private static Response challenge() {

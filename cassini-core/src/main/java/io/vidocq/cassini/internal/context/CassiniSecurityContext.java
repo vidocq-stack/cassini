@@ -26,8 +26,13 @@ import java.security.Principal;
 
 /**
  * Default security context: anonymous, unsecured (HTTP).
- * If an {@link AuthInfo} has been placed in a ThreadLocal (by an upstream BASIC filter),
- * it is used to expose userPrincipal / userInRole / scheme.
+ * If an {@link AuthInfo} has been attached to the exchange (attribute
+ * {@link #ATTR_AUTH}, set by an upstream BASIC filter or any transport
+ * adapter), it is used to expose userPrincipal / userInRole / scheme.
+ *
+ * <p>M2h: the exchange reference is captured at construction, so threads
+ * spawned by an async resource method still see the request's
+ * authentication — no thread-bound state involved.
  */
 public final class CassiniSecurityContext implements SecurityContext {
 
@@ -37,8 +42,8 @@ public final class CassiniSecurityContext implements SecurityContext {
      */
     public record AuthInfo(String username, String authScheme, java.util.Set<String> roles) {}
 
-    // InheritableThreadLocal: inherited by virtual threads created in the adapter (M2h).
-    public static final ThreadLocal<AuthInfo> CURRENT_AUTH = new InheritableThreadLocal<>();
+    /** Exchange attribute carrying the request's {@link AuthInfo}. */
+    public static final String ATTR_AUTH = "cassini.auth";
 
     private final CassiniHttpExchange exchange;
 
@@ -46,21 +51,25 @@ public final class CassiniSecurityContext implements SecurityContext {
         this.exchange = exchange;
     }
 
+    private AuthInfo authInfo() {
+        return exchange == null ? null : (AuthInfo) exchange.getAttribute(ATTR_AUTH);
+    }
+
     @Override public Principal getUserPrincipal() {
-        AuthInfo a = CURRENT_AUTH.get();
+        AuthInfo a = authInfo();
         if (a == null || a.username() == null) return null;
         return () -> a.username();
     }
 
     @Override public boolean isUserInRole(String role) {
-        AuthInfo a = CURRENT_AUTH.get();
+        AuthInfo a = authInfo();
         return a != null && a.roles() != null && a.roles().contains(role);
     }
 
     @Override public boolean isSecure() { return exchange != null && exchange.isSecure(); }
 
     @Override public String getAuthenticationScheme() {
-        AuthInfo a = CURRENT_AUTH.get();
+        AuthInfo a = authInfo();
         return a == null ? null : a.authScheme();
     }
 }

@@ -196,8 +196,8 @@ public final class CassiniTestHarness implements AutoCloseable {
                 if (ctor == null) throw new RuntimeException("No suitable constructor on " + cls);
                 try {
                     if (ctor.getParameterCount() == 0) return ctor.newInstance();
-                    var match = Invoker.CURRENT_MATCH.get();
-                    var req = Invoker.CURRENT_REQUEST.get();
+                    var match = Invoker.currentMatch();
+                    var req = Invoker.currentRequest();
                     Object[] args = io.vidocq.cassini.internal.ParamExtractor
                             .resolveConstructorArgs(ctor.getParameters(), match, req);
                     return ctor.newInstance(args);
@@ -207,17 +207,14 @@ public final class CassiniTestHarness implements AutoCloseable {
             };
             Invoker invoker = new Invoker(resolver, bodies, exceptionMappers);
             invoker.setFilters(filters);
+            // M2h: the deployment's Application is an Invoker field seeded into
+            // each request scope — no per-request handler wrapper / ThreadLocal.
+            if (this.application != null) invoker.setApplication(this.application);
             io.vidocq.cassini.internal.DefaultCassiniHttpAdapter engine =
                     new io.vidocq.cassini.internal.DefaultCassiniHttpAdapter(router, invoker);
             ChappeHttpAdapter bridge = new ChappeHttpAdapter(engine);
             final String prefix = "/".equals(contextPath) ? "" : contextPath;
-            final jakarta.ws.rs.core.Application appInstance = this.application;
-            Handler wrappedBridge = appInstance == null ? bridge : (Handler) request -> {
-                io.vidocq.cassini.internal.ParamExtractor.setApplication(appInstance);
-                try { return bridge.handle(request); }
-                finally { io.vidocq.cassini.internal.ParamExtractor.clearApplication(); }
-            };
-            return new BuiltHandler(wrappedBridge, prefix);
+            return new BuiltHandler(bridge, prefix);
         }
 
         public CassiniTestHarness start() {
@@ -294,6 +291,11 @@ public final class CassiniTestHarness implements AutoCloseable {
                 @Override public java.util.Map<String, String> queryParams() { return request.queryParams(); }
                 @Override public String contextPath() { return prefix; }
                 @Override public String pathInfo() { return newPath; }
+                // Delegate per-request attributes to the wrapped request — the
+                // interface defaults are no-ops and would silently drop state
+                // set by upstream handlers (e.g. cassini.auth from BASIC auth).
+                @Override public Object attribute(String key) { return request.attribute(key); }
+                @Override public Request attribute(String key, Object value) { request.attribute(key, value); return this; }
             };
             return delegate.handle(remapped);
         }

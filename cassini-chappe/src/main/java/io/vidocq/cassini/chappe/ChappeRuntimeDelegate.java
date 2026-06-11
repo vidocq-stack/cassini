@@ -258,6 +258,11 @@ public final class ChappeRuntimeDelegate extends RuntimeDelegate {
                         @Override public java.util.Map<String, String> queryParams() { return req.queryParams(); }
                         @Override public String contextPath() { return prefix; }
                         @Override public String pathInfo() { return newPath; }
+                        // Delegate per-request attributes to the wrapped request — the
+                        // interface defaults are no-ops and would silently drop state
+                        // set by upstream handlers (e.g. cassini.auth from BASIC auth).
+                        @Override public Object attribute(String key) { return req.attribute(key); }
+                        @Override public Request attribute(String key, Object value) { req.attribute(key, value); return this; }
                     };
                     return bridge.handle(remapped);
                 };

@@ -62,7 +62,13 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
     @Override
     public CompletionStage<Void> dispatch(CassiniHttpExchange exchange) {
         try {
-            dispatchInternal(exchange);
+            // M2h: one request-scope binding per dispatch — all per-request
+            // state (matched route, providers, base URI, SSE sink) lives in
+            // the RequestScope instead of ThreadLocals.
+            RequestScope.<Void, Exception>call(() -> {
+                dispatchInternal(exchange);
+                return null;
+            });
         } catch (Exception e) {
             LOG.log(System.Logger.Level.ERROR, "Cassini dispatch error", e);
             try {

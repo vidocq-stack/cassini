@@ -59,11 +59,12 @@ public final class ExceptionMapperRegistry {
 
     /** §4.4: if an ExceptionMapper itself throws an exception during
      *  its own execution, that exception must not be mapped again —
-     *  it must propagate as a 500. This per-thread flag prevents recursion. */
-    private static final ThreadLocal<Boolean> MAPPING = ThreadLocal.withInitial(() -> false);
+     *  it must propagate as a 500. Lexically-scoped reentrancy flag
+     *  (M2h: ScopedValue rebinding — works on any thread, nothing to reset). */
+    private static final ScopedValue<Boolean> MAPPING = ScopedValue.newInstance();
 
     public Optional<Response> map(Throwable t) {
-        if (MAPPING.get()) return Optional.empty();
+        if (MAPPING.orElse(false)) return Optional.empty();
         Registration<?> best = null;
         for (Registration<?> r : mappers) {
             if (r.exceptionType().isInstance(t)) {
@@ -78,14 +79,12 @@ public final class ExceptionMapperRegistry {
             }
         }
         if (best == null) return Optional.empty();
-        MAPPING.set(true);
-        try {
+        final Registration<?> chosen = best;
+        return ScopedValue.where(MAPPING, true).call(() -> {
             @SuppressWarnings({"rawtypes", "unchecked"})
-            Response r = ((ExceptionMapper) best.mapper()).toResponse(t);
+            Response r = ((ExceptionMapper) chosen.mapper()).toResponse(t);
             return Optional.ofNullable(r);
-        } finally {
-            MAPPING.set(false);
-        }
+        });
     }
 
     /** §10.2: returns the most specific mapper for {@code type} without executing it. */
