@@ -61,7 +61,8 @@ public class Main {
     public static final class ExamplesApp extends Application {
         @Override
         public Set<Class<?>> getClasses() {
-            return Set.of(GreetingResource.class, TodoResource.class);
+            return Set.of(GreetingResource.class, TodoResource.class,
+                    io.vidocq.cassini.examples.chappe.resource.AsyncResource.class);
         }
     }
 }
