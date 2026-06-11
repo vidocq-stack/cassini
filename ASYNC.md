@@ -171,7 +171,40 @@ public CassiniStreamingSink openForStreaming(int status, Map<String, List<String
 
 ---
 
-## M2h — real non-blocking async
+## M2h — real non-blocking async — ❌ DROPPED AS A NON-GOAL (2026-06-11)
+
+**Decision**: the `CompletionStage`-propagation chantier (estimated ~8-13 d +
+a Chappe async SPI) is abandoned. Rationale:
+
+1. **It buys nothing measurable on JDK 25.** A `.get()` on a virtual thread
+   yields its carrier — zero platform threads blocked. Bench (see `BENCH.md`,
+   2026-06-11, Apple M4 Max / OpenJDK 25): **10 000 concurrent suspended
+   `@Suspended` requests cost ~20.7 KB of heap each** (client sockets
+   included), parked in 925 ms, all 10 000 responses delivered in 1.9 s after
+   a mass release. Extrapolated: 100k suspended ≈ 2 GB worst case.
+2. **It fights the ecosystem's own thesis.** Chappe is deliberately
+   thread-per-connection blocking (the Loom model); the workspace rule is
+   "virtual threads everywhere". Propagating stages to the transport would
+   reintroduce the reactive style everything else avoids.
+3. The Invoker decomposition (`ResponsePipeline`) made a future migration
+   cheaper anyway, should a real use case with contradicting numbers appear.
+
+What was *kept* from this chantier: the ThreadLocal elimination
+(`RequestScope`, done), the §8.2 callbacks (done), and the client-disconnect
+notification (Chappe `Request.onDisconnect` probe + `ConnectionCallback`
+wiring, done — see below).
+
+### Client-disconnect notification (DONE, 2026-06-11)
+
+`CassiniHttpExchange.onClientDisconnect(Runnable)` (SPI, default false) is
+implemented by the Chappe transport via `Request.onDisconnect` — a best-effort
+polling read probe (plaintext HTTP/1.1, body-less requests; see the Chappe
+javadoc for the contract). The Invoker arms it when a request suspends: on
+disconnect it fires the registered JAX-RS `ConnectionCallback`s, then fails
+the completion so the waiting virtual thread is freed instead of working for
+a dead client until its own timeout.
+
+### Historical analysis (kept for context)
 
 ### Current situation
 

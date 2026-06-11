@@ -152,6 +152,21 @@ public interface CassiniHttpExchange {
     Object getAttribute(String key);
 
     /**
+     * Registers a callback invoked if the transport detects that the client
+     * connection was closed while this request is still being processed —
+     * used by the runtime to fire JAX-RS {@code ConnectionCallback}s (§8.2)
+     * and release suspended {@code AsyncResponse}s early.
+     *
+     * <p>Detection is best-effort and transport-dependent.
+     *
+     * @return {@code true} if the transport armed a disconnect watch;
+     *         {@code false} when it cannot (default).
+     */
+    default boolean onClientDisconnect(Runnable callback) {
+        return false;
+    }
+
+    /**
      * Opens streaming mode for SSE / chunked transfer (M2i).
      *
      * <p>Sends response headers with a body of unknown length

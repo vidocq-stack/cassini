@@ -327,6 +327,17 @@ public final class Invoker {
                     && jakarta.ws.rs.container.AsyncResponse.class.isAssignableFrom(p.getType())) {
                 asyncResponse = new CassiniAsyncResponseImpl();
                 request.setAttribute(CassiniAsyncResponseImpl.ATTR_KEY, asyncResponse);
+                // §8.2: if the transport can watch the connection, release the
+                // suspended response when the client goes away — fire the
+                // registered ConnectionCallbacks, then (if nothing resumed it)
+                // fail the completion so the waiting virtual thread is freed
+                // instead of working until its own timeout for a dead client.
+                final CassiniAsyncResponseImpl ar = asyncResponse;
+                request.onClientDisconnect(() -> {
+                    ar.fireDisconnect();
+                    ar.completionFuture().completeExceptionally(
+                            new java.io.IOException("Client disconnected"));
+                });
                 break;
             }
         }

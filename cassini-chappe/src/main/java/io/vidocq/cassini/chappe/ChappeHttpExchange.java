@@ -286,6 +286,12 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
         };
     }
 
+    /** Delegates to the Chappe read probe ({@code Request.onDisconnect}). */
+    @Override
+    public boolean onClientDisconnect(Runnable callback) {
+        return request.onDisconnect(callback);
+    }
+
     @Override public void setAttribute(String key, Object value) { attributes.put(key, value); }
 
     /**
