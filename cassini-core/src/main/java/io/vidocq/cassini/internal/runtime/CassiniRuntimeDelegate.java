@@ -177,13 +177,14 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
                 String v = eq < 0 ? "" : stripQuotes(p.substring(eq + 1).trim());
                 if (i == 0) { name = k; value = v; continue; }
                 switch (k.toLowerCase(java.util.Locale.ROOT)) {
-                    case "path": path = v; break;
-                    case "domain": domain = v; break;
-                    case "comment": comment = v; break;
-                    case "max-age": try { maxAge = Integer.parseInt(v); } catch (Exception e) {} break;
-                    case "version": try { version = Integer.parseInt(v); } catch (Exception e) {} break;
-                    case "secure": secure = true; break;
-                    case "httponly": httpOnly = true; break;
+                    case "path" -> path = v;
+                    case "domain" -> domain = v;
+                    case "comment" -> comment = v;
+                    case "max-age" -> { try { maxAge = Integer.parseInt(v); } catch (NumberFormatException ignored) {} }
+                    case "version" -> { try { version = Integer.parseInt(v); } catch (NumberFormatException ignored) {} }
+                    case "secure" -> secure = true;
+                    case "httponly" -> httpOnly = true;
+                    default -> { /* unknown attribute: ignored, like before */ }
                 }
             }
             return new jakarta.ws.rs.core.NewCookie.Builder(name).value(value).path(path)
@@ -267,37 +268,57 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
             if (s == null) throw new IllegalArgumentException("value is null");
             jakarta.ws.rs.core.CacheControl cc = new jakarta.ws.rs.core.CacheControl();
             cc.setNoTransform(false);
-            for (String tok : s.split(",")) {
+            for (String tok : splitDirectives(s)) {
                 String t = tok.trim();
                 if (t.isEmpty()) continue;
                 int eq = t.indexOf('=');
                 String name = eq < 0 ? t : t.substring(0, eq).trim();
                 String value = eq < 0 ? "" : stripQuotes(t.substring(eq + 1).trim());
                 switch (name.toLowerCase(java.util.Locale.ROOT)) {
-                    case "no-cache":
+                    case "no-cache" -> {
                         cc.setNoCache(true);
-                        if (!value.isEmpty()) cc.getNoCacheFields().add(stripQuotes(value));
-                        break;
-                    case "no-store": cc.setNoStore(true); break;
-                    case "no-transform": cc.setNoTransform(true); break;
-                    case "private":
+                        addFields(cc.getNoCacheFields(), value);
+                    }
+                    case "no-store" -> cc.setNoStore(true);
+                    case "no-transform" -> cc.setNoTransform(true);
+                    case "private" -> {
                         cc.setPrivate(true);
-                        if (!value.isEmpty()) cc.getPrivateFields().add(stripQuotes(value));
-                        break;
-                    case "public": break;
-                    case "must-revalidate": cc.setMustRevalidate(true); break;
-                    case "proxy-revalidate": cc.setProxyRevalidate(true); break;
-                    case "max-age":
-                        try { cc.setMaxAge(Integer.parseInt(value)); } catch (Exception e) {}
-                        break;
-                    case "s-maxage":
-                        try { cc.setSMaxAge(Integer.parseInt(value)); } catch (Exception e) {}
-                        break;
-                    default:
-                        cc.getCacheExtension().put(name, value);
+                        addFields(cc.getPrivateFields(), value);
+                    }
+                    case "must-revalidate" -> cc.setMustRevalidate(true);
+                    case "proxy-revalidate" -> cc.setProxyRevalidate(true);
+                    case "max-age" -> { try { cc.setMaxAge(Integer.parseInt(value)); } catch (NumberFormatException ignored) {} }
+                    case "s-maxage" -> { try { cc.setSMaxAge(Integer.parseInt(value)); } catch (NumberFormatException ignored) {} }
+                    // "public" and any unknown directive land in the extension map so
+                    // they survive a round-trip (CacheControl does not model them).
+                    default -> cc.getCacheExtension().put(name, value);
                 }
             }
             return cc;
+        }
+
+        /** Splits on commas that are OUTSIDE double quotes (RFC 7234 §5.2:
+         *  private/no-cache take a quoted comma-separated field list). */
+        private static java.util.List<String> splitDirectives(String s) {
+            java.util.List<String> out = new java.util.ArrayList<>();
+            int start = 0;
+            boolean inQuotes = false;
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                if (c == '"') inQuotes = !inQuotes;
+                else if (c == ',' && !inQuotes) { out.add(s.substring(start, i)); start = i + 1; }
+            }
+            out.add(s.substring(start));
+            return out;
+        }
+
+        /** A quoted field list ("a,b") expands to its individual field names. */
+        private static void addFields(java.util.List<String> target, String value) {
+            if (value.isEmpty()) return;
+            for (String f : value.split(",")) {
+                String trimmed = stripQuotes(f.trim());
+                if (!trimmed.isEmpty()) target.add(trimmed);
+            }
         }
         @Override public String toString(jakarta.ws.rs.core.CacheControl c) {
             if (c == null) throw new IllegalArgumentException("value is null");
@@ -359,16 +380,21 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
     }
 
     private static final class DateDelegate implements HeaderDelegate<java.util.Date> {
-        private static final java.text.SimpleDateFormat FMT;
-        static {
-            FMT = new java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", java.util.Locale.US);
-            FMT.setTimeZone(java.util.TimeZone.getTimeZone("GMT"));
-        }
-        @Override public synchronized java.util.Date fromString(String s) {
+        // Immutable and thread-safe (no synchronized, virtual-thread friendly) —
+        // IMF-fixdate (RFC 9110 §5.6.7), always GMT.
+        private static final java.time.format.DateTimeFormatter FMT =
+                java.time.format.DateTimeFormatter.ofPattern(
+                        "EEE, dd MMM yyyy HH:mm:ss 'GMT'", java.util.Locale.US);
+        @Override public java.util.Date fromString(String s) {
             if (s == null) throw new IllegalArgumentException("value is null");
-            try { return FMT.parse(s); } catch (Exception e) { return null; }
+            try {
+                return java.util.Date.from(java.time.LocalDateTime.parse(s, FMT)
+                        .toInstant(java.time.ZoneOffset.UTC));
+            } catch (java.time.format.DateTimeParseException e) { return null; }
         }
-        @Override public synchronized String toString(java.util.Date d) { return FMT.format(d); }
+        @Override public String toString(java.util.Date d) {
+            return FMT.format(d.toInstant().atOffset(java.time.ZoneOffset.UTC));
+        }
     }
 
     private static String stripQuotes(String v) {

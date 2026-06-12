@@ -170,7 +170,7 @@ public final class MediaTypes {
                 out.add(parse(r));
             }
         }
-        return Collections.unmodifiableList(out);
+        return List.copyOf(out);
     }
 
     /**

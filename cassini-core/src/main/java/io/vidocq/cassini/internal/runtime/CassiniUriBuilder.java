@@ -610,22 +610,16 @@ public final class CassiniUriBuilder extends UriBuilder {
     }
 
     private static boolean allowed(Comp comp, char c, boolean encodeSlash) {
-        // Sous-delims selon composant.
-        switch (comp) {
-            case PATH:
-                if (c == '/') return !encodeSlash;
-                // pchar = unreserved / pct-encoded / sub-delims / ":" / "@"
-                return "!$&'()*+,;=:@".indexOf(c) >= 0;
-            case QUERY_PARAM:
-                // query chars, but '&' and '=' are separators → encode
-                return "!$'()*+,;:@/?".indexOf(c) >= 0;
-            case FRAGMENT:
-                return "!$&'()*+,;=:@/?".indexOf(c) >= 0;
-            case MATRIX_PARAM:
-                // ';' and '=' are separators → encode
-                return "!$&'()*+,:@/".indexOf(c) >= 0;
-        }
-        return false;
+        // Sub-delims per component (exhaustive over Comp).
+        return switch (comp) {
+            // pchar = unreserved / pct-encoded / sub-delims / ":" / "@"
+            case PATH -> c == '/' ? !encodeSlash : "!$&'()*+,;=:@".indexOf(c) >= 0;
+            // query chars, but '&' and '=' are separators → encode
+            case QUERY_PARAM -> "!$'()*+,;:@/?".indexOf(c) >= 0;
+            case FRAGMENT -> "!$&'()*+,;=:@/?".indexOf(c) >= 0;
+            // ';' and '=' are separators → encode
+            case MATRIX_PARAM -> "!$&'()*+,:@/".indexOf(c) >= 0;
+        };
     }
 
     /**

@@ -87,7 +87,7 @@ public final class CassiniUriInfo implements UriInfo {
             if (s.isEmpty()) continue;
             segs.add(new SimpleSegment(s));
         }
-        return Collections.unmodifiableList(segs);
+        return List.copyOf(segs);
     }
 
     @Override public URI getRequestUri() {
