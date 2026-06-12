@@ -61,3 +61,36 @@ The three wrappers now delegate both `attribute` methods to the wrapped request.
 `ChappeHttpExchange.getAttribute` also falls back to the Chappe request attributes, so
 upstream handlers can hand state to Cassini across the per-request virtual-thread boundary.
 REST 4.0 TCK: 2535 PASS / 135 SKIP / 0 ERROR.
+
+## CASSINI-003 — Duplicated RuntimeDelegate copies diverged (CacheControl) + quoted field lists broken
+- **Date**: 2026-06-12 — **Status**: FIXED (7ff6af3 + 83db6dd)
+- **Severity**: low (header-delegate edge cases; nothing user-reported)
+- **Surfaced by**: the Java 25 modernization review — same duplication-divergence
+  class as vauban VAU-TYP-001.
+
+### Symptom
+`ChappeRuntimeDelegate` duplicated ~630 lines of `CassiniRuntimeDelegate` (10 inner
+delegate classes + 2 reflective shims) "so that cassini-chappe does not depend on
+cassini-core" — a rationale that had been obsolete since the module gained a hard
+`requires io.vidocq.cassini.core`. The copies had diverged:
+1. core's `CacheControlDelegate` silently dropped the `public` directive
+   (`case "public": break`) while the chappe copy — the one the TCK validates —
+   kept it in the cache extension map. Round-tripping a `Cache-Control: public,
+   max-age=60` header through core lost `public`.
+2. BOTH copies tokenized `Cache-Control` with a naive `s.split(",")`, breaking
+   RFC 7234 quoted field lists: `private="a,b"` parsed as a single `"a` field.
+
+### Reproduction
+```java
+var hd = new CassiniRuntimeDelegate().createHeaderDelegate(CacheControl.class);
+hd.fromString("public, max-age=60").getCacheExtension(); // was empty (core)
+hd.fromString("private=\"a,b\"").getPrivateFields();      // was ["\"a]
+```
+
+### Fix
+Core parser: quote-aware directive splitting + quoted field lists expanded into
+individual names + `public`/unknown directives kept as cache extensions (chappe
+behaviour). `ChappeRuntimeDelegate` now extends `CassiniRuntimeDelegate` like
+`JdkHttpRuntimeDelegate` (single copy, qualified export, `opens internal.runtime`
+removed). Contract pinned by `CassiniRuntimeDelegateTest`.
+REST 4.0 TCK after unification: 2670 run, 0 FAIL, 0 ERR, 132 SKIP (= baseline 2538 PASS).
