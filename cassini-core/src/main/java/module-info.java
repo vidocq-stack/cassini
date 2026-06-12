@@ -49,12 +49,15 @@ module io.vidocq.cassini.core {
             to io.vidocq.cassini.tck;
     exports io.vidocq.cassini.internal.runtime
             to io.vidocq.cassini.tck,
+               io.vidocq.cassini.chappe,
                io.vidocq.cassini.jdkhttp,
                io.vidocq.cassini.client;
     exports io.vidocq.cassini.internal.transport
             to io.vidocq.cassini.tck;
 
-    opens io.vidocq.cassini.internal.runtime to io.vidocq.cassini.chappe, io.vidocq.cassini.jdkhttp, io.vidocq.cassini.client;
+    // No opens: every transport extends CassiniRuntimeDelegate through the
+    // qualified export above — the reflective shims that needed deep access
+    // are gone (CASSINI-003 unification).
 
     provides io.vidocq.cassini.spi.http.CassiniStack.BuilderFactory
             with io.vidocq.cassini.internal.CassiniStackBuilderFactory;
