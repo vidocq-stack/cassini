@@ -10,7 +10,7 @@
 
     <artifactId>cassini-examples</artifactId>
     <name>Cassini :: Examples</name>
-    <description>Exemples d'utilisation de Cassini (Chappe standalone et Vauban CDI)</description>
+    <description>Examples of Cassini usage (Chappe standalone and Vauban CDI)</description>
     <packaging>pom</packaging>
 
     <properties>

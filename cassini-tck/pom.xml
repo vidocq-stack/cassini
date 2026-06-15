@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-    Projet Maven STANDALONE en Model Version 4.0.0, volontairement EN DEHORS
-    du reactor Cassini.
+    Standalone Maven project in Model Version 4.0.0, intentionally OUTSIDE
+    the Cassini reactor.
 
-    Pourquoi : ShrinkWrap Maven Resolver 3.3 (dép. transitive du TCK Jakarta)
-    utilise maven-resolver 1.9 / maven-model 3.9 qui ne savent pas parser
-    les POMs Model 4.1.0 du reactor. Son ClasspathWorkspaceReader
-    crash avec "Bad artifact coordinates ... jar:".
+    Why: ShrinkWrap Maven Resolver 3.3 (a transitive dependency of the Jakarta TCK)
+    uses maven-resolver 1.9 / maven-model 3.9, which cannot parse
+    the reactor's Model 4.1.0 POMs. Its ClasspathWorkspaceReader
+    crashes with "Bad artifact coordinates ... jar:".
 
-    Dépendances internes (cassini-core, cassini-chappe, etc.) sont gelées
-    sur la version 0.2.0-SNAPSHOT installée dans le repo M2 local.
+    Internal dependencies (cassini-core, cassini-chappe, etc.) are pinned
+    to version 0.2.0-SNAPSHOT installed in the local M2 repository.
 
-    Le lancement passe par le script :
+    Execution goes through the script:
         ./run-official-tck-restful-4.0.sh                       (smoke test)
-        ./run-official-tck-restful-4.0.sh all                   (suite complète)
-        ./run-official-tck-restful-4.0.sh -Dtest=SomeTests      (classe ciblée)
+        ./run-official-tck-restful-4.0.sh all                   (full suite)
+        ./run-official-tck-restful-4.0.sh -Dtest=SomeTests      (targeted class)
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -31,7 +31,7 @@
     <packaging>jar</packaging>
 
     <name>Cassini :: TCK Runner</name>
-    <description>Harness de conformance Jakarta RESTful Web Services 4.0 — point d'entrée pour le TCK officiel</description>
+    <description>Jakarta RESTful Web Services 4.0 conformance harness — entry point for the official TCK</description>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -75,16 +75,16 @@
             <artifactId>jakarta.ws.rs-api</artifactId>
             <version>4.0.0</version>
         </dependency>
-        <!-- CDI API : cassini-core déclare Invoker.forBeanManager(BeanManager).
-             Le harness TCK appelle cette méthode → besoin du JAR à la compilation. -->
+        <!-- CDI API: cassini-core declares Invoker.forBeanManager(BeanManager).
+             The TCK harness calls this method, so the JAR is required at compile time. -->
         <dependency>
             <groupId>jakarta.enterprise</groupId>
             <artifactId>jakarta.enterprise.cdi-api</artifactId>
             <version>4.1.0</version>
         </dependency>
-        <!-- Servlet API : certaines ressources TCK déclarent @Context HttpServletRequest.
-             Cassini ne supporte pas l'injection servlet, mais sans l'API au classpath
-             le scan reflexif (Class.getDeclaredMethods) crash en NoClassDefFoundError. -->
+        <!-- Servlet API: some TCK resources declare @Context HttpServletRequest.
+             Cassini does not support servlet injection, but without the API on the classpath
+             the reflective scan (Class.getDeclaredMethods) crashes with NoClassDefFoundError. -->
         <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>
@@ -104,10 +104,10 @@
             <version>1.8.0.Final</version>
             <scope>test</scope>
         </dependency>
-        <!-- Jersey CLIENT en test-scope (hors profil tck-official) :
-             les classes test/AutoDiscover et MultipartBoundaryFilter dépendent
-             de l'API jersey-common (AutoDiscoverable). À l'exécution TCK, le
-             profil tck-official ré-installe les versions complètes. -->
+        <!-- Jersey CLIENT in test scope (outside the tck-official profile):
+             the test/AutoDiscover and MultipartBoundaryFilter classes depend
+             on the jersey-common API (AutoDiscoverable). At TCK runtime, the
+             tck-official profile re-installs the full versions. -->
         <dependency>
             <groupId>org.glassfish.jersey.core</groupId>
             <artifactId>jersey-common</artifactId>
@@ -241,13 +241,13 @@
                             <dependenciesToScan>
                                 <dependency>jakarta.ws.rs:jakarta-restful-ws-tck</dependency>
                             </dependenciesToScan>
-                            <!-- Profil Jakarta EE Core Profile / SE-Bootstrap : certif standalone
-                                 Jakarta RESTful Web Services 4.0 sans Servlet container ni JAXB.
-                                 Tags M2h (async, sse-streaming) préparés pour activation future.
-                                 - servlet     : exige HttpServletRequest, hors scope SE
-                                 - xml_binding : exige JAXB-runtime, hors Core Profile
-                                 - async       : refactor non-bloquant (M2h, hors scope MVP)
-                                 - sse-streaming : streaming chunked SSE (M2i, hors scope MVP) -->
+                            <!-- Jakarta EE Core Profile / SE-Bootstrap profile: standalone
+                                 Jakarta RESTful Web Services 4.0 certification without a Servlet container or JAXB.
+                                 M2h tags (async, sse-streaming) are prepared for future activation.
+                                 - servlet       : requires HttpServletRequest, outside SE scope
+                                 - xml_binding   : requires JAXB runtime, outside Core Profile
+                                 - async         : non-blocking refactor (M2h, outside MVP scope)
+                                 - sse-streaming : chunked SSE streaming (M2i, outside MVP scope) -->
                             <excludedGroups>servlet,xml_binding</excludedGroups>
                             <includes>
                                 <include>**/*IT.class</include>
@@ -282,8 +282,8 @@
                     <version>4.0.1</version>
                     <scope>test</scope>
                 </dependency>
-                <!-- Jersey CLIENT : le TCK est côté serveur, mais utilise un Client
-                     pour piloter le serveur sous test. Cassini n'a pas de Client. -->
+                <!-- Jersey CLIENT: the TCK is server-side, but uses a Client
+                     to drive the server under test. Cassini does not have a Client. -->
                 <dependency>
                     <groupId>org.glassfish.jersey.core</groupId>
                     <artifactId>jersey-client</artifactId>

@@ -10,7 +10,7 @@
 
     <artifactId>cassini-api</artifactId>
     <name>Cassini :: API + SPI HTTP</name>
-    <description>Interfaces publiques + SPI HTTP (zéro dépendance hors jakarta.ws.rs-api)</description>
+    <description>Public interfaces + HTTP SPI (zero dependencies beyond jakarta.ws.rs-api)</description>
 
     <dependencies>
         <dependency>

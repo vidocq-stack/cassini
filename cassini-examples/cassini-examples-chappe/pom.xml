@@ -10,7 +10,7 @@
 
     <artifactId>cassini-examples-chappe</artifactId>
     <name>Cassini :: Examples :: Chappe Standalone</name>
-    <description>Exemple Cassini avec transport Chappe — bootstrap SeBootstrap sans CDI</description>
+    <description>Cassini example with Chappe transport — SeBootstrap bootstrap without CDI</description>
 
     <properties>
         <!-- Example code — never deployed to Maven Central. -->
@@ -39,14 +39,14 @@
             <artifactId>jakarta.ws.rs-api</artifactId>
         </dependency>
 
-        <!-- CDI API : requis à runtime par ChappeRuntimeDelegate -->
+        <!-- CDI API: required at runtime by ChappeRuntimeDelegate -->
         <dependency>
             <groupId>jakarta.enterprise</groupId>
             <artifactId>jakarta.enterprise.cdi-api</artifactId>
             <scope>runtime</scope>
         </dependency>
 
-        <!-- JSON-B + JSON-P runtime (requis par cassini-core à l'exécution) -->
+        <!-- JSON-B + JSON-P runtime (required by cassini-core at runtime) -->
         <dependency><groupId>io.vidocq.champollion</groupId><artifactId>champollion-jsonb</artifactId>
             </dependency>
         <dependency><groupId>io.vidocq.champollion</groupId><artifactId>champollion-jsonp</artifactId>

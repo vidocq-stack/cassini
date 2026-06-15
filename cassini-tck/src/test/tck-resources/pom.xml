@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-    POM minimaliste utilisé comme cwd par ShrinkWrap Maven Resolver
-    quand le TCK officiel s'exécute. Suffit à faire passer la
-    validation Model 4.0.0 de maven-model 3.9 sans tirer le reactor
-    Model 4.1.0 de Vidocq.
+    Minimal POM used as the cwd by ShrinkWrap Maven Resolver
+    when the official TCK runs. It is enough to satisfy the
+    Model 4.0.0 validation of maven-model 3.9 without pulling in
+    Vidocq's Model 4.1.0 reactor.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"

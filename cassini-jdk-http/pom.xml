@@ -10,7 +10,7 @@
 
     <artifactId>cassini-jdk-http</artifactId>
     <name>Cassini :: JDK HttpServer Adapter</name>
-    <description>Adapter HTTP basé sur com.sun.net.httpserver.HttpServer (JDK pur, zéro dépendance externe — Mode A standalone)</description>
+    <description>HTTP adapter based on com.sun.net.httpserver.HttpServer (pure JDK, zero external dependencies — standalone Mode A)</description>
 
     <dependencies>
         <dependency>

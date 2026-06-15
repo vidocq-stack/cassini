@@ -10,7 +10,7 @@
 
     <artifactId>cassini-cdi-vauban</artifactId>
     <name>Cassini :: CDI Vauban Adapter</name>
-    <description>Adapter Vauban CDI pour Cassini : implémente la SPI BeanProvider et fournit une BCE @RequestScoped pour les ressources @Path.</description>
+    <description>Vauban CDI adapter for Cassini: implements the BeanProvider SPI and provides a @RequestScoped BCE for @Path resources.</description>
 
     <dependencies>
         <dependency>
@@ -27,8 +27,8 @@
             <artifactId>vauban-core</artifactId>
         </dependency>
 
-        <!-- Ravel MicroProfile Config — optionnel : active @ConfigProperty / @ConfigProperties CDI
-             quand ravel-cdi-vauban est sur le classpath (via BCE ServiceLoader auto-découverte) -->
+        <!-- Ravel MicroProfile Config — optional: activates @ConfigProperty / @ConfigProperties CDI
+             when ravel-cdi-vauban is on the classpath (via BCE ServiceLoader auto-discovery) -->
         <dependency>
             <groupId>io.vidocq.ravel</groupId>
             <artifactId>ravel-cdi-vauban</artifactId>
@@ -45,9 +45,9 @@
     <build>
         <plugins>
             <!--
-                Vauban codegen : génère META-INF/vauban-beans.list + _ClientProxy/_Factory pour que le
-                runtime Vidocq (scanClasspath) découvre les beans CDI. BCE (CassiniScopeExtension) dans un
-                package exporté → pas d'opens. Sortie inerte (Weld-safe), comme knock-cdi-vauban.
+                Vauban codegen: generates META-INF/vauban-beans.list + _ClientProxy/_Factory so the
+                Vidocq runtime (scanClasspath) discovers CDI beans. BCE (CassiniScopeExtension) in an
+                exported package -> no opens. The output stays inert (Weld-safe), like knock-cdi-vauban.
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
