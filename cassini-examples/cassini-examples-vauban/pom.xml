@@ -18,7 +18,7 @@
     </properties>
 
     <dependencies>
-        <!-- API compile : SeBootstrap + CDI + JSON-B -->
+        <!-- Compile-time API: SeBootstrap + CDI + JSON-B -->
         <dependency>
             <groupId>jakarta.ws.rs</groupId>
             <artifactId>jakarta.ws.rs-api</artifactId>
@@ -38,20 +38,20 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Adapter Vauban CDI : fournit BeanProvider via ServiceLoader -->
+        <!-- Vauban CDI adapter: provides BeanProvider via ServiceLoader -->
         <dependency>
             <groupId>io.vidocq.cassini</groupId>
             <artifactId>cassini-cdi-vauban</artifactId>
         </dependency>
 
-        <!-- Ravel — MicroProfile Config 3.1 : @ConfigProperty, @ConfigProperties CDI -->
+        <!-- Ravel — MicroProfile Config 3.1: @ConfigProperty, @ConfigProperties CDI -->
         <dependency>
             <groupId>io.vidocq.ravel</groupId>
             <artifactId>ravel-cdi-vauban</artifactId>
             <version>${ravel.version}</version>
         </dependency>
 
-        <!-- Transport Chappe : utilisé directement (handler composite statique + Cassini) -->
+        <!-- Chappe transport: used directly (static composite handler + Cassini) -->
         <dependency>
             <groupId>io.vidocq.cassini</groupId>
             <artifactId>cassini-chappe</artifactId>

@@ -21,9 +21,9 @@
             <groupId>io.vidocq.cassini</groupId>
             <artifactId>cassini-core</artifactId>
         </dependency>
-        <!-- @Priority pour résoudre l'ordre des Client*Filter — provided car uniquement
-             utilisé en compile-time (les annotations sont lisibles via réflexion sans
-             le module au runtime). -->
+        <!-- @Priority to resolve Client*Filter ordering — provided because it is only
+             used at compile time (the annotations remain readable via reflection without
+             the module at runtime). -->
         <dependency>
             <groupId>jakarta.annotation</groupId>
             <artifactId>jakarta.annotation-api</artifactId>

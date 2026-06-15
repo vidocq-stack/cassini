@@ -68,20 +68,20 @@
         <jakarta.json.bind.version>3.0.1</jakarta.json.bind.version>
         <jakarta.xml.bind.version>4.0.2</jakarta.xml.bind.version>
         <jakarta.activation.version>2.1.3</jakarta.activation.version>
-        <champollion.version>0.1.0-SNAPSHOT</champollion.version>
+        <champollion.version>0.2.0-SNAPSHOT</champollion.version>
 
         <chappe.version>0.2.0-SNAPSHOT</chappe.version>
         <vauban.version>0.2.0-SNAPSHOT</vauban.version>
-        <ravel.version>0.1.0-SNAPSHOT</ravel.version>
+        <ravel.version>0.2.0-SNAPSHOT</ravel.version>
 
         <microprofile.config.version>3.1.1</microprofile.config.version>
     </properties>
 
     <!--
-        cassini-tck est volontairement HORS reactor (POM Model 4.0.0 standalone)
-        pour contourner ShrinkWrap Maven Resolver 3.3 qui ne sait pas parser
-        les POMs Model 4.1.0. Il est invoqué par run-official-tck-restful-4.0.sh
-        après installation locale du reactor.
+        cassini-tck is intentionally OUTSIDE the reactor (standalone POM Model 4.0.0)
+        to work around ShrinkWrap Maven Resolver 3.3, which cannot parse
+        Model 4.1.0 POMs. It is invoked by run-official-tck-restful-4.0.sh
+        after the reactor has been installed locally.
     -->
     <modules>
         <module>cassini-api</module>
@@ -135,7 +135,7 @@
                 <version>${jakarta.activation.version}</version>
             </dependency>
 
-            <!-- JSON-B / JSON-P impls : Champollion (zero-dep, JPMS strict, records natifs) -->
+            <!-- JSON-B / JSON-P implementations: Champollion (zero-dep, strict JPMS, native record support) -->
             <dependency>
                 <groupId>io.vidocq.champollion</groupId>
                 <artifactId>champollion-api</artifactId>
@@ -164,7 +164,7 @@
                 <version>${chappe.version}</version>
             </dependency>
 
-            <!-- Vauban (compile scope pour cassini-cdi-vauban) -->
+            <!-- Vauban (compile scope for cassini-cdi-vauban) -->
             <dependency>
                 <groupId>io.vidocq.vauban</groupId>
                 <artifactId>vauban-api</artifactId>
@@ -176,14 +176,14 @@
                 <version>${vauban.version}</version>
             </dependency>
 
-            <!-- Cassini modules internes -->
+            <!-- Internal Cassini modules -->
             <dependency>
                 <groupId>io.vidocq.cassini</groupId>
                 <artifactId>cassini-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
-            <!-- Ravel — MicroProfile Config 3.1 (implémentation zéro-dépendance tierce) -->
+            <!-- Ravel — MicroProfile Config 3.1 (zero third-party dependency implementation) -->
             <dependency>
                 <groupId>io.vidocq.ravel</groupId>
                 <artifactId>ravel-api</artifactId>
@@ -199,7 +199,7 @@
                 <artifactId>ravel-cdi-vauban</artifactId>
                 <version>${ravel.version}</version>
             </dependency>
-            <!-- API MicroProfile Config (ré-exportée par ravel-api) -->
+            <!-- MicroProfile Config API (re-exported by ravel-api) -->
             <dependency>
                 <groupId>org.eclipse.microprofile.config</groupId>
                 <artifactId>microprofile-config-api</artifactId>

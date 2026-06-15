@@ -31,7 +31,7 @@
             <artifactId>jakarta.ws.rs-api</artifactId>
         </dependency>
 
-        <!-- JSON-B + JSON-P runtime (requis par cassini-core à l'exécution) -->
+        <!-- JSON-B + JSON-P runtime (required by cassini-core at runtime) -->
         <dependency><groupId>io.vidocq.champollion</groupId><artifactId>champollion-jsonb</artifactId>
             </dependency>
         <dependency><groupId>io.vidocq.champollion</groupId><artifactId>champollion-jsonp</artifactId>
