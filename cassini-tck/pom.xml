@@ -9,7 +9,7 @@
     crash avec "Bad artifact coordinates ... jar:".
 
     Dépendances internes (cassini-core, cassini-chappe, etc.) sont gelées
-    sur la version 0.1.0-SNAPSHOT installée dans le repo M2 local.
+    sur la version 0.2.0-SNAPSHOT installée dans le repo M2 local.
 
     Le lancement passe par le script :
         ./run-official-tck-restful-4.0.sh                       (smoke test)
@@ -21,9 +21,13 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.vidocq.cassini</groupId>
+    <parent>
+        <groupId>io.vidocq.cassini</groupId>
+        <artifactId>cassini-parent</artifactId>
+        <version>0.2.0-SNAPSHOT</version>
+    </parent>
+
     <artifactId>cassini-tck</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>Cassini :: TCK Runner</name>

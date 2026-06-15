@@ -93,6 +93,7 @@
         <module>cassini-jdk-http</module>
         <module>cassini-client</module>
         <module>cassini-examples</module>
+        <module>cassini-tck</module>
     </modules>
 
     <dependencyManagement>
