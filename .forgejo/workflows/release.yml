@@ -29,7 +29,7 @@ on:
         description: "io.vidocq:vidocq-parent — stable version (must be released on Central first)"
         type: string
         required: true
-        default:     "0.1.1"
+        default:     "0.2.0"
       champollion_release:
         description: "io.vidocq.champollion:* (all artifacts under io.vidocq.champollion) — stable version (must be released on Central first)"
         type: string
