@@ -38,6 +38,11 @@
         <maven.compiler.release>25</maven.compiler.release>
         <cassini.version>0.2.0-SNAPSHOT</cassini.version>
         <chappe.version>0.2.0-SNAPSHOT</chappe.version>
+        <!-- TCK harness: never released. -->
+        <maven.deploy.skip>true</maven.deploy.skip>
+        <maven.javadoc.skip>true</maven.javadoc.skip>
+        <maven.source.skip>true</maven.source.skip>
+        <gpg.skip>true</gpg.skip>
     </properties>
 
     <repositories>
@@ -169,6 +174,13 @@
                             <version>4.0.0</version>
                         </path>
                     </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <configuration>
+                    <skipPublishing>true</skipPublishing>
                 </configuration>
             </plugin>
         </plugins>
