@@ -34,7 +34,7 @@ on:
         description: "io.vidocq.champollion:* (all artifacts under io.vidocq.champollion) — stable version (must be released on Central first)"
         type: string
         required: true
-        default:     "0.1.0"
+        default:     "0.1.1"
       chappe_release:
         description: "io.vidocq.chappe:* (all artifacts under io.vidocq.chappe) — stable version (must be released on Central first)"
         type: string
@@ -44,7 +44,7 @@ on:
         description: "io.vidocq.ravel:* (all artifacts under io.vidocq.ravel) — stable version (must be released on Central first)"
         type: string
         required: true
-        default:     "0.1.0"
+        default:     "0.1.1"
       vauban_release:
         description: "io.vidocq.vauban:* (all artifacts under io.vidocq.vauban) — stable version (must be released on Central first)"
         type: string
@@ -59,6 +59,9 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.VIDOCQ_BOT_TOKEN }}
+          # Always checkout the current HEAD of the branch, not the SHA captured
+          # at dispatch time — ensures in-flight commits are included in the release.
+          ref: ${{ github.ref_name }}
 
       - uses: https://codeberg.org/Vidocq/ci/release-maven@main
         with:
@@ -75,6 +78,9 @@ jobs:
             io.vidocq.vauban=${{ inputs.vauban_release }}
           excluded-modules: |
             cassini-examples
+            cassini-examples-chappe
+            cassini-examples-jdkhttp
+            cassini-examples-vauban
           central-username: ${{ secrets.CENTRAL_USERNAME }}
           central-password: ${{ secrets.CENTRAL_PASSWORD }}
           gpg-private-key:  ${{ secrets.GPG_PRIVATE_KEY }}
