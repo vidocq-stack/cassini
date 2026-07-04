@@ -10,28 +10,28 @@ Factual reference: published Maven artefacts, exported JPMS modules, supported J
 |===
 | Artefact | Role
 
-| `io.vidocq.cassini:cassini-api:0.1.0-SNAPSHOT`
+| `io.vidocq.cassini:cassini-api:0.2.0`
 | Public SPI: HTTP/transport (`CassiniHttpExchange`, `CassiniHttpAdapter`, `CassiniStack`), `BeanProvider`, `ResourceFactory`, and the codegen SPI (`ResourceAdapter`, `RouteProvider`, `RouteDescriptor`, `InjectionSupport`).
 
-| `io.vidocq.cassini:cassini-core:0.1.0-SNAPSHOT`
+| `io.vidocq.cassini:cassini-core:0.2.0`
 | JAX-RS engine (Invoker, ResourceScanner, RouteRegistry, MessageBodyRegistry, filters, providers, SSE, multipart) + the adapter generators (`RuntimeAdapterGenerator`, `AdapterRegistry`).
 
-| `io.vidocq.cassini:cassini-client:0.1.0-SNAPSHOT`
+| `io.vidocq.cassini:cassini-client:0.2.0`
 | JAX-RS Client 4.0 — zero-dependency `ClientBuilder` on `java.net.http` + virtual threads. Reuses `MessageBodyRegistry` from `cassini-core`.
 
-| `io.vidocq.cassini:cassini-cdi-vauban:0.1.0-SNAPSHOT`
+| `io.vidocq.cassini:cassini-cdi-vauban:0.2.0`
 | `BeanProvider` adapter that resolves resources through xref:vauban::index.adoc[Vauban] (BCE `CassiniScopeExtension` included).
 
-| `io.vidocq.cassini:cassini-chappe:0.1.0-SNAPSHOT`
+| `io.vidocq.cassini:cassini-chappe:0.2.0`
 | Reference transport — wires Cassini onto xref:chappe::index.adoc[Chappe] (HTTP/1.1, H2, virtual threads). Used for the TCK.
 
-| `io.vidocq.cassini:cassini-jdk-http:0.1.0-SNAPSHOT`
+| `io.vidocq.cassini:cassini-jdk-http:0.2.0`
 | Pure JDK transport — `com.sun.net.httpserver.HttpServer`, no external dependency.
 
-| `io.vidocq.cassini:cassini-processor:0.1.0-SNAPSHOT`
+| `io.vidocq.cassini:cassini-processor:0.2.0`
 | APT annotation processor — generates `+$$CassiniAdapter+` / `+$$CassiniRoutes+` *sources* at compile time. AOT-safe.
 
-| `io.vidocq.cassini:cassini-maven-plugin:0.1.0-SNAPSHOT`
+| `io.vidocq.cassini:cassini-maven-plugin:0.2.0`
 | Maven plugin (`generate` goal, bound to `process-classes`) — pre-generates adapters for external dependency archives.
 
 | `io.vidocq.cassini:cassini-examples-*`

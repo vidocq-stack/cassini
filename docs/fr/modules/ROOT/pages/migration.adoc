@@ -6,7 +6,7 @@ Cassini implémente strictement Jakarta RESTful Web Services 4.0. Si votre appli
 
 [CAUTION]
 ====
-Cassini est en `0.1.0-SNAPSHOT`. Une migration de production est prématurée tant que la première release stable n'est pas publiée. Cette page anticipe le chemin pour les utilisateurs qui veulent évaluer.
+Cassini est en `0.2.0`. Une migration de production est prématurée tant que la première release stable n'est pas publiée. Cette page anticipe le chemin pour les utilisateurs qui veulent évaluer.
 ====
 
 == Depuis Jersey

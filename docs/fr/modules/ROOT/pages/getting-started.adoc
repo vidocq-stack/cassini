@@ -22,13 +22,13 @@ Trois minutes pour servir une ressource `@Path` en HTTP. Cassini se déploie via
   <dependency>
     <groupId>io.vidocq.cassini</groupId>
     <artifactId>cassini-core</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.2.0</version>
   </dependency>
   <!-- transport de référence, embarque Chappe -->
   <dependency>
     <groupId>io.vidocq.cassini</groupId>
     <artifactId>cassini-chappe</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.2.0</version>
     <scope>runtime</scope>
   </dependency>
 </dependencies>
