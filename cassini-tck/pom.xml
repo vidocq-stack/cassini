@@ -24,7 +24,7 @@
     <parent>
         <groupId>io.vidocq.cassini</groupId>
         <artifactId>cassini-parent</artifactId>
-        <version>0.2.0-SNAPSHOT</version>
+        <version>0.2.0</version>
     </parent>
 
     <artifactId>cassini-tck</artifactId>
@@ -37,7 +37,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>25</maven.compiler.release>
         <cassini.version>0.2.0-SNAPSHOT</cassini.version>
-        <chappe.version>0.2.0-SNAPSHOT</chappe.version>
+        <chappe.version>0.2.0</chappe.version>
         <!-- TCK harness: never released. -->
         <maven.deploy.skip>true</maven.deploy.skip>
         <maven.javadoc.skip>true</maven.javadoc.skip>
