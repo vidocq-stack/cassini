@@ -1,45 +1,101 @@
 = Getting started
-:description: First JAX-RS resource served by Cassini, with and without CDI.
+:description: First JAX-RS resource served by Cassini standalone — one complete project, one bootstrap, three minutes.
 
 [.lead]
-Three minutes to serve a `@Path` resource over HTTP. Cassini is deployed via the standard `SeBootstrap` of the REST 4.0 spec — any `Application` class is started by a `RuntimeDelegate` provided by the active transport on the classpath.
+Three minutes to serve a `@Path` resource over HTTP with Cassini standalone. One complete Maven project, one bootstrap — the standard `SeBootstrap` of the REST 4.0 spec. Every snippet below is copy-pasteable and tested end to end against the released *0.2.x* artifacts.
+
+[TIP]
+====
+Looking for the batteries-included experience (CDI, config, packaging, dev mode)? Use the **Vidocq runtime**: `vidocq create --name my-api -x cassini-rest` — see the https://doc.vidocq.dev/vidocq/getting-started[runtime getting-started guide]. This page covers Cassini **standalone**, without the runtime.
+====
 
 == Prerequisites
 
-* **Java 25** + **Maven 3.9.16** — `.sdkmanrc` at the repo root (`sdk env` to align).
-* The official Jakarta REST 4.0 TCK is required only for conformance — not for application development.
+* **Java 25** (Temurin recommended) — check with `java -version`
+* **Maven 3.9+** — check with `mvn -version`
 
-== Maven coordinates
+== The project
+
+A single, complete `pom.xml` — nothing else to configure:
 
 [source,xml]
 ----
-<dependencies>
-  <dependency>
-    <groupId>jakarta.ws.rs</groupId>
-    <artifactId>jakarta.ws.rs-api</artifactId>
-    <version>4.0.0</version>
-  </dependency>
-  <dependency>
-    <groupId>io.vidocq.cassini</groupId>
-    <artifactId>cassini-core</artifactId>
-    <version>0.2.0</version>
-  </dependency>
-  <!-- reference transport, embeds Chappe -->
-  <dependency>
-    <groupId>io.vidocq.cassini</groupId>
-    <artifactId>cassini-chappe</artifactId>
-    <version>0.2.0</version>
-    <scope>runtime</scope>
-  </dependency>
-</dependencies>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>hello-cassini</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+
+    <properties>
+        <maven.compiler.release>25</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>jakarta.ws.rs</groupId>
+            <artifactId>jakarta.ws.rs-api</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-core</artifactId>
+            <version>0.2.0</version>
+        </dependency>
+        <!-- reference transport, embeds the Chappe HTTP server -->
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-chappe</artifactId>
+            <version>0.2.0</version>
+            <scope>runtime</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <configuration>
+                    <executable>java</executable>
+                    <arguments>
+                        <argument>-classpath</argument>
+                        <classpath/>
+                        <argument>com.example.hello.Main</argument>
+                    </arguments>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
 ----
 
 NOTE: For a zero-external-dependency deployment, swap `cassini-chappe` for `cassini-jdk-http`: it relies solely on the JDK's `com.sun.net.httpserver`.
 
 == First resource
 
+`src/main/java/com/example/hello/HelloResource.java`:
+
 [source,java]
 ----
+package com.example.hello;
+
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DefaultValue;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+
 @Path("/hello")
 public class HelloResource {
 
@@ -67,16 +123,23 @@ public class HelloResource {
 }
 ----
 
-== SE-Bootstrap startup (recommended)
+JSON marshalling of the `Item` record works out of the box — `cassini-core` embeds Champollion (JSON-B).
 
-`ChappeRuntimeDelegate` (or `JdkHttpRuntimeDelegate`) is discovered via JPMS `ServiceLoader` — application code references no transport-specific symbol.
+== Bootstrap
+
+`src/main/java/com/example/hello/Main.java` — the standard `SeBootstrap` of the REST 4.0 spec. The transport (`ChappeRuntimeDelegate`) is discovered via `ServiceLoader`: application code references no transport-specific symbol.
 
 [source,java]
 ----
+package com.example.hello;
+
+import java.util.Set;
+
 import jakarta.ws.rs.SeBootstrap;
 import jakarta.ws.rs.core.Application;
 
 public class Main {
+
     public static void main(String[] args) throws Exception {
         var config = SeBootstrap.Configuration.builder()
             .host("0.0.0.0")
@@ -92,70 +155,44 @@ public class Main {
 
         Thread.currentThread().join();
     }
-}
 
-class MyApplication extends Application {
-    @Override public Set<Class<?>> getClasses() {
-        return Set.of(HelloResource.class);
+    public static class MyApplication extends Application {
+        @Override public Set<Class<?>> getClasses() {
+            return Set.of(HelloResource.class);
+        }
     }
 }
 ----
-
-== Manual bootstrap via `CassiniStack`
-
-For fine-grained control (embedding Cassini in an existing Chappe server, unit testing):
-
-[source,java]
-----
-try (var stack = CassiniStack.builder()
-        .application(new MyApplication())
-        .port(8080)
-        .build()) {
-    stack.start();
-    Thread.currentThread().join();
-}
-----
-
-== With CDI (Vauban)
-
-Add `cassini-cdi-vauban` to the classpath. The Vauban `BeanProvider` is discovered via `ServiceLoader`; container-managed `@Path` / `@Provider` classes are scanned automatically.
-
-[source,java]
-----
-@Path("/items")
-@ApplicationScoped              // or @RequestScoped automatically via CassiniScopeExtension
-public class ItemResource {
-
-    @Inject ItemService service;
-
-    @GET @Produces(MediaType.APPLICATION_JSON)
-    public List<Item> list() { return service.findAll(); }
-}
-----
-
-[source,java]
-----
-var container = VaubanContainer.builder()
-        .addBeanClass(ItemService.class)
-        .addBeanClass(ItemResource.class)
-        .build();
-
-SeBootstrap.start(new Application() {}, config);   // Empty Application: Vauban fills it
-----
-
-[TIP]
-====
-The `CassiniScopeExtension` (Build Compatible Extension) automatically adds `@RequestScoped` to `@Path` classes lacking an explicit scope — no extra annotation required.
-====
 
 == Build and run
 
 [source,bash]
 ----
-cd cassini
-sdk env
-./mvnw -ntp install -DskipTests
-./mvnw -pl cassini-examples/cassini-examples-chappe -am exec:exec
+mvn -q compile exec:exec
 ----
 
-Next: xref:usage.adoc[advanced use cases] (sub-resources, providers, async, SSE), xref:concepts.adoc[concepts], xref:tck.adoc[TCK status].
+NOTE: `exec:exec` forks a real JVM with the project classpath (configured once in the pom above) — the transport and the `CassiniStack` implementation are discovered via `ServiceLoader`. The in-process `exec:java` variant is not supported: its isolating class loader breaks that discovery.
+
+In another terminal:
+
+[source,bash]
+----
+$ curl "http://localhost:8080/hello?name=Cassini"
+Hello, Cassini!
+
+$ curl http://localhost:8080/hello/42
+{"id":42,"label":"Article #42"}
+
+$ curl -X POST http://localhost:8080/hello \
+       -H 'Content-Type: application/json' \
+       -d '{"id":1,"label":"first"}'
+{"id":1,"label":"first"}
+----
+
+Stop the server with kbd:[Ctrl+C].
+
+== Going further
+
+* **CDI-managed resources** (`@Inject`, scopes): the streamlined path is the https://doc.vidocq.dev/vidocq/getting-started[Vidocq runtime] — it wires Vauban, the annotation processors and the packaging for you. The standalone wiring (Vauban container, `cassini-cdi-vauban`, build-time bean index) is demonstrated in the https://codeberg.org/Vidocq/cassini/src/branch/main/cassini-examples/cassini-examples-vauban[`cassini-examples-vauban`] module.
+* **Embedding Cassini** in an existing Chappe server (composite handlers, static files + API): see the `CassiniStack` SPI in xref:usage.adoc[Usage] and the https://codeberg.org/Vidocq/cassini/src/branch/main/cassini-examples[`cassini-examples`] modules.
+* xref:usage.adoc[Usage] — sub-resources, providers, async, SSE · xref:concepts.adoc[Concepts] · xref:tck.adoc[TCK status]
