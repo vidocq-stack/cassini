@@ -9,7 +9,7 @@
     crashes with "Bad artifact coordinates ... jar:".
 
     Internal dependencies (cassini-core, cassini-chappe, etc.) are pinned
-    to version 0.2.0-SNAPSHOT installed in the local M2 repository.
+    to version 0.3.0-SNAPSHOT installed in the local M2 repository.
 
     Execution goes through the script:
         ./run-official-tck-restful-4.0.sh                       (smoke test)
@@ -36,8 +36,8 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>25</maven.compiler.release>
-        <cassini.version>0.2.0-SNAPSHOT</cassini.version>
-        <chappe.version>0.2.0-SNAPSHOT</chappe.version>
+        <cassini.version>0.3.0-SNAPSHOT</cassini.version>
+        <chappe.version>0.3.0-SNAPSHOT</chappe.version>
         <!-- TCK harness: never released. -->
         <maven.deploy.skip>true</maven.deploy.skip>
         <maven.javadoc.skip>true</maven.javadoc.skip>
