@@ -54,6 +54,25 @@ public class CassiniScopeExtension implements BuildCompatibleExtension {
 
     private static final System.Logger LOG = System.getLogger(CassiniScopeExtension.class.getName());
 
+    /**
+     * {@code Application} subclass without a scope → {@code @ApplicationScoped}
+     * (JAX-RS §2.3: the Application is a singleton component the container
+     * instantiates; the runtime reads its {@code @ApplicationPath} to mount).
+     */
+    @SuppressWarnings("unused")
+    @Enhancement(types = jakarta.ws.rs.core.Application.class, withSubtypes = true)
+    public void addApplicationDefaultScope(ClassConfig clazz) {
+        if (clazz.info().isAbstract()) {
+            return;
+        }
+        if (!hasAnyScope(clazz)) {
+            clazz.addAnnotation(ApplicationScoped.class);
+            LOG.log(System.Logger.Level.INFO,
+                    "  Application subclass {0} has no CDI scope, defaulting to @ApplicationScoped",
+                    clazz.info().name());
+        }
+    }
+
     /** {@code @Path} without a scope → {@code @RequestScoped}. */
     @SuppressWarnings("unused")
     @Enhancement(types = Object.class, withAnnotations = Path.class)
