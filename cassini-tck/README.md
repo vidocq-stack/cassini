@@ -14,7 +14,7 @@ ShrinkWrap's `ClasspathWorkspaceReader` crashes with
 
 The chosen solution (identical to `vidocq-servlet-chappe-tck-runner`):
 a standalone Maven project in `Model 4.0.0`, with internal dependencies pinned to
-the `0.1.0-SNAPSHOT` version installed in the local M2 repository.
+the current dev version installed in the local M2 repository.
 
 ## Installing TCK artifacts
 
