@@ -41,7 +41,7 @@ jobs:
       - name: Deploy cassini-tck (out-of-reactor → central-snapshots)
         # cassini-tck is Model 4.0.0 standalone (no vidocq-parent), built/deployed separately
         # with tests skipped (the official Jakarta REST TCK artifact is non-public).
-        # knock consumes io.vidocq.cassini:cassini-tck:0.1.0-SNAPSHOT, so it must be published.
+        # knock consumes io.vidocq.cassini:cassini-tck (current dev snapshot), so it must be published.
         run: |
           mvn -B -ntp -U -f cassini-tck/pom.xml deploy -Dmaven.test.skip=true \
             -DaltDeploymentRepository=central-snapshots::https://central.sonatype.com/repository/maven-snapshots/
