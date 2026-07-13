@@ -32,6 +32,10 @@ module io.vidocq.cassini.client {
     requires io.vidocq.cassini.core;
     requires java.net.http;
 
+    // Client-side JSON-B entity (de)serialisation (ClientEntityJsonb) — mirrors
+    // the server MBW/MBR so POJO entities round-trip instead of falling back to toString().
+    requires jakarta.json.bind;
+
     // @Priority used to resolve the ordering of ClientRequest/ResponseFilter
     // when no explicit entry is passed to register(component, priority).
     requires static jakarta.annotation;

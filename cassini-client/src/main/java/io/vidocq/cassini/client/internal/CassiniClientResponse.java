@@ -53,6 +53,33 @@ final class CassiniClientResponse extends Response {
     private final MultivaluedMap<String, Object> headers;
     private final MultivaluedMap<String, String> stringHeaders;
     private boolean closed;
+    /** Registered client provider instances (ContextResolver<Jsonb>, …); set by the invocation. */
+    private java.util.Collection<Object> providers = java.util.Collections.emptyList();
+
+    void setProviders(java.util.Collection<Object> providers) {
+        this.providers = providers == null ? java.util.Collections.emptyList() : providers;
+    }
+
+    private MediaType contentType() {
+        String ct = null;
+        if (stringHeaders != null) {
+            // HTTP header names are case-insensitive; java.net.http lower-cases them.
+            for (var e : stringHeaders.entrySet()) {
+                if ("content-type".equalsIgnoreCase(e.getKey()) && e.getValue() != null && !e.getValue().isEmpty()) {
+                    ct = e.getValue().get(0);
+                    break;
+                }
+            }
+        }
+        if (ct == null || ct.isBlank()) {
+            return null;
+        }
+        try {
+            return MediaType.valueOf(ct);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
 
     private CassiniClientResponse(int status, byte[] body,
                                    MultivaluedMap<String, Object> headers,
@@ -109,9 +136,16 @@ final class CassiniClientResponse extends Response {
         if (type == byte[].class) return (T) body;
         if (type == InputStream.class) return (T) new ByteArrayInputStream(body);
         if (type == Void.class || type == void.class) return null;
+        MediaType mt = contentType();
+        if (ClientEntityJsonb.isJson(mt) && !ClientEntityJsonb.isSimple(type)) {
+            // §4.2.3: deserialise a JSON body into a POJO through JSON-B, honouring a
+            // registered ContextResolver<Jsonb> — mirrors the server-side MBR.
+            var jsonb = ClientEntityJsonb.resolve(providers, type, mt);
+            return (T) jsonb.fromJson(new ByteArrayInputStream(body), type);
+        }
         throw new UnsupportedOperationException(
-                "Cassini Client MVP supports readEntity(String/byte[]/InputStream) only — got "
-                        + type.getName() + ". MessageBodyRegistry integration arrives in commit #3.");
+                "Cassini Client: readEntity(" + type.getName() + ") needs a JSON media type or a "
+                        + "String/byte[]/InputStream target (Content-Type was " + mt + ").");
     }
 
     @Override public <T> T readEntity(GenericType<T> type) { return readEntity((Class<T>) type.getRawType()); }
