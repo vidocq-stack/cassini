@@ -6,7 +6,7 @@
 <h1 align="center">Cassini</h1>
 
 <p align="center">
-  <strong>Jakarta RESTful Web Services 4.0 Implementation — transport-agnostic, native JPMS</strong><br>
+  <strong>Jakarta RESTful Web Services 4.0 Implementation — transport-agnostic, native Java Modules</strong><br>
   <a href="https://jakarta.ee/specifications/restful-ws/4.0/">Jakarta REST 4.0</a> | Java SE Bootstrap | Optional CDI | JDK 25
 </p>
 
@@ -28,7 +28,7 @@ Cassini is a complete implementation of **Jakarta RESTful Web Services 4.0** (Co
 |---|---|---|---|
 | Transport | Grizzly/Jetty | Undertow | **SPI pluggable (Chappe, JDK HTTP, ...)** |
 | CDI | HK2 bridge | Integrated Weld | **Optional — `BeanProvider` SPI (`cassini-cdi-vauban`, ...) or none** |
-| JPMS | Partial | No | **Native (`module-info.java` complete)** |
+| Java Modules | Partial | No | **Native (`module-info.java` complete)** |
 | SE-Bootstrap | Via Grizzly | No | **Native** |
 | JDK minimum | 17 | 11 | **25** |
 
@@ -265,7 +265,7 @@ public class MyApplication extends Application {
 
 ### Startup via SE-Bootstrap
 
-`ChappeRuntimeDelegate` is discovered automatically via ServiceLoader (JPMS `provides`).
+`ChappeRuntimeDelegate` is discovered automatically via ServiceLoader (Java Modules `provides`).
 
 ```java
 import jakarta.ws.rs.SeBootstrap;

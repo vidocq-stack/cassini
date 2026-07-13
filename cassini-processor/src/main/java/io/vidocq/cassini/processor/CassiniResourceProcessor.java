@@ -237,7 +237,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         }
 
         w.println();
-        // resourceClass() — ServiceLoader keying (zero-export JPMS apps)
+        // resourceClass() — ServiceLoader keying (zero-export Java Modules apps)
         emitResourceClass(w, resourceBinaryName);
 
         w.println("}");
@@ -569,7 +569,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         emitNewInstance(w, resourceBinaryName, hasNoArgCtor);
         w.println();
 
-        // resourceClass() — ServiceLoader keying (zero-export JPMS apps)
+        // resourceClass() — ServiceLoader keying (zero-export Java Modules apps)
         emitResourceClass(w, resourceBinaryName);
 
         w.println("}");

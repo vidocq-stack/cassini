@@ -84,7 +84,7 @@
             <!-- Vauban codegen runs as an ANNOTATION PROCESSOR on this example's own beans
                  (@ApplicationScoped service + @Path resources). It generates _ClientProxy/_Factory,
                  an in-module _VaubanComponents per bean package and META-INF/vauban-beans.list, which
-                 the Vauban runtime reads via scanClasspath() — works in a JPMS named module too
+                 the Vauban runtime reads via scanClasspath() — works in a Java Modules named module too
                  (META-INF/ resources stay accessible). Build-time only, inert under a standard CDI
                  container (Weld). The Maven plugin is reserved for freezing external dependency jars.
                  The module-info already `requires io.vidocq.vauban.core` (which reads vauban-api

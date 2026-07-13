@@ -93,7 +93,7 @@ public interface ResourceAdapter {
      * <p><b>ServiceLoader keying:</b> when an adapter is registered as a {@code ServiceLoader}
      * provider (module-path {@code provides ResourceAdapter with <Class>$$CassiniAdapter}, or a
      * {@code META-INF/services} entry), {@code AdapterRegistry} builds a {@code Class → adapter}
-     * map keyed by this method. This lets a strict JPMS application keep its resource package
+     * map keyed by this method. This lets a strict Java Modules application keep its resource package
      * <em>closed</em> (neither {@code opens} nor {@code exports}): the module system instantiates
      * the provider from the closed package, so cassini-core never reflects into it.</p>
      *

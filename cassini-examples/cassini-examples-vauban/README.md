@@ -79,7 +79,7 @@ io.vidocq.cassini.examples.vauban.service.TodoService
 
 **Benefits**:
 - No runtime classpath scan, no package-level reflection
-- Works in JPMS named modules (`META-INF/` resources are always accessible via `ClassLoader.getResources()`, unlike directory scanning)
+- Works in Java Modules named modules (`META-INF/` resources are always accessible via `ClassLoader.getResources()`, unlike directory scanning)
 - Compile-time detection: if a bean is incorrectly annotated, the plugin reports it immediately
 - Reusable list: `scanClasspath()` aggregates all `vauban-beans.list` files from the classpath, so multi-module setups are supported
 

@@ -43,7 +43,7 @@ import java.util.logging.Logger;
  *   <li>A {@link ServiceLoader}-registered {@link RouteProvider} (module-path {@code provides
  *       io.vidocq.cassini.spi.gen.RouteProvider with <Class>$$CassiniRoutes} or a classpath
  *       {@code META-INF/services} entry), keyed by {@link RouteProvider#resourceClass()}. Lets a
- *       strict JPMS app keep its resource package <em>closed</em> — the module system instantiates
+ *       strict Java Modules app keep its resource package <em>closed</em> — the module system instantiates
  *       the provider, so no {@code Class.forName} into the package.</li>
  *   <li>Try {@code Class.forName(cls.getName() + "$$CassiniRoutes")} — if present AND
  *       {@link RouteProvider#hasLocators()} is {@code false}, convert its
@@ -206,7 +206,7 @@ public final class RouteRegistry {
         for (RouteDescriptor d : descriptors) {
             try {
                 Method m = resolveMethod(d.beanClass(), d.methodName(), d.paramTypeNames());
-                // Best-effort: a CLOSED resource package (zero-export JPMS app) rejects setAccessible,
+                // Best-effort: a CLOSED resource package (zero-export Java Modules app) rejects setAccessible,
                 // but the generated adapter's invoke() handles dispatch, so reflective access is not
                 // required. Only the reflective-fallback path (methodId == -1) would need it.
                 try {

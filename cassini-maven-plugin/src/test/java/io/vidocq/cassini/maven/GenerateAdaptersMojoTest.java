@@ -43,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *   <li>{@link RuntimeAdapterGenerator#toBytecode} returns valid bytecode.</li>
  *   <li>The bytecode is parse-roundtrip valid via {@code ClassFile.parse()}.</li>
  *   <li>Plugin-generated and runtime-generated adapters are byte-identical.</li>
- *   <li>The JPMS named-module fail-fast path: a {@code MojoExecutionException} is thrown
+ *   <li>The Java Modules named-module fail-fast path: a {@code MojoExecutionException} is thrown
  *       with the expected actionable message when a named-module dependency has
  *       {@code @Path} resources and {@code repackageModularDependencies=false}.</li>
  * </ol>
@@ -109,7 +109,7 @@ class GenerateAdaptersMojoTest {
         assertTrue(dest.length() > 0, "adapter .class file must not be empty");
     }
 
-    // ---- JPMS named-module detection helper test ----
+    // ---- Java Modules named-module detection helper test ----
 
     @Test
     void noNamedModuleDetectedForPlainJar() throws IOException {

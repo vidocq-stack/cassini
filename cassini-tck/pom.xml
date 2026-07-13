@@ -154,7 +154,7 @@
                      (APT path) before the runtime Class-File generator — AOT-safe.
                      Note: annotationProcessorPaths is deprecated in compiler 4.x but
                      still functional; the type=processor alternative causes a javac ICE
-                     with JPMS named-module processors on Java 25. -->
+                     with Java Modules named-module processors on Java 25. -->
                 <configuration>
                     <release>25</release>
                     <annotationProcessorPaths>

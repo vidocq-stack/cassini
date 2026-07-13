@@ -20,7 +20,7 @@
 
 **Cross-cutting characteristics**
 
-- **Native JPMS** — each module has its `module-info.java`, internal packages locked via `exports ... to`
+- **Native Java Modules** — each module has its `module-info.java`, internal packages locked via `exports ... to`
 - **Transport-agnostic** — `cassini-core` imports neither `chappe` nor `httpserver`; the public SPI lets any transport (Netty, Undertow, Vert.x) integrate
 - **CDI-pluggable** — `BeanProvider` SPI decoupled from `jakarta.cdi`; one adapter per container (Vauban provided, Weld/OpenWebBeans future)
 - **Virtual threads** — VT per request (`Executors.newVirtualThreadPerTaskExecutor`), `@Suspended AsyncResponse` and `CompletionStage<T>` block a VT without starvation
@@ -62,10 +62,10 @@
 | CDI integration (BeanManager, ScopeExtension, BCE) | 1 month |
 | TCK setup (Arquillian + ShrinkWrap + Model 4.0.0 workaround) | 0.5 month |
 | TCK 100% — debugging the 2535 applicable tests | 2.5 months |
-| Clean SPI (`CassiniStack`, `BeanProvider`, ServiceLoader, classpath + JPMS) | 0.5 month |
+| Clean SPI (`CassiniStack`, `BeanProvider`, ServiceLoader, classpath + Java Modules) | 0.5 month |
 | Examples + HTML/CSS/JS UI + composite handler | 0.5 month |
 | Documentation (TCK.md, ASYNC.md, README × 4, HOWTO-CLAUDE.md) | 0.5 month |
-| Cross-cutting JPMS friction | +30% overall |
+| Cross-cutting Java Modules friction | +30% overall |
 | **Total** | **~18–22 months** |
 
 > The TCK alone (2.5 months) is the most time-consuming phase. Each corner case (recursive sub-resource locator, multi-attribute Cookie RFC 2109, content-type with non-standard `;charset=`, ambiguous variant status code, case-insensitive header lookup…) can take half a day to debug. Reaching 100% instead of 95% is disproportionately expensive.
@@ -121,7 +121,7 @@ Renaming `cassini-cdi` → `cassini-cdi-vauban` touches: Maven artifactId, Java 
 - **Architectural smell detection** — I was the one who said "no, I do not want to specify singletons manually" to bring out `BeanProvider`. AI had delivered a technically correct but mediocre `getSingletons()` kludge.
 - **Domain intuition** — knowing that the TCK Multipart `basicTest` fails on Jersey CLIENT and not on Cassini SERVER (it is a challenge to document, not a bug to fix). Knowing that `locatorNameTooLongAgainTest` imposes a non-portable segment-by-segment interpretation of §3.7.2.
 - **Discovery of existing APIs** — AI did not go inspect `chappe-api/StaticFileHandler` or `vauban-maven-plugin:generate` on its own. I had to point out "Chappe already has this", "Vauban has an APT". Without that intervention, the examples would have had inferior custom code.
-- **Product decisions** — Core Profile vs Full scope, choice of official TCK challenges to document (rather than try to fix), priority on strict JPMS from the start.
+- **Product decisions** — Core Profile vs Full scope, choice of official TCK challenges to document (rather than try to fix), priority on strict Java Modules from the start.
 
 ---
 
@@ -137,7 +137,7 @@ Renaming `cassini-cdi` → `cassini-cdi-vauban` touches: Maven artifactId, Java 
 
 ### What cost time despite AI
 
-- **Recurring JPMS friction** — `opens to named-module` does not cover the unnamed module, missing `requires` in classpath mode, `ServiceLoader` ignores `provides` when the module is not on the graph, `META-INF/services` must be duplicated for classpath mode. Probably 1 cumulative day.
+- **Recurring Java Modules friction** — `opens to named-module` does not cover the unnamed module, missing `requires` in classpath mode, `ServiceLoader` ignores `provides` when the module is not on the graph, `META-INF/services` must be duplicated for classpath mode. Probably 1 cumulative day.
 - **Auto-discovery vs explicit choice** — first draft `getSingletons()` (kludge), second draft `BeanProvider` (correct). ~30 minutes of rework.
 - **Latent bugs introduced by the agent autonomously** — 700 lines of `RuntimeDelegate` boilerplate duplicated instead of extended, missing `META-INF/services` that made the TCK fail once (7 `SeBootstrapIT` errors). ~1h cumulative.
 - **Zombie process on port 8080** on the dev workstation — blocked for an hour during the first TCK validation before the conflict was identified.
@@ -159,7 +159,7 @@ Note: these implementations cover a broader scope than Cassini (notably client A
 
 ## Conclusion
 
-For a project of this technical density — formal spec (JAX-RS 4.0 = 200+ dense pages), 100% official TCK, native JPMS, transport-agnostic, CDI-pluggable, virtual threads — AI assistance represented a **~20x** multiplier on development speed.
+For a project of this technical density — formal spec (JAX-RS 4.0 = 200+ dense pages), 100% official TCK, native Java Modules, transport-agnostic, CDI-pluggable, virtual threads — AI assistance represented a **~20x** multiplier on development speed.
 
 The gain is not uniform: it is maximal on mechanical code (JAX-RS boilerplate, cross-module refactors, test generation) and null on architectural decisions, TCK challenge vs bug judgment, and product intuition.
 
@@ -168,7 +168,7 @@ As with Vauban, the most accurate model is not "AI codes instead of the develope
 
 The remaining friction is no longer in code production, it is in:
 1. Agent supervision (reviewing each diff, correcting suboptimal choices)
-2. Toolchain friction (JPMS, IntelliJ test runner, Maven 4 vs IDE LSP)
+2. Toolchain friction (Java Modules, IntelliJ test runner, Maven 4 vs IDE LSP)
 3. TCK validation (the spec does not get simpler with AI)
 
 If I had to rebuild Cassini without AI today, I probably would not try alone.

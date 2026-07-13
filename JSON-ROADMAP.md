@@ -19,7 +19,7 @@
 
 ## History (before Champollion integration)
 
-Cassini used Yasson 3.0.4 (JSON-B) + Parsson 1.1.7 (JSON-P) as runtime providers. Several frictions in strict JPMS mode (jlink / jpackage / module-path) justified a **homegrown implementation** aligned with Cassini constraints.
+Cassini used Yasson 3.0.4 (JSON-B) + Parsson 1.1.7 (JSON-P) as runtime providers. Several frictions in strict Java Modules mode (jlink / jpackage / module-path) justified a **homegrown implementation** aligned with Cassini constraints.
 
 This document records the known bugs/workarounds and the functional targets that guided Champollion.
 
@@ -151,7 +151,7 @@ Total ~7 to 10 weeks to have a fully in-house JSON stack.
 - JSON-P 2.1 and JSON-B 3.0 TCKs green at 100%.
 - Startup: < 10 ms between Cassini boot and first serialization.
 - Memory footprint < Yasson 3.0.4 (measured).
-- Clean JPMS module: proper `provides`/`uses` + `module-info.java`.
+- Clean Java module: proper `provides`/`uses` + `module-info.java`.
 
 ---
 
@@ -196,7 +196,7 @@ These invariants come directly from the friction observed with Yasson + Parsson 
 | **R-16** | Bindings are **immutable** once created. Concurrency-safe without explicit synchronization. | Multi-thread without contention (HTTP server with many virtual threads). |
 | **R-17** | An integrated benchmark (`cassini-bench`) compares cold start + warm throughput vs Yasson on a representative set (records, POJOs, dates, collections, polymorphism). Regression > 10% blocks merge. | Performance discipline. |
 
-### 4.5 JPMS module — `module-info.java`
+### 4.5 Java module — `module-info.java`
 
 ```java
 module io.vidocq.cassini.jsonp {

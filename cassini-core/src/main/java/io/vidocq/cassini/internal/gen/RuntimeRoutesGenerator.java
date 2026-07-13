@@ -120,7 +120,7 @@ public final class RuntimeRoutesGenerator {
                     });
 
             // public Class<?> resourceClass() { return Resource.class; }
-            // ServiceLoader keying (zero-export JPMS apps), parity with the APT.
+            // ServiceLoader keying (zero-export Java Modules apps), parity with the APT.
             clb.withMethodBody("resourceClass", MethodTypeDesc.of(CD_Class),
                     ClassFile.ACC_PUBLIC, cob -> {
                         cob.ldc(resourceCD);

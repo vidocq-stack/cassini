@@ -37,7 +37,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Cassini implementation of {@link ClientBuilder} — discovered via
  * {@code META-INF/services/jakarta.ws.rs.client.ClientBuilder} (classpath) and
- * via {@code provides} JPMS (module-path).
+ * via {@code provides} Java Modules (module-path).
  *
  * <p>The nullary public constructor is required by the
  * {@code java.util.ServiceLoader} contract.</p>

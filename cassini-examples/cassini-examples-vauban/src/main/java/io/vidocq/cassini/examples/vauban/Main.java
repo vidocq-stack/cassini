@@ -42,7 +42,7 @@ public class Main {
 
     static void main(String[] args) throws Exception {
         // scanClasspath() reads META-INF/vauban-beans.list, generated at compile time
-        // by vauban-maven-plugin (goal 'generate'). Works in a JPMS named
+        // by vauban-maven-plugin (goal 'generate'). Works in a Java Modules named
         // module — META-INF/ resources are always accessible via
         // ClassLoader.getResources() regardless of packaging mode.
         var container = VaubanContainer.builder()
