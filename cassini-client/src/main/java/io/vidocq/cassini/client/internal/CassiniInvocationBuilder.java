@@ -231,7 +231,13 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
             catch (IOException e) { throw new ProcessingException("ClientResponseFilter " + f.getClass().getName() + " failed", e); }
         }
 
-        return respCtx.toResponse();
+        Response response = respCtx.toResponse();
+        if (response instanceof CassiniClientResponse ccr) {
+            // Hand the client's registered providers to the response so readEntity(Pojo)
+            // can resolve a ContextResolver<Jsonb> exactly like the request path.
+            ccr.setProviders(client.cassiniConfiguration().getInstances());
+        }
+        return response;
     }
 
     private CassiniClientResponseContext sendHttp(CassiniClientRequestContext reqCtx) {
@@ -259,9 +265,17 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
         for (var entry : hdrs.entrySet()) {
             String name = entry.getKey();
             if (isRestricted(name)) continue;
+            // RFC 7230 §3.2.2: multiple values of the same header are equivalent to a
+            // single comma-separated value. Emit one combined header — some servers
+            // only read the first line (e.g. an Accept: application/json, text/plain
+            // negotiation would otherwise lose text/plain).
+            StringBuilder joined = new StringBuilder();
             for (Object v : entry.getValue()) {
-                if (v != null) builder.header(name, v.toString());
+                if (v == null) continue;
+                if (joined.length() > 0) joined.append(", ");
+                joined.append(v);
             }
+            if (joined.length() > 0) builder.header(name, joined.toString());
         }
     }
 
@@ -271,8 +285,20 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
             return;
         }
         byte[] payload;
-        if (entityValue instanceof byte[] b) payload = b;
-        else payload = entityValue.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (entityValue instanceof byte[] b) {
+            payload = b;
+        } else if (entityValue instanceof String s) {
+            payload = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        } else if (ClientEntityJsonb.isJson(mediaType) && !ClientEntityJsonb.isSimple(entityValue.getClass())) {
+            // §4.2.3: serialise a POJO request entity through JSON-B, honouring a
+            // registered ContextResolver<Jsonb> — mirrors the server-side MBW.
+            var jsonb = ClientEntityJsonb.resolve(
+                    client.cassiniConfiguration().getInstances(), entityValue.getClass(), mediaType);
+            payload = jsonb.toJson(entityValue, entityValue.getClass())
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        } else {
+            payload = entityValue.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
 
         if (mediaType != null) {
             builder.header(HttpHeaders.CONTENT_TYPE, mediaType.toString());
