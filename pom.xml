@@ -78,10 +78,12 @@
     </properties>
 
     <!--
-        cassini-tck is intentionally OUTSIDE the reactor (standalone POM Model 4.0.0)
-        to work around ShrinkWrap Maven Resolver 3.3, which cannot parse
-        Model 4.1.0 POMs. It is invoked by run-official-tck-restful-4.0.sh
-        after the reactor has been installed locally.
+        cassini-tck joins the reactor only under the `tck` profile (see
+        <profiles> below) — TCK harmonisation, same pattern as the
+        vidocq-runtime-tck-* runners and the dirac pilot: a plain `mvn install`
+        neither downloads nor runs anything TCK-related. The historical
+        out-of-reactor constraint (ShrinkWrap Maven Resolver 3.3 vs Model 4.1.0
+        POMs) disappeared with the Maven 3.9.16 / Model 4.0.0 migration.
     -->
     <modules>
         <module>cassini-api</module>
@@ -93,7 +95,6 @@
         <module>cassini-jdk-http</module>
         <module>cassini-client</module>
         <module>cassini-examples</module>
-        <module>cassini-tck</module>
     </modules>
 
     <dependencyManagement>
@@ -242,4 +243,20 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+    <profiles>
+        <!--
+            TCK harmonisation: the official Jakarta RESTful WS 4.0 TCK runner
+            joins the reactor only when this profile is active.
+
+                ./mvnw -Ptck,tck-official -pl cassini-tck verify    # full suite
+
+            run-official-tck-restful-4.0.sh remains the friendly wrapper.
+        -->
+        <profile>
+            <id>tck</id>
+            <modules>
+                <module>cassini-tck</module>
+            </modules>
+        </profile>
+    </profiles>
 </project>

@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-    Standalone Maven project in Model Version 4.0.0, intentionally OUTSIDE
-    the Cassini reactor.
+    In-reactor TCK runner, gated by the `tck` Maven profile of cassini-parent
+    (TCK harmonisation — same pattern as the vidocq-runtime-tck-* runners and
+    the dirac pilot): a plain `mvn install` neither downloads nor runs anything
+    TCK-related.
 
-    Why: ShrinkWrap Maven Resolver 3.3 (a transitive dependency of the Jakarta TCK)
-    uses maven-resolver 1.9 / maven-model 3.9, which cannot parse
-    the reactor's Model 4.1.0 POMs. Its ClasspathWorkspaceReader
-    crashes with "Bad artifact coordinates ... jar:".
+    History: this module used to be a STANDALONE out-of-reactor POM to work
+    around ShrinkWrap Maven Resolver 3.3 (could not parse Model 4.1.0 POMs).
+    That constraint disappeared with the Maven 3.9.16 / Model 4.0.0 migration.
 
-    Internal dependencies (cassini-core, cassini-chappe, etc.) are pinned
-    to version 0.3.0-SNAPSHOT installed in the local M2 repository.
-
-    Execution goes through the script:
+    Execution goes through the script (thin wrapper over the reactor):
         ./run-official-tck-restful-4.0.sh                       (smoke test)
         ./run-official-tck-restful-4.0.sh all                   (full suite)
         ./run-official-tck-restful-4.0.sh -Dtest=SomeTests      (targeted class)
+
+    Or directly:
+        ./mvnw -Ptck,tck-official -pl cassini-tck verify        (full suite)
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"

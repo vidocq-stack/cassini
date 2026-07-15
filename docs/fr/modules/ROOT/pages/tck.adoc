@@ -91,15 +91,12 @@ Six tests sont désactivés via la classe `TckChallengeExclusions` (JUnit 5 `Exe
 |===
 
 [#runner-hors-reactor]
-== Pourquoi le runner TCK est hors-reactor
+== Architecture du runner : in-reactor derrière le profil `tck`
 
-`cassini-tck` est **volontairement EXCLU** du `<modules>` parent et utilise un POM `modelVersion 4.0.0` standalone (sans `<parent>`).
+`cassini-tck` est un **module in-reactor gardé derrière le profil Maven `tck`** (harmonisation TCK, même pattern que les runners `vidocq-runtime-tck-*`) : un `mvn install` normal ne télécharge ni n'exécute rien du TCK, et le reactor de release ne voit jamais le module. Invocation via `run-official-tck-restful-4.0.sh`, ou directement `./mvnw -Ptck,tck-official -pl cassini-tck verify`.
 
-Raison : le TCK officiel Jakarta REST 4.0 tire transitivement **ShrinkWrap Maven Resolver 3.3**, qui s'appuie sur `maven-resolver 1.9` / `maven-model 3.9`. Ces versions ne savent **pas** parser les POMs `Model 4.1.0` du reactor Vidocq. Le `ClasspathWorkspaceReader` de ShrinkWrap scanne le reactor courant et crashe avec `Bad artifact coordinates ... jar:` sur tout POM Vidocq (version implicite via parent).
+Note historique : le module était **exclu** du `<modules>` parent (POM Model 4.0.0 standalone), car le TCK officiel Jakarta REST 4.0 tire transitivement **ShrinkWrap Maven Resolver 3.3** (`maven-resolver 1.9` / `maven-model 3.9`), incapable de parser les POMs `Model 4.1.0` qu'utilisait alors le workspace. Cette contrainte a disparu avec la migration du workspace vers Maven 3.9.16 / Model 4.0.0.
 
-Tant qu'upstream ShrinkWrap ne supporte pas Model 4.1, le module `cassini-tck` doit rester détaché. Voir lien:{repo-vidocq}/src/branch/main/CLAUDE.md[`vidocq/CLAUDE.md`] (workspace racine) pour le contexte transverse — la même contrainte s'applique à `foy-tck`, `champollion-tck`, et `vidocq-servlet-chappe-tck-runner`.
-
-NOTE: Ne pas réintégrer `cassini-tck` au `<modules>` parent. Ne pas lui ajouter de `<parent>`. Ne pas le builder via `mvn -pl`. Toujours passer par le script `run-official-tck-restful-4.0.sh`.
 
 == Reproduire localement
 

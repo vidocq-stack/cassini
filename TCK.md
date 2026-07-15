@@ -93,7 +93,7 @@ Six tests are disabled via the class
 
 The script:
 1. `mvn install -DskipTests` of the reactor (cassini-api/core/cdi/chappe/jdk-http)
-2. `cd cassini-tck && mvn -Ptck-official verify` (Model 4.0.0 standalone, outside reactor for ShrinkWrap)
+2. `mvn -Ptck,tck-official -pl cassini-tck verify` (in-reactor, gated by the `tck` Maven profile)
 
 ---
 

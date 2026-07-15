@@ -40,11 +40,11 @@ echo "======================================="
 echo " Étape 2 — Lancement du TCK REST 4.0   "
 echo "======================================="
 
-cd cassini-tck
-
+# cassini-tck est in-reactor, activé par le profil Maven `tck`
+# (harmonisation TCK, même pattern que les runners vidocq-runtime-tck-*).
 if $USE_ALL; then
-    mvn -Ptck-official verify "${MVN_ARGS[@]}"
+    mvn -P"tck,tck-official" -pl cassini-tck verify "${MVN_ARGS[@]}"
 else
     # Smoke : juste le test harness maison
-    mvn -Ptck-official test -Dtest=CassiniHarnessSmokeTest "${MVN_ARGS[@]}"
+    mvn -P"tck,tck-official" -pl cassini-tck test -Dtest=CassiniHarnessSmokeTest "${MVN_ARGS[@]}"
 fi
