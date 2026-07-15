@@ -91,15 +91,11 @@ Six tests are disabled via `TckChallengeExclusions` (auto-discovered JUnit 5 `Ex
 |===
 
 [#runner-out-of-reactor]
-== Why the TCK runner is out-of-reactor
+== Runner architecture: in-reactor behind the `tck` profile
 
-`cassini-tck` is **deliberately EXCLUDED** from the parent `<modules>` and uses a standalone `modelVersion 4.0.0` POM (no `<parent>`).
+`cassini-tck` is an **in-reactor module gated behind the `tck` Maven profile** (TCK harmonisation, same pattern as the `vidocq-runtime-tck-*` runners): a plain `mvn install` neither downloads nor runs anything TCK-related, and the release reactor never sees the module. Invoke through `run-official-tck-restful-4.0.sh`, or directly via `./mvnw -Ptck,tck-official -pl cassini-tck verify`.
 
-Reason: the official Jakarta REST 4.0 TCK transitively pulls **ShrinkWrap Maven Resolver 3.3**, which depends on `maven-resolver 1.9` / `maven-model 3.9`. Those versions **cannot** parse `Model 4.1.0` POMs from the Vidocq reactor. ShrinkWrap's `ClasspathWorkspaceReader` scans the current reactor and crashes with `Bad artifact coordinates ... jar:` on every Vidocq POM (implicit version through parent).
-
-Until ShrinkWrap upstream supports Model 4.1, `cassini-tck` must remain detached. See lien:{repo-vidocq}/src/branch/main/CLAUDE.md[`vidocq/CLAUDE.md`] (workspace root) for the cross-cutting context — the same constraint applies to `foy-tck`, `champollion-tck`, and `vidocq-servlet-chappe-tck-runner`.
-
-NOTE: Do not re-attach `cassini-tck` to the parent `<modules>`. Do not give it a `<parent>`. Do not build it via `mvn -pl`. Always go through `run-official-tck-restful-4.0.sh`.
+Historical note: the module used to be **excluded** from the parent `<modules>` as a standalone Model 4.0.0 POM, because the official Jakarta REST 4.0 TCK transitively pulls **ShrinkWrap Maven Resolver 3.3** (`maven-resolver 1.9` / `maven-model 3.9`), which could not parse the `Model 4.1.0` POMs the workspace used at the time. That constraint disappeared with the workspace-wide migration to Maven 3.9.16 / Model 4.0.0.
 
 == Reproduce locally
 

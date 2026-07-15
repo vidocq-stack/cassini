@@ -26,7 +26,7 @@ mvn test
 ./run-official-tck-restful-4.0.sh -Dtest=TestName
 ```
 
-> `cassini-tck` is **outside the reactor** (standalone Model 4.0.0 pom.xml) to work around a ShrinkWrap Maven Resolver 3.3 vs Model 4.1.0 incompatibility. Do not change this model.
+> `cassini-tck` is **in-reactor, gated behind the `tck` Maven profile** (TCK harmonisation, same pattern as the vidocq-runtime-tck-* runners): a plain `mvn install` neither downloads nor runs anything TCK-related. The historical ShrinkWrap Maven Resolver 3.3 vs Model 4.1.0 constraint is obsolete since the Maven 3.9.16 / Model 4.0.0 migration.
 
 ## Architecture
 

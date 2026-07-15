@@ -530,7 +530,7 @@ The 135 skipped tests cover: `servlet` (outside SE-Bootstrap), `xml_binding` (JA
 ./mvnw -ntp install -DskipTests  # build only
 ```
 
-The `cassini-tck` module is **outside the reactor** (standalone POM Model 4.0.0) to work around a ShrinkWrap incompatibility. Use the dedicated script `./run-official-tck-restful-4.0.sh`.
+The `cassini-tck` module is **in-reactor, gated behind the `tck` Maven profile** (TCK harmonisation). Use the dedicated script `./run-official-tck-restful-4.0.sh`, or directly `./mvnw -Ptck,tck-official -pl cassini-tck verify`.
 
 ---
 
