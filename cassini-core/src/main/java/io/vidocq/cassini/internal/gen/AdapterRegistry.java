@@ -42,7 +42,7 @@ import java.util.logging.Logger;
  *       {@link ServiceLoader} provider — either a module-path {@code provides
  *       io.vidocq.cassini.spi.gen.ResourceAdapter with <Class>$$CassiniAdapter} directive, or a
  *       classpath {@code META-INF/services} entry. Keyed by {@link ResourceAdapter#resourceClass()}.
- *       This is the only path that lets a strict JPMS application keep its resource package
+ *       This is the only path that lets a strict Java Modules application keep its resource package
  *       <em>closed</em> (no {@code opens}, no {@code exports}): the module system instantiates the
  *       provider from the encapsulated package, so cassini-core never reflects into it. The
  *       per-class {@code methodId} map is populated here (via {@link RuntimeAdapterGenerator#collectMethods})
@@ -139,7 +139,7 @@ public final class AdapterRegistry {
 
         // 1. ServiceLoader-registered adapter (module-path `provides` / classpath META-INF/services).
         //    The module system instantiates the provider even from a CLOSED package, so a strict
-        //    JPMS app needs neither `opens` nor `exports`. Populate the methodId map here so the
+        //    Java Modules app needs neither `opens` nor `exports`. Populate the methodId map here so the
         //    adapter's invoke() is used (no reflective dispatch into the closed package).
         ResourceAdapter svc = serviceAdapters().get(beanClass);
         if (svc != null) {

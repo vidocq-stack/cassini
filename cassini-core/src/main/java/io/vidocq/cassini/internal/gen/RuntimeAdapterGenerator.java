@@ -72,7 +72,7 @@ import java.util.Map;
  * <p><b>Private-field mechanism:</b> the {@code <clinit>} of the generated adapter calls
  * {@code MethodHandles.privateLookupIn(ResourceClass.class, MethodHandles.lookup())} from
  * <em>inside</em> the resource's own package (the adapter is defined there), so that call is
- * trivially OK. The real JPMS gate is at generation time, when cassini-core needs a
+ * trivially OK. The real Java Modules gate is at generation time, when cassini-core needs a
  * {@code privateLookupIn} on a downstream user class:</p>
  * <ul>
  *   <li><b>Read edge</b> — cassini-core must read the resource's module. Impossible to declare
@@ -203,7 +203,7 @@ public final class RuntimeAdapterGenerator {
             }
             // else: leave the default UnsupportedOperationException impl from the interface
 
-            // resourceClass() — ServiceLoader keying (zero-export JPMS apps), parity with the APT.
+            // resourceClass() — ServiceLoader keying (zero-export Java Modules apps), parity with the APT.
             generateResourceClass(clb, resourceCD);
         });
     }

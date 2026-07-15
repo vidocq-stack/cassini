@@ -1,8 +1,8 @@
 = Reference
-:description: Maven artefacts, JPMS modules, supported annotations, configuration.
+:description: Maven artefacts, Java modules, supported annotations, configuration.
 
 [.lead]
-Factual reference: published Maven artefacts, exported JPMS modules, supported Jakarta REST 4.0 annotations, configuration properties.
+Factual reference: published Maven artefacts, exported Java modules, supported Jakarta REST 4.0 annotations, configuration properties.
 
 == Maven artefacts
 
@@ -40,7 +40,7 @@ Factual reference: published Maven artefacts, exported JPMS modules, supported J
 
 NOTE: `cassini-tck` is not published and is **out-of-reactor** (standalone `modelVersion 4.0.0` POM). See xref:tck.adoc#runner-out-of-reactor[TCK — out-of-reactor runner].
 
-== JPMS modules
+== Java modules
 
 [cols="2,3"]
 |===

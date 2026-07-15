@@ -1,8 +1,8 @@
 = Référence
-:description: Artefacts Maven, modules JPMS, annotations supportées, configuration.
+:description: Artefacts Maven, modules Java, annotations supportées, configuration.
 
 [.lead]
-Référence factuelle : artefacts Maven publiés, modules JPMS exportés, annotations Jakarta REST 4.0 supportées, propriétés de configuration.
+Référence factuelle : artefacts Maven publiés, modules Java exportés, annotations Jakarta REST 4.0 supportées, propriétés de configuration.
 
 == Artefacts Maven
 
@@ -40,7 +40,7 @@ Référence factuelle : artefacts Maven publiés, modules JPMS exportés, annota
 
 NOTE: `cassini-tck` n'est pas publié et est **hors-reactor** (POM `modelVersion 4.0.0` standalone). Voir xref:tck.adoc#runner-hors-reactor[TCK — runner hors-reactor].
 
-== Modules JPMS
+== Modules Java Modules
 
 [cols="2,3"]
 |===

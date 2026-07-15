@@ -135,7 +135,7 @@
                 <version>${jakarta.activation.version}</version>
             </dependency>
 
-            <!-- JSON-B / JSON-P implementations: Champollion (zero-dep, strict JPMS, native record support) -->
+            <!-- JSON-B / JSON-P implementations: Champollion (zero-dep, strict Java Modules, native record support) -->
             <dependency>
                 <groupId>io.vidocq.champollion</groupId>
                 <artifactId>champollion-api</artifactId>

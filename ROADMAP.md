@@ -59,7 +59,7 @@ and official challenges: see [`TCK.md`](TCK.md).
 - [ ] Synchronous `Client`, `WebTarget`, `Invocation.Builder`, `Invocation` (GET/POST/PUT/DELETE)
 - [ ] Client filters (`ClientRequestFilter`/`ClientResponseFilter`) — prepares humboldt M7c.12
 - [ ] Request/response body serialization via `MessageBodyRegistry` (reuses cassini-core builtins)
-- [ ] Discovery via `META-INF/services/jakarta.ws.rs.client.ClientBuilder` + JPMS `provides`
+- [ ] Discovery via `META-INF/services/jakarta.ws.rs.client.ClientBuilder` + Java Modules `provides`
 - [ ] E2E tests with ephemeral in-process `com.sun.net.httpserver.HttpServer`
 - [ ] Validation: replace Jersey with cassini-client in cassini-tck (gate: 2535/2535 PASS preserved)
 - [ ] Async (`InvocationCallback`, `CompletionStage`) deferred to M2d.2 if not required by TCK consumers
@@ -124,7 +124,7 @@ Files affected:
   `$$CassiniAdapter` classes for pre-compiled `.class` files arriving in
   external archives (dependency JARs: TCK jar, legacy).
 - Scopes: `project` (default) and `dependencies` (configurable includeArtifacts/excludeArtifacts).
-- JPMS named-module rule: fail-build with an actionable message if a named JPMS JAR
+- Java Modules named-module rule: fail-build with an actionable message if a named Java Modules JAR
   contains `@Path`/`@Provider` resources (option `repackageModularDependencies=true`
   to repackage the JAR with the woven adapters).
 - Wired into `cassini-tck` for TCK jar classes — closes AOT coverage.

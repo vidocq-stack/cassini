@@ -60,7 +60,7 @@ Three levels of adapter generation (`<Class>$$CassiniAdapter`), from most prefer
 (module-path `provides io.vidocq.cassini.spi.gen.ResourceAdapter with <Class>$$CassiniAdapter`, or
 classpath `META-INF/services`), keyed by `ResourceAdapter.resourceClass()`; (1) `Class.forName(<class>$$CassiniAdapter)`
 (APT/plugin path); (2) the runtime generator; (3) the SENTINEL (reflective fallback). The
-ServiceLoader step is what lets a strict-JPMS app keep its resource package **closed** (neither
+ServiceLoader step is what lets a strict Java Modules app keep its resource package **closed** (neither
 `opens` nor `exports`): the module system instantiates the provider from the encapsulated package,
 so cassini-core never reflects into it. That step also populates the per-class `methodId` map (via
 `RuntimeAdapterGenerator.collectMethods`, public-method enumeration — no `setAccessible`), so
@@ -86,8 +86,8 @@ annotation scan; the descriptor `Method`'s `setAccessible` is best-effort — a 
 `adapter.invoke`). Classes with locators set `hasLocators()` and fall back to
 `ResourceScanner.discover`.
 
-**JPMS named-module rule (plugin):** adapters live in the resource package.
-Classpath JARs → write into `target/classes`. JPMS named-module → fail build (option
+**Java Modules named-module rule (plugin):** adapters live in the resource package.
+Classpath JARs → write into `target/classes`. Java Modules named-module → fail build (option
 `repackageModularDependencies=true` to repackage the JAR).
 
 **Documented residual reflection (accepted exception):**
@@ -186,3 +186,9 @@ Follow Vauban's `index.adoc`: page title (`= <Project>`), `:description:`, a cen
 Provide `modules/ROOT/images/<project>-logo.png` (PNG), referenced from `index.adoc`.
 
 > When you change these documentation rules, keep `AGENTS.md` and `CLAUDE.md` in sync.
+
+## Terminology
+
+Use **Java Modules** (or **Java module** for a single module) when referring to
+the Java Platform Module System. Do **not** use the abbreviation **JPMS** — in
+prose, identifiers, or documentation.

@@ -22,7 +22,7 @@
  * based on {@link java.net.http.HttpClient} and virtual threads.
  *
  * <p>Standard discovery via {@link java.util.ServiceLoader} on the classpath and via
- * JPMS {@code provides} on the module-path. Reuses {@code MessageBodyRegistry},
+ * Java Modules {@code provides} on the module-path. Reuses {@code MessageBodyRegistry},
  * {@code CassiniResponse}, {@code CassiniUriBuilder} and {@code CassiniRuntimeDelegate}
  * from {@code cassini-core} to share request/response serialization.</p>
  */

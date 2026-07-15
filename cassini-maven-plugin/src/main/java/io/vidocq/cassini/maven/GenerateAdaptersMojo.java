@@ -57,12 +57,12 @@ import java.util.logging.Logger;
  * {@code Class.forName(<class>$$CassiniAdapter)} first, so pre-generated adapters are picked up
  * automatically.</p>
  *
- * <h2>JPMS named-module rule</h2>
+ * <h2>Java Modules named-module rule</h2>
  * <p>Adapters must live in the <em>resource's package</em> so that the {@code <clinit>}
  * {@code privateLookupIn(ResourceClass, lookup)} can access private fields without requiring
  * app-side {@code opens}. For <em>plain classpath JARs</em> (no {@code module-info.class}) the
  * adapter is written into the project's output directory — no split-package problem.
- * For <em>named JPMS modules</em> (JAR contains {@code module-info.class}) writing the adapter
+ * For <em>named Java modules</em> (JAR contains {@code module-info.class}) writing the adapter
  * into the project's output would split the package across two modules (forbidden). The plugin
  * handles this via the {@code repackageModularDependencies} option:</p>
  * <ul>
@@ -119,7 +119,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
     private List<String> excludeArtifacts = new ArrayList<>();
 
     /**
-     * When {@code true}: if a dependency JAR is a named JPMS module (contains
+     * When {@code true}: if a dependency JAR is a named Java module (contains
      * {@code module-info.class}) and contains {@code @Path}/{@code @Provider} resource classes,
      * the plugin will <em>repackage</em> that dependency: produce a derived JAR containing the
      * original module's classes plus the generated adapters woven into the same module/package,
@@ -127,7 +127,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
      * JAR onto the classpath/modulepath.
      *
      * <p>When {@code false} (default) the build FAILS with an actionable message when a named
-     * JPMS module dependency with {@code @Path}/{@code @Provider} resources is detected.</p>
+     * Java module dependency with {@code @Path}/{@code @Provider} resources is detected.</p>
      */
     @Parameter(property = "cassini.repackageModularDependencies", defaultValue = "false")
     private boolean repackageModularDependencies;
@@ -307,7 +307,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
                 String ga = artifact.getGroupId() + ":" + artifact.getArtifactId()
                         + ":" + artifact.getVersion();
                 throw new MojoExecutionException(
-                        "Resource class " + fqn + " is in named JPMS module '" + moduleName
+                        "Resource class " + fqn + " is in named Java module '" + moduleName
                                 + "' (dependency " + ga + "). "
                                 + "Generating its adapter in this module would split-package '"
                                 + pkg + "'. "

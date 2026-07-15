@@ -1,5 +1,5 @@
 = Cassini
-:description: Implémentation Jakarta RESTful Web Services 4.0 (Core Profile / SE-Bootstrap), transport-agnostique, JPMS natif, Java 25.
+:description: Implémentation Jakarta RESTful Web Services 4.0 (Core Profile / SE-Bootstrap), transport-agnostique, Java Modules natif, Java 25.
 
 [.text-center]
 image::cassini-logo.png[Cassini,300,role=module-logo]
@@ -32,7 +32,7 @@ L'arborescence des ressources REST est une carte. Cassini est le runtime qui la 
 | Spec implémentée | {spec-rest-4}
 | Repo | {repo-cassini}
 | Java | 25 (LTS)
-| Modules JPMS | `io.vidocq.cassini.api`, `io.vidocq.cassini.core`, `io.vidocq.cassini.client`, `io.vidocq.cassini.chappe`, `io.vidocq.cassini.jdkhttp`, `io.vidocq.cassini.cdi.vauban` (+ build-time : `io.vidocq.cassini.processor`, `cassini-maven-plugin`)
+| Modules Java Modules | `io.vidocq.cassini.api`, `io.vidocq.cassini.core`, `io.vidocq.cassini.client`, `io.vidocq.cassini.chappe`, `io.vidocq.cassini.jdkhttp`, `io.vidocq.cassini.cdi.vauban` (+ build-time : `io.vidocq.cassini.processor`, `cassini-maven-plugin`)
 | Dépendances runtime | Specs Jakarta uniquement (`jakarta.ws.rs`, `jakarta.json.bind`). Transport via xref:chappe::index.adoc[Chappe] ou JDK `com.sun.net.httpserver`. CDI optionnel via xref:vauban::index.adoc[Vauban].
 | TCK | ✅ 2535 / 2535 applicables (100 %) — détails xref:tck.adoc[ici].
 |===

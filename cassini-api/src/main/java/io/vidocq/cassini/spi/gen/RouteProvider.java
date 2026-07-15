@@ -65,7 +65,7 @@ public interface RouteProvider {
      * <p><b>ServiceLoader keying:</b> when a route provider is registered as a {@code ServiceLoader}
      * provider (module-path {@code provides RouteProvider with <Class>$$CassiniRoutes}, or a
      * {@code META-INF/services} entry), {@code RouteRegistry} builds a {@code Class → provider} map
-     * keyed by this method, so a strict JPMS application can keep its resource package <em>closed</em>
+     * keyed by this method, so a strict Java Modules application can keep its resource package <em>closed</em>
      * (no {@code opens}, no {@code exports}) — the module system instantiates the provider and
      * cassini-core never calls {@code Class.forName} into the package.</p>
      *

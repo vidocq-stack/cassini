@@ -111,7 +111,7 @@ class CassiniResourceProcessorTest {
             cl = cl.getParent();
         }
 
-        // 3. Resolve locations from the named module layer (covers JPMS module-path jars).
+        // 3. Resolve locations from the named module layer (covers Java module-path jars).
         ModuleLayer layer = getClass().getModule().getLayer();
         if (layer != null) {
             layer.configuration().modules().forEach(rm -> {

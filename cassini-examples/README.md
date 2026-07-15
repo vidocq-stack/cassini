@@ -28,7 +28,7 @@ The `.http` files in `src/test/resources/http/` allow testing via the IntelliJ H
 
 ## Transport discovery mechanism — `SeBootstrap`
 
-`jakarta.ws.rs.SeBootstrap.start(app, config)` uses the standard JPMS ServiceLoader to find an implementation of `jakarta.ws.rs.ext.RuntimeDelegate`:
+`jakarta.ws.rs.SeBootstrap.start(app, config)` uses the standard Java Modules ServiceLoader to find an implementation of `jakarta.ws.rs.ext.RuntimeDelegate`:
 
 ```
 SeBootstrap.start(app, config)

@@ -2,7 +2,7 @@
 :description: JAX-RS vocabulary, Cassini programming model, REST 4.0 vs 3.x differences.
 
 [.lead]
-This page defines the JAX-RS vocabulary as Cassini implements it, and clarifies what Jakarta REST 4.0 brings over JAX-RS 3.x — strict JPMS, `SeBootstrap`, virtual threads.
+This page defines the JAX-RS vocabulary as Cassini implements it, and clarifies what Jakarta REST 4.0 brings over JAX-RS 3.x — strict Java Modules, `SeBootstrap`, virtual threads.
 
 == JAX-RS vocabulary
 
@@ -63,7 +63,7 @@ Like geodetic triangulation, JAX-RS routing is hierarchical and deterministic:
 | JAX-RS 3.x | Jakarta REST 4.0 (Cassini)
 | Implicit transport (Servlet 4) | Native `SeBootstrap` §5.2, pluggable transport via `RuntimeDelegate` ServiceLoader
 | Platform threads | **Virtual threads by default** (Java 25), no platform pool needed
-| No official module-info support | **Native JPMS**: complete `module-info.java`, minimal exports
+| No official module-info support | **Native Java Modules**: complete `module-info.java`, minimal exports
 | Bootstrap limited to container | Standalone `SeBootstrap.start(Application.class, config)`
 | Partial multipart (Forms) | First-class **`EntityPart`** §3.5.4
 | Partial records | Java 17+ records natively supported on the binding side (Champollion)
