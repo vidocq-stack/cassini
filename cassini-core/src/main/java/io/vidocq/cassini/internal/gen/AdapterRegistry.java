@@ -177,11 +177,26 @@ public final class AdapterRegistry {
             LOG.fine("Runtime-generated adapter used for " + beanClass.getName());
             return Optional.of(existing != null ? existing : adapter);
         } catch (Exception e) {
-            LOG.log(Level.WARNING, "Runtime adapter generation failed for "
-                    + beanClass.getName() + " — using reflective fallback: " + e.getMessage(), e);
+            // The reflective fallback is a supported path: one actionable line at WARNING,
+            // full stack trace only when FINE is enabled.
+            LOG.warning("Runtime adapter generation failed for " + beanClass.getName()
+                    + " — using reflective fallback: " + rootMessage(e));
+            LOG.log(Level.FINE, "Runtime adapter generation failure details for "
+                    + beanClass.getName(), e);
             CACHE.putIfAbsent(beanClass, SENTINEL);
             return Optional.empty();
         }
+    }
+
+    /** Deepest non-blank message of the cause chain, falling back to the exception's toString. */
+    private static String rootMessage(Throwable t) {
+        String message = null;
+        for (Throwable current = t; current != null; current = current.getCause()) {
+            if (current.getMessage() != null && !current.getMessage().isBlank()) {
+                message = current.getMessage();
+            }
+        }
+        return message != null ? message : t.toString();
     }
 
     /**

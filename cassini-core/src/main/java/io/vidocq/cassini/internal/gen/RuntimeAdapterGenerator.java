@@ -42,6 +42,7 @@ import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDescs;
 import java.lang.constant.MethodTypeDesc;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -280,6 +281,15 @@ public final class RuntimeAdapterGenerator {
                     + targetName + "'s module-info.java. Falling back to reflective FieldInjector.", iae);
         }
 
+        // The adapter implements io.vidocq.cassini.spi.gen.ResourceAdapter, so the resource's
+        // module must READ io.vidocq.cassini.api — which a spec-only user module (e.g. a scanned
+        // dependency that never `requires` anything Vidocq) legitimately does not. Class derivation
+        // would then fail with IllegalAccessError. Module.addReads is caller-sensitive (only the
+        // module itself may call it), so we bootstrap the edge from WITHIN the target module: a
+        // one-method shim defined through the same Lookup (it only references java.base, so its
+        // derivation cannot fail) adds the read edge on the target's behalf.
+        ensureTargetReads(resourceClass, resourceLookup, ResourceAdapter.class.getModule());
+
         // defineClass requires that the new class's package matches the lookup's package.
         // Our adapter is named <ResourceClass>$$CassiniAdapter, so it's in the resource's package.
         Class<?> defined;
@@ -287,7 +297,16 @@ public final class RuntimeAdapterGenerator {
             defined = resourceLookup.defineClass(bytecode);
         } catch (LinkageError le) {
             // Concurrent definition — another thread beat us; load the already-defined class.
-            defined = Class.forName(adapterName, false, resourceClass.getClassLoader());
+            try {
+                defined = Class.forName(adapterName, false, resourceClass.getClassLoader());
+            } catch (ClassNotFoundException cnfe) {
+                // Not a concurrent definition: the definition itself failed (unreadable
+                // supertype, verification…). Surface the original LinkageError, not the CNFE.
+                Exception ex = new Exception("Adapter class definition failed for "
+                        + resourceClass.getName() + ": " + le, le);
+                ex.addSuppressed(cnfe);
+                throw ex;
+            }
         }
 
         // Trigger <clinit> eagerly so VarHandle failures are surfaced at generation time,
@@ -303,6 +322,85 @@ public final class RuntimeAdapterGenerator {
         AdapterRegistry.registerMethodIds(resourceClass, methodIds);
 
         return defined;
+    }
+
+    // ---- read-edge bootstrap for spec-only user modules ----
+
+    /** Suffix of the shim class that adds read edges from within the resource's module. */
+    static final String READS_SHIM_SUFFIX = "$$CassiniReads";
+
+    private static final ClassDesc CD_Module = ClassDesc.of("java.lang.Module");
+
+    /**
+     * Makes the resource's module read every module in {@code needed}, so that classes
+     * implementing framework interfaces can be defined into it.
+     *
+     * <p>{@link Module#addReads} is caller-sensitive — only code <em>inside</em> the module may
+     * add a read edge — so this defines a one-method shim in the resource's package through the
+     * caller-provided full-privilege {@code Lookup} and invokes it. The shim references only
+     * {@code java.base}, so its own derivation cannot fail. Idempotent and safe under
+     * concurrency: an already-defined shim is reused, and {@code addReads} is itself idempotent.</p>
+     */
+    static void ensureTargetReads(Class<?> resourceClass, MethodHandles.Lookup resourceLookup,
+            Module... needed) throws Exception {
+        Module target = resourceClass.getModule();
+        if (!target.isNamed()) {
+            return; // the unnamed module reads everything
+        }
+        List<Module> missing = new ArrayList<>();
+        for (Module m : needed) {
+            if (m != null && m != target && !target.canRead(m)) {
+                missing.add(m);
+            }
+        }
+        if (missing.isEmpty()) {
+            return;
+        }
+
+        String shimName = resourceClass.getName() + READS_SHIM_SUFFIX;
+        Class<?> shim;
+        try {
+            shim = Class.forName(shimName, false, resourceClass.getClassLoader());
+        } catch (ClassNotFoundException notDefinedYet) {
+            try {
+                shim = resourceLookup.defineClass(readsShimBytecode(shimName));
+            } catch (LinkageError alreadyDefinedConcurrently) {
+                shim = Class.forName(shimName, false, resourceClass.getClassLoader());
+            }
+        }
+
+        var addReads = resourceLookup.findStatic(shim, "addReads",
+                MethodType.methodType(void.class, Module.class));
+        for (Module m : missing) {
+            try {
+                addReads.invoke(m);
+            } catch (Throwable t) {
+                throw new Exception("Read-edge bootstrap failed for module "
+                        + target.getName() + " -> " + m.getName(), t);
+            }
+        }
+    }
+
+    /**
+     * {@code public final class <Resource>$$CassiniReads { public static void addReads(Module m)
+     * { <Resource>$$CassiniReads.class.getModule().addReads(m); } }}
+     */
+    private static byte[] readsShimBytecode(String shimName) {
+        ClassDesc shimCD = ClassDesc.of(shimName);
+        return ClassFile.of().build(shimCD, clb -> {
+            clb.withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER | ClassFile.ACC_FINAL);
+            clb.withMethodBody("addReads",
+                    MethodTypeDesc.of(CD_void, CD_Module),
+                    ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC,
+                    cob -> {
+                        cob.ldc(shimCD);
+                        cob.invokevirtual(CD_Class, "getModule", MethodTypeDesc.of(CD_Module));
+                        cob.aload(0);
+                        cob.invokevirtual(CD_Module, "addReads", MethodTypeDesc.of(CD_Module, CD_Module));
+                        cob.pop();
+                        cob.return_();
+                    });
+        });
     }
 
     // ---- <clinit>: MethodHandles.privateLookupIn + findVarHandle per field ----
