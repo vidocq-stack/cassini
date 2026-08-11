@@ -198,6 +198,16 @@ public final class RouteRegistry {
     }
 
     /**
+     * Full reset of the route-discovery caches. Public for
+     * {@code io.vidocq.cassini.runtime.CassiniMaintenance} (dev-mode hot reload: the
+     * application classes are re-defined in a fresh module layer, so providers keyed by
+     * the old {@code Class} objects must be rebuilt).
+     */
+    public static void resetAll() {
+        serviceProviders = null;
+    }
+
+    /**
      * Converts {@link RouteDescriptor}s to {@link ResourceMethod}s.
      * Uses targeted {@code getDeclaredMethod} (not a scan) and {@code UriTemplate.compile}.
      */

@@ -308,4 +308,16 @@ public final class AdapterRegistry {
     static void resetServiceAdapters() {
         serviceAdapters = null;
     }
+
+    /**
+     * Full reset of the adapter caches. Public for
+     * {@code io.vidocq.cassini.runtime.CassiniMaintenance} (dev-mode hot reload: the
+     * application classes are re-defined in a fresh module layer, so adapters keyed by
+     * the old {@code Class} objects must be rebuilt).
+     */
+    public static void resetAll() {
+        CACHE.clear();
+        METHOD_IDS.clear();
+        serviceAdapters = null;
+    }
 }

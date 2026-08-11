@@ -93,11 +93,17 @@ public final class ChappeHttpAdapter implements Handler {
                     }
                 });
                 if (error[0] instanceof Exception ex) {
+                    // Never let a request die silently: the transport answers a generic
+                    // 500 from the failed future, so this log line is the only trace.
+                    LOG.log(System.Logger.Level.ERROR,
+                            "Request failed: " + exchange.method() + " " + exchange.routingPath(), ex);
                     future.completeExceptionally(ex);
                 } else {
                     future.complete(buildChappeResponse(exchange));
                 }
             } catch (Throwable t) {
+                LOG.log(System.Logger.Level.ERROR,
+                        "Request failed: " + exchange.method() + " " + exchange.routingPath(), t);
                 future.completeExceptionally(t);
             } finally {
                 // Buffered mode: unblock the caller once the response is ready.

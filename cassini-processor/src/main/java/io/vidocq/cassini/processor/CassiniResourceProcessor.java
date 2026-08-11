@@ -87,6 +87,29 @@ public class CassiniResourceProcessor extends AbstractProcessor {
 
     // Already-processed class names (binary) — avoid duplicate generation across rounds.
     private final Set<String> processed = new HashSet<>();
+    private final Set<String> generatedAdapters = new LinkedHashSet<>();
+    private final Set<String> generatedRoutes = new LinkedHashSet<>();
+
+    /** Writes {@code META-INF/services/<service>} listing {@code providers} (if any). */
+    private void writeServiceFile(String service, Set<String> providers) {
+        if (providers.isEmpty()) {
+            return;
+        }
+        try {
+            var resource = filer.createResource(javax.tools.StandardLocation.CLASS_OUTPUT, "",
+                    "META-INF/services/" + service);
+            try (var w = new java.io.PrintWriter(resource.openOutputStream(), false,
+                    java.nio.charset.StandardCharsets.UTF_8)) {
+                for (var name : providers) {
+                    w.println(name);
+                }
+            }
+        } catch (IOException e) {
+            messager.printMessage(Diagnostic.Kind.WARNING,
+                    "cassini-processor: failed to write services file for " + service
+                            + ": " + e.getMessage());
+        }
+    }
 
     @Override
     public synchronized void init(ProcessingEnvironment env) {
@@ -100,6 +123,14 @@ public class CassiniResourceProcessor extends AbstractProcessor {
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
         if (roundEnv.processingOver()) {
+            // Class-path fallback + Vauban-layer promotion source: standard services
+            // files for the generated providers. Named modules ignore them at runtime
+            // (module mode needs `provides`), but the Vauban application layer promotes
+            // them to synthetic `provides` when it resolves the module — which is what
+            // frees applications from hand-declaring generated classes in
+            // module-info.java (the Maven plugin sealing covers pre-built jars).
+            writeServiceFile("io.vidocq.cassini.spi.gen.ResourceAdapter", generatedAdapters);
+            writeServiceFile("io.vidocq.cassini.spi.gen.RouteProvider", generatedRoutes);
             return false;
         }
 
@@ -118,6 +149,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             processed.add(binaryName);
             try {
                 generateAdapter(resourceType);
+                generatedAdapters.add(binaryName + ADAPTER_SUFFIX);
             } catch (Exception e) {
                 messager.printMessage(Diagnostic.Kind.ERROR,
                         "cassini-processor: failed to generate adapter for "
@@ -128,6 +160,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             if (hasAnnotation(resourceType, "jakarta.ws.rs.Path")) {
                 try {
                     generateRoutes(resourceType);
+                    generatedRoutes.add(binaryName + ROUTES_SUFFIX);
                 } catch (Exception e) {
                     messager.printMessage(Diagnostic.Kind.WARNING,
                             "cassini-processor: failed to generate routes for "
