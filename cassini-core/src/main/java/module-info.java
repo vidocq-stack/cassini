@@ -34,6 +34,10 @@ module io.vidocq.cassini.core {
     requires java.xml;
     requires java.logging;
 
+    // Maintenance API for hosts that hot-reload the application in the same JVM
+    // (Vidocq dev mode, layer re-creation) — the only unqualified export of this module.
+    exports io.vidocq.cassini.runtime;
+
     exports io.vidocq.cassini.internal
             to io.vidocq.cassini.tck,
                io.vidocq.cassini.client,
