@@ -6,7 +6,7 @@ Cassini strictly implements Jakarta RESTful Web Services 4.0. If your applicatio
 
 [CAUTION]
 ====
-Cassini is at `0.2.0`. A production migration is premature until the first stable release ships. This page anticipates the path for evaluators.
+Cassini is at `{project-version}`. A production migration is premature until the first stable release ships. This page anticipates the path for evaluators.
 ====
 
 == From Jersey
@@ -99,8 +99,8 @@ All standard annotations are preserved. No expected change on user code if it is
 == Known pitfalls
 
 * **Sub-resource locators** (`@Path` on a method returning an instance): supported. Verify imports if the application used a proprietary variant.
-* **`@Suspended AsyncResponse`**: supported; full chunked streaming is on milestone M2h (see xref:tck.adoc[TCK]).
-* **SSE backpressure**: `CassiniSseEventSink` buffers in 0.1.0 — real-time streaming arrives in M2i.
+* **`@Suspended AsyncResponse`**: supported, including chunked streaming (delivered in M2h — see xref:tck.adoc[TCK]).
+* **SSE**: real-time streaming since M2i — events are flushed as they are emitted (no buffering), with client callbacks (spec §8.2) and broken-connection detection through Chappe.
 * **JAX-RS Client**: a standard client now ships in `cassini-client` (`ClientBuilder.newClient()`, `java.net.http` + virtual threads). Client-side multipart entities remain limited — use an external client for those in the meantime.
 * **MicroProfile Config / Health / Metrics**: wire via xref:vidocq::index.adoc[Vidocq Runtime] (orchestrator) — Cassini alone does not configure MP.
 

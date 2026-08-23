@@ -18,7 +18,7 @@ Looking for the batteries-included experience (CDI, config, packaging, dev mode)
 
 A single, complete `pom.xml` — nothing else to configure:
 
-[source,xml]
+[source,xml,subs=attributes+]
 ----
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -44,13 +44,13 @@ A single, complete `pom.xml` — nothing else to configure:
         <dependency>
             <groupId>io.vidocq.cassini</groupId>
             <artifactId>cassini-core</artifactId>
-            <version>0.2.0</version>
+            <version>{project-version}</version>
         </dependency>
         <!-- reference transport, embeds the Chappe HTTP server -->
         <dependency>
             <groupId>io.vidocq.cassini</groupId>
             <artifactId>cassini-chappe</artifactId>
-            <version>0.2.0</version>
+            <version>{project-version}</version>
             <scope>runtime</scope>
         </dependency>
     </dependencies>
@@ -193,6 +193,6 @@ Stop the server with kbd:[Ctrl+C].
 
 == Going further
 
-* **CDI-managed resources** (`@Inject`, scopes): the streamlined path is the https://doc.vidocq.dev/vidocq/getting-started[Vidocq runtime] — it wires Vauban, the annotation processors and the packaging for you. The standalone wiring (Vauban container, `cassini-cdi-vauban`, build-time bean index) is demonstrated in the https://codeberg.org/Vidocq/cassini/src/branch/main/cassini-examples/cassini-examples-vauban[`cassini-examples-vauban`] module.
-* **Embedding Cassini** in an existing Chappe server (composite handlers, static files + API): see the `CassiniStack` SPI in xref:usage.adoc[Usage] and the https://codeberg.org/Vidocq/cassini/src/branch/main/cassini-examples[`cassini-examples`] modules.
+* **CDI-managed resources** (`@Inject`, scopes): the streamlined path is the https://doc.vidocq.dev/vidocq/getting-started[Vidocq runtime] — it wires Vauban, the annotation processors and the packaging for you. The standalone wiring (Vauban container, `cassini-cdi-vauban`, build-time bean index) is demonstrated in the https://codefloe.com/Vidocq/cassini/src/branch/main/cassini-examples/cassini-examples-vauban[`cassini-examples-vauban`] module.
+* **Embedding Cassini** in an existing Chappe server (composite handlers, static files + API): see the `CassiniStack` SPI in xref:usage.adoc[Usage] and the https://codefloe.com/Vidocq/cassini/src/branch/main/cassini-examples[`cassini-examples`] modules.
 * xref:usage.adoc[Usage] — sub-resources, providers, async, SSE · xref:concepts.adoc[Concepts] · xref:tck.adoc[TCK status]
