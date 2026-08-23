@@ -16,7 +16,7 @@
 
     <name>Cassini</name>
     <description>Standalone Jakarta RESTful Web Services 4.0 implementation — pure REST 4.0, HTTP transport via SPI, optional CDI</description>
-    <url>https://codeberg.org/Vidocq/cassini</url>
+    <url>https://codefloe.com/Vidocq/cassini</url>
 
     <developers>
         <developer>
@@ -55,9 +55,9 @@
     </licenses>
 
     <scm>
-        <connection>scm:git:https://codeberg.org/Vidocq/cassini.git</connection>
+        <connection>scm:git:https://codefloe.com/Vidocq/cassini.git</connection>
         <developerConnection>scm:git:ssh://git@forge.vidocq.dev:vidocq/cassini.git</developerConnection>
-        <url>https://codeberg.org/Vidocq/cassini</url>
+        <url>https://codefloe.com/Vidocq/cassini</url>
     </scm>
 
     <properties>
