@@ -98,7 +98,7 @@ sequenceDiagram
               ├─ cassini-core (impl, sealed)
               │     ├── Invoker, UriRouter, ResourceScanner...
               │     ├── CassiniRuntimeDelegate (base for transports)
-              │     └── exports internal.runtime to {tck, jdkhttp, chappe}
+              │     └── exports internal.runtime to {tck, jdkhttp, chappe, client}
               │
    ServiceLoader─┬─ cassini-chappe ──→ requires cassini-api + cassini-core
               │     provides RuntimeDelegate with ChappeRuntimeDelegate
@@ -131,7 +131,7 @@ Adapters come from one of three generators, most-preferred first (`AdapterRegist
 . **Maven plugin — build time** (`cassini-maven-plugin:generate`, bound to `process-classes`): pre-generates adapters for **external archives** (dependency JARs) by calling `RuntimeAdapterGenerator.toBytecode(cls)` and writing the `.class` files to `target/classes`. AOT-safe.
 . **Runtime generator** (`RuntimeAdapterGenerator.generate`, Class-File API / JEP 484): JVM-only fallback when neither of the above produced an adapter.
 
-`AdapterRegistry.lookup` tries `Class.forName(<class>$$CassiniAdapter)` first (APT/plugin output), then the runtime generator, then caches a `SENTINEL` so the request falls through to the reflective `FieldInjector` filet without retrying.
+`AdapterRegistry.lookup` first consults the map of **`ServiceLoader`-registered adapters** (module-path `provides ResourceAdapter with <Class>$$CassiniAdapter` or classpath `META-INF/services`, keyed by `ResourceAdapter.resourceClass()` — the only path that keeps a strict Java Modules resource package closed, with no `opens`/`exports`), then tries `Class.forName(<class>$$CassiniAdapter)` (APT/plugin output), then the runtime generator, then caches a `SENTINEL` so the request falls through to the reflective `FieldInjector` safety net without retrying.
 
 === Documented residual reflection
 
@@ -153,13 +153,15 @@ The binding itself is static: `champollion-codegen-apt` emits a `<Type>_Binding`
 
 [source,java]
 ----
-// SPI in cassini-api:
+// SPI in cassini-api (io.vidocq.cassini.spi.bean):
 public interface BeanProvider {
     interface Factory {
         BeanProvider create();
+        default int priority() { return 0; }
     }
     Set<Class<?>> getResourceClasses();
-    <T> T resolve(Class<T> resourceClass);
+    <T> T getBean(Class<T> type);
+    default Object contextualInstance(Class<?> type, Object bean) { ... }
 }
 ----
 
@@ -171,7 +173,7 @@ provides io.vidocq.cassini.spi.bean.BeanProvider.Factory
     with io.vidocq.cassini.cdi.vauban.VaubanBeanProviderFactory;
 ----
 
-Cassini discovers Vauban via `ServiceLoader`, walks the `BeanManager` at stack construction, and stores `@Path` / `@Provider` classes. For every dispatch, `resolve()` calls `container.select()` — the CDI scope (`@RequestScoped`, `@ApplicationScoped`, ...) is honoured.
+Cassini discovers Vauban via `ServiceLoader`, walks the `BeanManager` at stack construction, and stores `@Path` / `@Provider` classes. For every dispatch, `getBean()` calls `container.select(type)` — the CDI scope (`@RequestScoped`, `@ApplicationScoped`, ...) is honoured. `contextualInstance(...)` unwraps the client proxy of a normal-scoped bean to the real contextual instance, so `@Context` field injection lands on the object the method body actually executes on (invocation still goes through the proxy).
 
 The `CassiniScopeExtension` (Vauban Build Compatible Extension) adds `@RequestScoped` to `@Path` classes lacking an explicit scope — automatic alignment with the semantics filters and interceptors expect.
 
@@ -191,7 +193,7 @@ It reuses `MessageBodyRegistry`, `CassiniResponse`, `CassiniUriBuilder` and `Cas
 * `@Suspended AsyncResponse` immediately releases the carrier thread; resolution is posted by user code on a VT.
 * A `CompletionStage` returned by a resource method is propagated down to the transport via `CassiniAsyncContext`.
 
-Full chunked streaming (SSE backpressure, native `StreamingOutput`) is scheduled for M2h/M2i — see xref:tck.adoc[TCK status].
+Real-time chunked SSE streaming shipped with **M2i** (lazy-commit latch + thread-agnostic chunk queue in `ChappeHttpAdapter` — see `ASYNC.md`). **M2h** (true non-blocking `CompletionStage` propagation to the transport) was dropped as a non-goal: blocking on a virtual thread already yields the carrier, so it buys nothing measurable on JDK 25. See xref:tck.adoc[TCK status].
 
 == Extension points
 

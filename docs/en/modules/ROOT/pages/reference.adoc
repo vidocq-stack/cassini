@@ -38,7 +38,7 @@ Factual reference: published Maven artefacts, exported Java modules, supported J
 | Examples: `cassini-examples-chappe` (standard SE-Bootstrap), `cassini-examples-jdkhttp` (direct CassiniStack), `cassini-examples-vauban` (CDI + SE-Bootstrap).
 |===
 
-NOTE: `cassini-tck` is not published and is **out-of-reactor** (standalone `modelVersion 4.0.0` POM). See xref:tck.adoc#runner-out-of-reactor[TCK — out-of-reactor runner].
+NOTE: `cassini-tck` is not published; it is an **in-reactor module gated behind the `tck` Maven profile** — a plain `mvn install` neither downloads nor runs anything TCK-related. See xref:tck.adoc#runner-out-of-reactor[TCK — runner architecture].
 
 == Java modules
 
@@ -60,13 +60,18 @@ uses io.vidocq.cassini.spi.bean.BeanProvider.Factory;
 
 | `io.vidocq.cassini.core`
 a|
-No public export. `internal.*` is qualified-exported / opened only to
+One public export: `io.vidocq.cassini.runtime` (maintenance API for hosts
+that hot-reload the application in the same JVM — Vidocq dev mode).
+`internal.*` is qualified-exported only to
 `cassini.tck`, `cassini.client`, `cassini.maven.plugin`,
-`cassini.chappe`, `cassini.jdkhttp`.
+`cassini.chappe`, `cassini.jdkhttp`. No `opens`.
 [source]
 ----
+exports io.vidocq.cassini.runtime;
 provides io.vidocq.cassini.spi.http.CassiniStack.BuilderFactory
     with io.vidocq.cassini.internal.CassiniStackBuilderFactory;
+uses io.vidocq.cassini.spi.gen.ResourceAdapter;
+uses io.vidocq.cassini.spi.gen.RouteProvider;
 ----
 
 | `io.vidocq.cassini.chappe`
@@ -130,7 +135,7 @@ NOTE: `cassini-core` deliberately does **not** expose its `CassiniRuntimeDelegat
 `@DefaultValue`, `@Encoded`,
 `@Provider`, `@Priority`, `@NameBinding`, `@PreMatching`,
 `@Context`,
-`@Suspended` (async — see xref:tck.adoc[TCK] for M2h status).
+`@Suspended` (async — supported; SSE real-time streaming since M2i, and M2h was dropped as a non-goal — see xref:tck.adoc[TCK]).
 
 CDI (with `cassini-cdi-vauban`): `@ApplicationScoped`, `@RequestScoped`, `@Singleton`, `@Inject`.
 
@@ -160,13 +165,13 @@ Cassini is configured via `SeBootstrap.Configuration` (standard) or via the `Cas
 | `protocol` | `HTTP` | `HTTP` or `HTTPS` (depending on transport support).
 |===
 
-When Cassini is driven by xref:vidocq::index.adoc[Vidocq Runtime] (the `vidocq-rest-cassini` extension), two extra MicroProfile Config properties:
+When Cassini is driven by xref:vidocq::index.adoc[Vidocq Runtime] (the `io.vidocq.runtime.extensions.jakartaee.core:vidocq-runtime-cassini-rest-extension` extension), the JAX-RS application is mounted on the shared Chappe server through the runtime's HTTP mount configuration:
 
 [cols="2,1,3"]
 |===
-| Property | Default | Description
-| `vidocq.rest.context-path` | `/` | JAX-RS mount prefix in the Vidocq server.
-| `vidocq.rest.listener` | `default` | Target Chappe listener.
+| Property | Example | Description
+| `vidocq.http.mount.<name>.path` | `/api` | Mount prefix of the JAX-RS application in the Vidocq server.
+| `vidocq.http.mount.<name>.type` | `restful` | Mount type — `restful` routes the mount to Cassini.
 |===
 
 == Bugs and benchmarks

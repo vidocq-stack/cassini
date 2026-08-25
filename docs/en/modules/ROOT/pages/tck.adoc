@@ -12,16 +12,16 @@ This page consolidates the status of the official TCK tests run against Cassini.
 | TCK | `jakarta.ws.rs:jakarta-restful-ws-tck:4.0.1`
 | JDK | Eclipse Temurin 25
 | `@Test` count in the TCK | **2670**
-| Tests applicable to the profile | **2535** (134 excluded via `@Tag`, 6 official challenges)
-| Passed | **2535**
+| Tests applicable to the profile | **2538** (the rest excluded via `@Tag` or documented challenges)
+| Passed | **2538**
 | Failures + Errors | **0**
-| Skipped | **135** (134 out-of-profile + 6 challenges + 1 internal exemption)
+| Skipped | **132** (2670 − 2538: out-of-profile `@Tag` exclusions + 4 challenged test methods)
 | Conformance score | **100.00 %** of applicable tests
 |===
 
 [source,text]
 ----
-[INFO] Tests run: 2670, Failures: 0, Errors: 0, Skipped: 135
+[INFO] Tests run: 2670, Failures: 0, Errors: 0, Skipped: 132
 [INFO] BUILD SUCCESS
 ----
 
@@ -41,7 +41,7 @@ Cassini conforms to the Jakarta RESTful Web Services 4.0 specification on the Co
 | §6.5.5 DynamicFeature | ✅ | `cassini-core/internal/filter/CassiniDynamicFeatureContext`
 | §7 ContextResolver / Providers | ✅ | `cassini-core/internal/context/CassiniProviders`
 | §10 Application / `@ApplicationPath` | ✅ | `cassini-chappe/ChappeRuntimeDelegate`
-| §11 SSE | ✅ (buffered) | `cassini-core/internal/sse/CassiniSse{,EventSink,Broadcaster}`
+| §11 SSE | ✅ (real chunked streaming since M2i) | `cassini-core/internal/sse/CassiniSse{,EventSink,Broadcaster}` + `ChappeHttpAdapter`
 | §11.2 BASIC auth | ✅ | `cassini-core/internal/context/CassiniSecurityContext` + `cassini-tck/.../BasicAuthHandler`
 |===
 
@@ -67,7 +67,7 @@ Configuration in `cassini-tck/pom.xml`:
 
 == Intentionally skipped tests (official challenges)
 
-Six tests are disabled via `TckChallengeExclusions` (auto-discovered JUnit 5 `ExecutionCondition`) with documented justification — per the **TCK Process 1.4.1**:
+Four test methods across three classes are disabled via `TckChallengeExclusions` (auto-discovered JUnit 5 `ExecutionCondition`) with documented justification — per the **TCK Process 1.4.1**:
 
 [cols="3,1,4",options="header"]
 |===
@@ -85,10 +85,9 @@ Six tests are disabled via `TckChallengeExclusions` (auto-discovered JUnit 5 `Ex
 | client harness
 | Cassini SERVER fully implements §3.5.4 `EntityPart`. The test fails on the Jersey CLIENT side (harness limitation).
 
-| `jaxrs21.ee.sse.ssebroadcaster.JAXRSClientIT#sseBroadcastTest`, `sseeventsink.JAXRSClientIT#closeTest`, `sseeventsource.JAXRSClientIT#closeTest`
-| streaming infrastructure
-| §11 real-time SSE streaming. `CassiniSseEventSink` buffers then emits in bulk. Real-time chunked streaming through Chappe needs an architectural change in `ChappeHttpAdapter` (concurrent VT + latch). See lien:{repo-cassini}/src/branch/main/ASYNC.md[`ASYNC.md`] §"SSE streaming with Chappe".
 |===
+
+Historical note: three additional §11 SSE streaming challenges (`ssebroadcaster#sseBroadcastTest`, `sseeventsink#closeTest`, `sseeventsource#closeTest`) were **lifted with M2i** (2026-06-11) — `ChappeHttpExchange` now opens real chunked streaming (pipe + latch in `ChappeHttpAdapter`, see lien:{repo-cassini}/src/branch/main/ASYNC.md[`ASYNC.md`]), so events reach the wire incrementally and those tests now PASS.
 
 [#runner-out-of-reactor]
 == Runner architecture: in-reactor behind the `tck` profile
@@ -106,14 +105,15 @@ cd cassini
 # 1. Prerequisites: Java 25 + Maven 3.9.16 (via .sdkmanrc)
 sdk env
 
-# 2. Install the official TCK JAR (non-public, fetch once)
+# 2. Install the official TCK JAR (non-public, fetch once).
+#    The build resolves jakarta.ws.rs:jakarta-restful-ws-tck:4.0.1.
 curl -Lo /tmp/restful-ws-tck.zip \
-  https://download.eclipse.org/jakartaee/restful-ws/4.0/jakarta-restful-ws-tck-4.0.0.zip
+  https://download.eclipse.org/jakartaee/restful-ws/4.0/jakarta-restful-ws-tck-4.0.1.zip
 unzip /tmp/restful-ws-tck.zip -d /tmp/restful-ws-tck
 mvn install:install-file \
-  -Dfile=/tmp/restful-ws-tck/jakarta-restful-ws-tck/lib/jakarta-restful-ws-tck-4.0.0.jar \
-  -DgroupId=jakarta.tck -DartifactId=jakarta-restful-ws-tck \
-  -Dversion=4.0.0 -Dpackaging=jar
+  -Dfile=/tmp/restful-ws-tck/jakarta-restful-ws-tck/lib/jakarta-restful-ws-tck-4.0.1.jar \
+  -DgroupId=jakarta.ws.rs -DartifactId=jakarta-restful-ws-tck \
+  -Dversion=4.0.1 -Dpackaging=jar
 
 # 3. Run the TCK
 ./run-official-tck-restful-4.0.sh                          # smoke test
@@ -125,6 +125,6 @@ Expected output on `all`:
 
 [source,text]
 ----
-[INFO] Tests run: 2670, Failures: 0, Errors: 0, Skipped: 135
+[INFO] Tests run: 2670, Failures: 0, Errors: 0, Skipped: 132
 [INFO] BUILD SUCCESS
 ----
