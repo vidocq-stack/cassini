@@ -2,7 +2,7 @@
 :description: Conformance status against the official Jakarta REST 4.0.1 TCK.
 
 [.lead]
-This page consolidates the status of the official TCK tests run against Cassini. The day-to-day source of truth remains the lien:{repo-cassini}/src/branch/main/TCK.md[`TCK.md`] in the repo.
+This page consolidates the status of the official TCK tests run against Cassini. The day-to-day source of truth remains the link:{repo-cassini}/src/branch/main/TCK.md[`TCK.md`] in the repo.
 
 == Result
 
@@ -87,7 +87,7 @@ Four test methods across three classes are disabled via `TckChallengeExclusions`
 
 |===
 
-Historical note: three additional §11 SSE streaming challenges (`ssebroadcaster#sseBroadcastTest`, `sseeventsink#closeTest`, `sseeventsource#closeTest`) were **lifted with M2i** (2026-06-11) — `ChappeHttpExchange` now opens real chunked streaming (pipe + latch in `ChappeHttpAdapter`, see lien:{repo-cassini}/src/branch/main/ASYNC.md[`ASYNC.md`]), so events reach the wire incrementally and those tests now PASS.
+Historical note: three additional §11 SSE streaming challenges (`ssebroadcaster#sseBroadcastTest`, `sseeventsink#closeTest`, `sseeventsource#closeTest`) were **lifted with M2i** (2026-06-11) — `ChappeHttpExchange` now opens real chunked streaming (pipe + latch in `ChappeHttpAdapter`, see link:{repo-cassini}/src/branch/main/ASYNC.md[`ASYNC.md`]), so events reach the wire incrementally and those tests now PASS.
 
 [#runner-out-of-reactor]
 == Runner architecture: in-reactor behind the `tck` profile
