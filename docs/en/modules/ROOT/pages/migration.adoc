@@ -99,7 +99,7 @@ All standard annotations are preserved. No expected change on user code if it is
 == Known pitfalls
 
 * **Sub-resource locators** (`@Path` on a method returning an instance): supported. Verify imports if the application used a proprietary variant.
-* **`@Suspended AsyncResponse`**: supported, including chunked streaming (delivered in M2h — see xref:tck.adoc[TCK]).
+* **`@Suspended AsyncResponse`**: supported. SSE real-time streaming shipped with M2i; M2h (the true non-blocking milestone) was dropped as a non-goal — blocking on a virtual thread already yields the carrier (see xref:tck.adoc[TCK]).
 * **SSE**: real-time streaming since M2i — events are flushed as they are emitted (no buffering), with client callbacks (spec §8.2) and broken-connection detection through Chappe.
 * **JAX-RS Client**: a standard client now ships in `cassini-client` (`ClientBuilder.newClient()`, `java.net.http` + virtual threads). Client-side multipart entities remain limited — use an external client for those in the meantime.
 * **MicroProfile Config / Health / Metrics**: wire via xref:vidocq::index.adoc[Vidocq Runtime] (orchestrator) — Cassini alone does not configure MP.
