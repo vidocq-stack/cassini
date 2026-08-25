@@ -64,4 +64,4 @@ Cassini shares Chappe with xref:foy::index.adoc[Foy] (Servlet 6.1): a single pro
 * xref:reference.adoc[Reference]
 * xref:migration.adoc[Migration from Jersey / RESTEasy / Helidon]
 
-Consolidated bugs and benchmarks: lien:{repo-cassini}/src/branch/main/BUG.md[BUG.md], lien:{repo-cassini}/src/branch/main/BENCH.md[BENCH.md].
+Consolidated bugs and benchmarks: link:{repo-cassini}/src/branch/main/BUG.md[BUG.md], link:{repo-cassini}/src/branch/main/BENCH.md[BENCH.md].

@@ -108,4 +108,4 @@ All standard annotations are preserved. No expected change on user code if it is
 
 * xref:concepts.adoc[Concepts]
 * xref:tck.adoc[TCK status]
-* lien:{repo-cassini}/src/branch/main/cassini-migration.md[Internal migration notes (repo)]
+* link:{repo-cassini}/src/branch/main/cassini-migration.md[Internal migration notes (repo)]

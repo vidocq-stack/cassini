@@ -159,7 +159,7 @@ public void events(@Context SseEventSink sink, @Context Sse sse) {
 }
 ----
 
-NOTE: Since milestone **M2i** (done), `CassiniSseEventSink` streams events to the wire as they are emitted: each `send()` writes a chunk through the transport's `CassiniStreamingSink` (real chunked streaming on Chappe and the JDK transport), falling back to buffered emission only on a transport without streaming support (see lien:{repo-cassini}/src/branch/main/ASYNC.md[`ASYNC.md`]).
+NOTE: Since milestone **M2i** (done), `CassiniSseEventSink` streams events to the wire as they are emitted: each `send()` writes a chunk through the transport's `CassiniStreamingSink` (real chunked streaming on Chappe and the JDK transport), falling back to buffered emission only on a transport without streaming support (see link:{repo-cassini}/src/branch/main/ASYNC.md[`ASYNC.md`]).
 
 == JAX-RS Client
 
