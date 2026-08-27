@@ -16,10 +16,25 @@ The chosen solution (identical to `vidocq-servlet-chappe-tck-runner`):
 a standalone Maven project in `Model 4.0.0`, with internal dependencies pinned to
 the current dev version installed in the local M2 repository.
 
-## Installing TCK artifacts
+## Signature test resources (EFTL bundle)
 
-The official TCK JARs are not on Maven Central. Download them once
-from the Eclipse Foundation and then install them locally:
+The harness resolves `jakarta.ws.rs:jakarta-restful-ws-tck:4.0.1` from Maven
+Central for the behavioural tests. That artifact does **not** contain the
+signature-test resources (`sig-test.map`, `sig-test-pkg-list.txt`,
+`jakarta.ws.rs.sig_4.0.0`), which only ship in the EFTL bundle
+`jakarta-restful-ws-tck-4.0.1.zip` on download.eclipse.org.
+`run-official-tck-restful-4.0.sh` downloads that bundle once into
+`cassini-tck/target/eftl/` (SHA-256 verified) and the `tck-official` profile
+copies the three resources onto the test classpath (`tck.eftl.jar` property),
+so `JAXRSSigTestIT#signatureTest` runs. Nothing under the EFTL licence is
+committed. To point at a bundle you already have:
+`-Dtck.eftl.jar=/path/to/jakarta-restful-ws-tck-4.0.1.jar`.
+
+## Installing TCK artifacts (legacy note)
+
+Earlier revisions installed the EFTL jar manually. This is no longer
+required for development runs; keep it only if you want the EFTL jar itself
+(rather than the Central one) on the classpath for the certification run:
 
 ```bash
 curl -Lo /tmp/restful-ws-tck.zip \

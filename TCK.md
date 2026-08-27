@@ -11,11 +11,11 @@
 | Tests applicable to profile | **2538** (134 excluded via `@Tag`, 3 official challenges) |
 | **Passed** | **2538** |
 | Failures + Errors | **0** |
-| Skipped | **135** (134 out-of-profile tags + 6 challenges + 1 internal exemption) |
+| Skipped | **131** (out-of-profile tags + 3 challenges; the signature test runs since 2026-08-27) |
 | **Conformance score** | **100.00 %** of applicable tests |
 
 ```
-[INFO] Tests run: 2670, Failures: 0, Errors: 0, Skipped: 135
+[INFO] Tests run: 2670, Failures: 0, Errors: 0, Skipped: 131
 [INFO] BUILD SUCCESS
 ```
 
@@ -57,7 +57,7 @@ Six tests are disabled via the class
 | Test | Category | Reason |
 |---|---|---|
 | `spec.resource.requestmatching.JAXRSClientIT#locatorNameTooLongAgainTest` | spec interpretation | Per §3.7.2 step 2(g) literal, `@GET @Path("locator/locator/locator")` matches `/locator/locator/locator` → 200 expected. The test enforces a non-portable segment-by-segment interpretation. |
-| `signaturetest.jaxrs.JAXRSSigTestIT#signatureTest` | TCK environment | JDK 2.5 sigtest requires a complete TCK layout. The `jakarta.ws.rs` API is not modified by Cassini — this test evaluates the TCK environment, not Cassini conformance. |
+| ~~`signaturetest.jaxrs.JAXRSSigTestIT#signatureTest`~~ | — | **Lifted (2026-08-27)**: not a challenge. The test loads `sig-test.map`, `sig-test-pkg-list.txt` and `jakarta.ws.rs.sig_4.0.0` from the classpath; those ship only in the EFTL TCK jar. `run-official-tck-restful-4.0.sh` now fetches the EFTL bundle (SHA-256 checked) and the `tck-official` profile copies the resources onto the test classpath (`tck.eftl.jar`). Result: **PASS** (all `jakarta.ws.rs.*` packages). |
 | `jaxrs31.ee.multipart.MultipartSupportIT#basicTest` + `multiFormParamTest` | client harness | Cassini SERVER fully implements §3.5.4 EntityPart. The test blocks on the Jersey CLIENT side. |
 | ~~3 SSE streaming challenges~~ | — | **Lifted (M2i, 2026-06-11)**: real chunked SSE streaming on Chappe (lazy-commit latch + thread-agnostic chunk queue, see `ASYNC.md`). `sseBroadcastTest`, `sseeventsink#closeTest`, `sseeventsource#closeTest` now PASS. |
 

@@ -39,6 +39,9 @@
         <maven.compiler.release>25</maven.compiler.release>
         <cassini.version>0.3.0-SNAPSHOT</cassini.version>
         <chappe.version>0.3.0-SNAPSHOT</chappe.version>
+        <!-- EFTL TCK jar (from jakarta-restful-ws-tck-4.0.1.zip) — only source of the signature
+             test resources; downloaded into target/eftl by run-official-tck-restful-4.0.sh. -->
+        <tck.eftl.jar>${project.build.directory}/eftl/restful-ws-tck/artifacts/jakarta-restful-ws-tck-4.0.1.jar</tck.eftl.jar>
         <!-- TCK harness: never released. -->
         <maven.deploy.skip>true</maven.deploy.skip>
         <maven.javadoc.skip>true</maven.javadoc.skip>
@@ -226,6 +229,32 @@
                             </execution>
                         </executions>
                     </plugin>
+                    <!-- Signature test resources (sig-test.map, sig-test-pkg-list.txt,
+                         jakarta.ws.rs.sig_4.0.0) ship only in the EFTL TCK jar, not in the Maven
+                         Central artifact. When the EFTL jar is present (fetched into target/eftl by
+                         run-official-tck-restful-4.0.sh, or given via -Dtck.eftl.jar=…), copy those
+                         resources onto the test classpath so JAXRSSigTestIT can run. Nothing under
+                         the EFTL licence is checked into the repository. -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>unpack-eftl-signature-resources</id>
+                                <phase>process-test-resources</phase>
+                                <goals><goal>run</goal></goals>
+                                <configuration>
+                                    <target>
+                                        <available file="${tck.eftl.jar}" property="tck.eftl.jar.present"/>
+                                        <echo unless:set="tck.eftl.jar.present" xmlns:unless="ant:unless">EFTL TCK jar not found at ${tck.eftl.jar} — JAXRSSigTestIT will not find its signature resources (run ./run-official-tck-restful-4.0.sh, which downloads it).</echo>
+                                        <unzip if:set="tck.eftl.jar.present" xmlns:if="ant:if" src="${tck.eftl.jar}" dest="${project.build.directory}/test-classes">
+                                            <patternset includes="ee/jakarta/tck/ws/rs/signaturetest/**"/>
+                                        </unzip>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-resources-plugin</artifactId>
@@ -281,6 +310,10 @@
                                 <authpassword>javajoe</authpassword>
                                 <jimage.dir>${project.build.directory}/jimage</jimage.dir>
                                 <sigTestClasspath>${user.home}/.m2/repository/jakarta/ws/rs/jakarta.ws.rs-api/4.0.0/jakarta.ws.rs-api-4.0.0.jar${path.separator}${project.build.directory}/jimage/java.base${path.separator}${project.build.directory}/jimage/java.xml</sigTestClasspath>
+                                <!-- JAXRSSigTestIT reads the prefixed name (SigTestData#getSigTestClasspath
+                                     reads the plain one); both are set so the signature test resolves the API
+                                     jar plus the JDK modules it extracts into jimage.dir. -->
+                                <signature.sigTestClasspath>${user.home}/.m2/repository/jakarta/ws/rs/jakarta.ws.rs-api/4.0.0/jakarta.ws.rs-api-4.0.0.jar${path.separator}${project.build.directory}/jimage/java.base${path.separator}${project.build.directory}/jimage/java.xml</signature.sigTestClasspath>
                                 <jakarta.ws.rs.ext.RuntimeDelegate>io.vidocq.cassini.chappe.ChappeRuntimeDelegate</jakarta.ws.rs.ext.RuntimeDelegate>
                             </systemPropertyVariables>
                             <argLine>-Djdk.httpclient.allowRestrictedHeaders=host,connection,content-length,expect,upgrade,origin,date,via,cookie</argLine>

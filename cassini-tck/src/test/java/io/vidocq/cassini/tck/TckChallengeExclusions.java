@@ -44,15 +44,15 @@ import java.util.Set;
  *       the HTTP method {@code @GET} matches, so 200 is spec-compliant.
  *       The test imposes a non-portable segment-by-segment interpretation
  *       (Jersey/RESTEasy implement it that way but §3.7.2 does not require it).</li>
- *   <li>{@code signaturetest.jaxrs.JAXRSSigTestIT#signatureTest} — uses
- *       {@code com.sun.tdk.signaturetest} (TDK 2.5) which requires a full TCK
- *       layout (sig-test.map, sig-test-pkg-list.txt on ts_home + resolution of
- *       sigTestClasspath). §A.1 verifies the jakarta.ws.rs API already provided
- *       by the dependency {@code jakarta.ws.rs:jakarta.ws.rs-api:4.0.0} on
- *       the classpath — the API is not modified by Cassini, so this test does
- *       not evaluate Cassini conformance but the TCK environment. The
- *       standalone run does not instantiate the full ts_home infrastructure
- *       expected by the SignatureTestDriver. Challenge documented.</li>
+ *   <li>{@code signaturetest.jaxrs.JAXRSSigTestIT#signatureTest} was excluded until
+ *       2026-08-27. It is <em>not</em> a challenge: the test loads
+ *       {@code sig-test.map}, {@code sig-test-pkg-list.txt} and
+ *       {@code jakarta.ws.rs.sig_4.0.0} from the classpath, and those resources are
+ *       only present in the EFTL TCK jar (download.eclipse.org), not in the Maven
+ *       Central artifact. The {@code tck-official} profile now unpacks them from the
+ *       EFTL jar ({@code tck.eftl.jar}, fetched by {@code run-official-tck-restful-4.0.sh})
+ *       and the signature test runs — it is mandatory for the Core Profile
+ *       certification file.</li>
  *   <li>{@code jaxrs31.ee.multipart.MultipartSupportIT#basicTest},
  *       {@code multiFormParamTest} — Cassini implements §3.5.4 EntityPart
  *       (CassiniEntityPartBuilder + MultipartFormDataProvider parser/writer
@@ -78,8 +78,6 @@ public final class TckChallengeExclusions implements ExecutionCondition {
     private static final Map<String, Set<String>> CHALLENGES = Map.of(
             "ee.jakarta.tck.ws.rs.spec.resource.requestmatching.JAXRSClientIT",
                     Set.of("locatorNameTooLongAgainTest"),
-            "ee.jakarta.tck.ws.rs.signaturetest.jaxrs.JAXRSSigTestIT",
-                    Set.of("signatureTest"),
             "ee.jakarta.tck.ws.rs.jaxrs31.ee.multipart.MultipartSupportIT",
                     Set.of("basicTest", "multiFormParamTest")
     );
