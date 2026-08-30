@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.vidocq.cassini</groupId>
         <artifactId>cassini-examples</artifactId>
-        <version>0.3.0-SNAPSHOT</version>
+        <version>0.4.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>cassini-examples-jdkhttp</artifactId>
