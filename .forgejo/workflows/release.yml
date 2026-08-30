@@ -81,7 +81,6 @@ jobs:
             cassini-examples-chappe
             cassini-examples-jdkhttp
             cassini-examples-vauban
-            cassini-tck
           central-username: ${{ secrets.CENTRAL_USERNAME }}
           central-password: ${{ secrets.CENTRAL_PASSWORD }}
           gpg-private-key:  ${{ secrets.GPG_PRIVATE_KEY }}
