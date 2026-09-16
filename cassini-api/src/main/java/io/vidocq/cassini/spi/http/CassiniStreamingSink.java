@@ -32,9 +32,13 @@ import java.util.concurrent.CompletionStage;
  *   <li><b>StreamingOutput async</b> — progressive push of a chunked-transfer body.</li>
  * </ul>
  *
- * <p><b>M2i status</b>: the current Cassini implementation buffers and then
- * emits in one go at the end of the resource method. M2i will refactor to
- * real chunked-transfer push via this API.
+ * <p><b>Contract</b>: chunks reach the wire incrementally, as {@link
+ * #writeChunk} and {@link #flush} are called — not buffered and emitted in
+ * one go at the end of the resource method. The response stays open until
+ * {@link #close}. This holds for both backends: {@code cassini-chappe}
+ * pushes via a pipe-backed chunked-transfer body, and {@code
+ * cassini-jdk-http} sends headers with {@code sendResponseHeaders(status, 0)}
+ * (chunked) and writes directly to the exchange's response body.
  */
 public interface CassiniStreamingSink {
 
