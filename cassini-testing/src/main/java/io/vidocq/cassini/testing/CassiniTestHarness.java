@@ -17,7 +17,7 @@
  *
  * SPDX-License-Identifier: EPL-2.0 OR EUPL-1.2 OR GPL-2.0-or-later
  */
-package io.vidocq.cassini.tck;
+package io.vidocq.cassini.testing;
 
 import io.vidocq.chappe.api.Handler;
 import io.vidocq.chappe.api.Request;
@@ -177,7 +177,7 @@ public final class CassiniTestHarness implements AutoCloseable {
         public Builder port(int port) { this.fixedPort = port; return this; }
 
         /** Builds the bridge + handler without starting a server.
-         *  Used by {@link io.vidocq.cassini.tck.arquillian.VidocqCassiniDeployableContainer}
+         *  Used by {@code VidocqCassiniDeployableContainer} in cassini-tck
          *  for the multi-context shared server. */
         public record BuiltHandler(Handler bridgeHandler, String prefix) {}
 

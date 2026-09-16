@@ -59,6 +59,14 @@
     </repositories>
 
     <dependencies>
+        <!-- The embedded harness this runner drives. It used to live in this module,
+             but other bricks need it too and this module is never deployed — so it
+             moved to the published cassini-testing. See cassini#36. -->
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-testing</artifactId>
+            <version>${cassini.version}</version>
+        </dependency>
         <dependency>
             <groupId>io.vidocq.cassini</groupId>
             <artifactId>cassini-core</artifactId>

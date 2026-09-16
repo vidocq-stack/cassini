@@ -19,6 +19,7 @@
  */
 package io.vidocq.cassini.tck;
 
+import io.vidocq.cassini.testing.CassiniTestHarness;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;

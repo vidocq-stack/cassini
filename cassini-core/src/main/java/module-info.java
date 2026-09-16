@@ -40,6 +40,7 @@ module io.vidocq.cassini.core {
 
     exports io.vidocq.cassini.internal
             to io.vidocq.cassini.tck,
+               io.vidocq.cassini.testing,
                io.vidocq.cassini.client,
                io.vidocq.cassini.maven.plugin;
     exports io.vidocq.cassini.internal.gen
@@ -48,7 +49,8 @@ module io.vidocq.cassini.core {
     exports io.vidocq.cassini.internal.context
             to io.vidocq.cassini.tck;
     exports io.vidocq.cassini.internal.filter
-            to io.vidocq.cassini.tck;
+            to io.vidocq.cassini.tck,
+               io.vidocq.cassini.testing;
     exports io.vidocq.cassini.internal.multipart
             to io.vidocq.cassini.tck;
     exports io.vidocq.cassini.internal.runtime

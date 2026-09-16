@@ -94,6 +94,10 @@
         <module>cassini-chappe</module>
         <module>cassini-jdk-http</module>
         <module>cassini-client</module>
+        <!-- Published test support: the embedded harness other bricks drive their
+             own TCK runners with. Extracted from cassini-tck, which is not deployed
+             and therefore could never be depended on from a clean runner (cassini#36). -->
+        <module>cassini-testing</module>
         <module>cassini-examples</module>
     </modules>
 

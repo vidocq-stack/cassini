@@ -18,19 +18,16 @@
  * SPDX-License-Identifier: EPL-2.0 OR EUPL-1.2 OR GPL-2.0-or-later
  */
 /**
- * Runner module for the official Jakarta RESTful Web Services 4.0 TCK.
+ * Testing support for Cassini (JAX-RS 4.0 on Chappe).
  *
- * <p>It declares no packages of its own: the embedded harness it used to carry
- * now lives in the published {@code io.vidocq.cassini.testing}. What remains are
- * this module's test sources — the Arquillian adapter and the smoke test — which
- * are patched into this module when the suite runs, which is why the module keeps
- * its name: {@code cassini-core} grants its internals to it by qualified export.</p>
+ * <p>Starts an embedded Cassini stack on a free port and hands back its base
+ * URI, so a test — or another brick's TCK runner — can exercise real HTTP
+ * without pulling in a servlet container.</p>
  *
- * <p>This module is never deployed (see {@code maven.deploy.skip} in its POM).</p>
+ * <p>This module is <b>published</b>, unlike {@code cassini-tck} which runs the
+ * official Jakarta RESTful WS TCK and is never deployed.</p>
  */
-module io.vidocq.cassini.tck {
-    requires transitive io.vidocq.cassini.testing;
-
+module io.vidocq.cassini.testing {
     requires io.vidocq.cassini.api;
     requires io.vidocq.cassini.core;
     requires io.vidocq.cassini.chappe;
@@ -39,4 +36,6 @@ module io.vidocq.cassini.tck {
     requires jakarta.cdi;
 
     requires static java.net.http;
+
+    exports io.vidocq.cassini.testing;
 }

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>io.vidocq.cassini</groupId>
+        <artifactId>cassini-parent</artifactId>
+        <version>0.4.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>cassini-testing</artifactId>
+    <name>Cassini :: Testing Support</name>
+    <description>Embedded Cassini/Chappe harness for tests — starts a JAX-RS stack on a free port and exposes its base URI</description>
+
+    <!--
+        Why this module is published while cassini-tck is not.
+
+        CassiniTestHarness used to live in cassini-tck, a module carrying
+        maven.deploy.skip: it never reached Maven Central nor central-snapshots.
+        Three MicroProfile bricks depended on it anyway, so their official TCK
+        could only ever run on a machine where someone had built Cassini by hand
+        — on a clean CI runner the suite died in one second on "cassini-tck:pom
+        (absent)". See Vidocq/cassini#36 and Vidocq/GestionProjet#9.
+
+        Publishing the TCK *runner* would have shipped a conformance harness as a
+        product artefact. Publishing test *support* is ordinary practice, so the
+        one class other repositories actually need moved here, and cassini-tck
+        stays unpublished and test-only.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-chappe</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.chappe</groupId>
+            <artifactId>chappe-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.chappe</groupId>
+            <artifactId>chappe-core</artifactId>
+        </dependency>
+        <!-- The harness registers CDI-aware providers through the Cassini runtime. -->
+        <dependency>
+            <groupId>jakarta.enterprise</groupId>
+            <artifactId>jakarta.enterprise.cdi-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

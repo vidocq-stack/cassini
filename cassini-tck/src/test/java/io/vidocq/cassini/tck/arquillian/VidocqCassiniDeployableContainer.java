@@ -25,7 +25,7 @@ import io.vidocq.chappe.api.Response;
 import io.vidocq.chappe.api.Server;
 import io.vidocq.chappe.api.StatusCode;
 import io.vidocq.chappe.api.Body;
-import io.vidocq.cassini.tck.CassiniTestHarness;
+import io.vidocq.cassini.testing.CassiniTestHarness;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.Application;
 import jakarta.ws.rs.ext.Provider;
