@@ -262,4 +262,21 @@ class EntityReadFailureTest {
         assertEquals(1, mapper.seen.size());
         assertInstanceOf(NoContentException.class, mapper.seen.get(0).getCause());
     }
+
+    @Test
+    void anEmptyJsonEntityIsA400() {
+        try (LogCapture logs = LogCapture.of(ENTITY_LOGGER, DISPATCH_LOGGER)) {
+            InMemoryExchange ex = dispatch(InMemoryExchange.post("/orders", JSON, ""));
+            assertEquals(400, ex.status());
+            assertNothingLoggedAboveDebug(logs);
+        }
+    }
+
+    @Test
+    void anEmptyJsonEntityReachesMappersAsNoContent() {
+        BadRequestMapper mapper = new BadRequestMapper();
+        dispatch(InMemoryExchange.post("/orders", JSON, ""), mapper);
+        assertEquals(1, mapper.seen.size());
+        assertInstanceOf(NoContentException.class, mapper.seen.get(0).getCause());
+    }
 }

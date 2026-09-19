@@ -27,6 +27,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.NoContentException;
 import jakarta.ws.rs.ext.ContextResolver;
 import jakarta.ws.rs.ext.MessageBodyReader;
 import jakarta.ws.rs.ext.MessageBodyWriter;
@@ -35,6 +36,7 @@ import jakarta.ws.rs.ext.Providers;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PushbackInputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
 
@@ -63,8 +65,19 @@ public final class CassiniJsonbReaderWriter
     public Object readFrom(Class<Object> type, Type genericType, Annotation[] annotations,
                            MediaType mediaType, MultivaluedMap<String, String> httpHeaders,
                            InputStream entityStream) throws IOException, WebApplicationException {
+        // MessageBodyReader#readFrom: a type with no zero-length representation
+        // answers an empty stream with a NoContentException, which the server
+        // runtime turns into a 400 (§4.2.4) — instead of letting the JSON parser
+        // fail on empty input. A record or a POJO has no such representation.
+        // Jersey makes the same choice; RESTEasy returns null. cassini#39.
+        PushbackInputStream in = new PushbackInputStream(entityStream, 1);
+        int first = in.read();
+        if (first == -1) {
+            throw new NoContentException("Empty JSON entity");
+        }
+        in.unread(first);
         Jsonb jsonb = resolveJsonb(type, mediaType);
-        return jsonb.fromJson(entityStream, genericType == null ? type : genericType);
+        return jsonb.fromJson(in, genericType == null ? type : genericType);
     }
 
     @Override
