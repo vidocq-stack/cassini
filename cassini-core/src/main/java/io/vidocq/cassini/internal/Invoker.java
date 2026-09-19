@@ -361,8 +361,11 @@ public final class Invoker {
             }
         } catch (WebApplicationException wae) {
             return renderWebAppException(wae, route, chosen, null);
+        } catch (EntityReadException ere) {
+            // cassini#39: the reader (or its interceptor chain) failed on the entity.
+            return renderEntityReadFailure(ere.getCause(), route, chosen, preCtx, request);
         } catch (RuntimeException | java.io.IOException re) {
-            // §4.4: MessageBodyReader / ReaderInterceptor may throw
+            // §4.4: parameter resolution or body buffering failed
             // (RuntimeException or IOException) → try ExceptionMapper.
             CassiniHttpResponse mapped = mapFilterThrowable(re, route, chosen, preCtx);
             if (mapped != null) return mapped;
@@ -766,6 +769,33 @@ public final class Invoker {
             return fromJaxRs(mapped.get(), route, mt);
         }
         return null;
+    }
+
+    /**
+     * cassini#39: renders a failure of the request-entity reader — the selected
+     * {@link MessageBodyReader} or the {@code ReaderInterceptor} chain around it —
+     * other than a {@link WebApplicationException} (rendered as such) and a
+     * {@code NoContentException} (already a {@code BadRequestException}, §4.2.4).
+     * <ol>
+     *   <li>An application {@code ExceptionMapper} for the raw failure wins, as before:
+     *       {@code ExceptionMapper<JsonbException>} workarounds and catch-all mappers
+     *       keep working.</li>
+     *   <li>Otherwise it is the client's fault: a {@code BadRequestException} wrapping
+     *       the failure, which the application's {@code BadRequestException} /
+     *       {@code ClientErrorException} / {@code WebApplicationException} mappers may
+     *       shape. Unmapped, it is a 400 with an empty body.</li>
+     * </ol>
+     * <p>Step 1 must never reach a built-in catch-all mapper: if a default
+     * {@code ExceptionMapper<Throwable>} (§4.4) is ever registered in
+     * {@link ExceptionMapperRegistry}, skip it here, or it swallows step 2 —
+     * {@code EntityReadFailureTest} fails if that happens.</p>
+     */
+    CassiniHttpResponse renderEntityReadFailure(Throwable failure, ResourceMethod route, MediaType chosen,
+                                                CassiniRequestContext rctx,
+                                                CassiniHttpExchange request) throws IOException {
+        CassiniHttpResponse mapped = mapFilterThrowable(failure, route, chosen, rctx);
+        if (mapped != null) return mapped;
+        return renderWebAppException(new jakarta.ws.rs.BadRequestException(failure), route, chosen, rctx);
     }
 
     CassiniHttpResponse renderWebAppException(WebApplicationException wae, ResourceMethod route,

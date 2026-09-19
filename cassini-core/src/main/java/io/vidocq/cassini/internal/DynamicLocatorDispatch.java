@@ -240,6 +240,9 @@ final class DynamicLocatorDispatch {
             }
         } catch (WebApplicationException wae) {
             return host.renderWebAppException(wae, route, chosen, null);
+        } catch (EntityReadException ere) {
+            // cassini#39: same rules as the static route (Invoker.invokeInternal).
+            return host.renderEntityReadFailure(ere.getCause(), route, chosen, null, request);
         }
 
         // §3.4.1 : sub-resource via dynamic locator → pas d'injection @*Param

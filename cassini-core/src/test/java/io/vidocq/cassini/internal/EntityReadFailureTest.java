@@ -279,4 +279,83 @@ class EntityReadFailureTest {
         assertEquals(1, mapper.seen.size());
         assertInstanceOf(NoContentException.class, mapper.seen.get(0).getCause());
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{bad", "[]", "{\"ids\":[\"x\"]}", "{\"ids\":\"x\"}"})
+    void aMalformedOrMistypedJsonEntityIsA400WithNoErrorLog(String body) {
+        try (LogCapture logs = LogCapture.of(ENTITY_LOGGER, DISPATCH_LOGGER)) {
+            InMemoryExchange ex = dispatch(InMemoryExchange.post("/orders", JSON, body));
+            assertEquals(400, ex.status(), () -> "body " + body + " answered " + ex.status() + " " + ex.responseText());
+            assertEquals("", ex.responseText(), "the default 400 carries no parser message");
+            assertNothingLoggedAboveDebug(logs);
+        }
+    }
+
+    static Stream<RuntimeException> providerFailures() {
+        return Stream.of(
+                new JsonbException("what Yasson throws for every failure"),
+                new IllegalStateException("what Champollion throws for a wrong element type"),
+                new JsonParsingException("what a JSON-P parser throws", null));
+    }
+
+    @ParameterizedTest
+    @MethodSource("providerFailures")
+    void whateverTheJsonbProviderThrowsIsA400(RuntimeException failure) {
+        // The ticket's "same checks with Yasson": 400, and nothing logged at ERROR.
+        try (LogCapture logs = LogCapture.of(ENTITY_LOGGER, DISPATCH_LOGGER)) {
+            InMemoryExchange ex = dispatch(InMemoryExchange.post("/orders", JSON, "{\"item\":\"a\"}"),
+                    new ThrowingJsonbResolver(failure));
+            assertEquals(400, ex.status());
+            assertNothingLoggedAboveDebug(logs);
+        }
+    }
+
+    @Test
+    void anApplicationBadRequestMapperShapesTheDefault400() {
+        BadRequestMapper mapper = new BadRequestMapper();
+        InMemoryExchange ex = dispatch(InMemoryExchange.post("/orders", JSON, "{bad"), mapper);
+        assertEquals(400, ex.status());
+        assertEquals("{\"error\":\"bad_request\"}", ex.responseText());
+        assertInstanceOf(JsonParsingException.class, mapper.seen.get(0).getCause());
+    }
+
+    @Test
+    void anApplicationMapperForTheRawExceptionStillWins() {
+        JsonbExceptionMapper jsonbMapper = new JsonbExceptionMapper();
+        BadRequestMapper badRequestMapper = new BadRequestMapper();
+        InMemoryExchange ex = dispatch(InMemoryExchange.post("/orders", JSON, "[]"), jsonbMapper, badRequestMapper);
+        assertEquals(422, ex.status());
+        assertEquals(1, jsonbMapper.seen.size());
+        assertEquals(0, badRequestMapper.seen.size(), "the raw-exception mapper runs instead of the 400 fallback");
+    }
+
+    @Test
+    void anApplicationCatchAllMapperStillWins() {
+        InMemoryExchange ex = dispatch(InMemoryExchange.post("/orders", JSON, "{bad"), new CatchAllMapper());
+        assertEquals(418, ex.status());
+    }
+
+    @Test
+    void aFailingReaderInterceptorIsA400() {
+        InMemoryExchange ex = dispatch(InMemoryExchange.post("/orders", JSON, "{\"item\":\"a\"}"),
+                new FailingInterceptor());
+        assertEquals(400, ex.status());
+    }
+
+    @Test
+    void theDynamicLocatorPathAnswersTheSame() {
+        try (LogCapture logs = LogCapture.of(ENTITY_LOGGER, DISPATCH_LOGGER)) {
+            assertEquals(200, dispatch(InMemoryExchange.post("/dyn/orders", JSON, "{\"item\":\"a\"}")).status());
+            assertEquals(400, dispatch(InMemoryExchange.post("/dyn/orders", JSON, "{bad")).status());
+            assertEquals(400, dispatch(InMemoryExchange.post("/dyn/orders", JSON, "")).status());
+            assertNothingLoggedAboveDebug(logs);
+        }
+    }
+
+    @Test
+    void aQueryParamConversionFailureAnswersAsBefore() {
+        // §3.2: an unconvertible @QueryParam is a 404 — untouched by cassini#39.
+        InMemoryExchange ex = dispatch(InMemoryExchange.get("/orders/count?n=abc"));
+        assertEquals(404, ex.status());
+    }
 }

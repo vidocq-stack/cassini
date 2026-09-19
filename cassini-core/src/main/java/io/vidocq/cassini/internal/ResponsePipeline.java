@@ -228,6 +228,14 @@ final class ResponsePipeline {
             // re-thrown to the exception mappers — Invoker renders it like any
             // other WebApplicationException. Whatever reader threw it.
             throw new BadRequestException(nce);
+        } catch (WebApplicationException wae) {
+            throw wae;
+        } catch (RuntimeException | IOException failure) {
+            // cassini#39: any other failure of the reader, or of the
+            // ReaderInterceptor chain around it. Marked so that Invoker tells it
+            // apart from the rest of argument resolution (parameter conversion,
+            // body buffering above), which keeps its own rules.
+            throw new EntityReadException(failure);
         }
     }
 
