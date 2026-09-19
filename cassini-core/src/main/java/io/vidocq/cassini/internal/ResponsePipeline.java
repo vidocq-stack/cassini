@@ -25,9 +25,11 @@ import io.vidocq.cassini.internal.filter.CassiniReaderInterceptorContext;
 import io.vidocq.cassini.internal.filter.CassiniRequestContext;
 import io.vidocq.cassini.internal.filter.CassiniResponseContext;
 import io.vidocq.cassini.internal.filter.CassiniWriterInterceptorContext;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.NoContentException;
 import jakarta.ws.rs.ext.MessageBodyReader;
 import jakarta.ws.rs.ext.MessageBodyWriter;
 
@@ -220,6 +222,12 @@ final class ResponsePipeline {
             }
             return new CassiniReaderInterceptorContext(rInterceptors,
                     reader, host.registry(), type, genericType, anns, ct, headers, in).proceed();
+        } catch (NoContentException nce) {
+            // §4.2.4: a NoContentException thrown while reading a server request
+            // entity MUST be translated into a BadRequestException wrapping it and
+            // re-thrown to the exception mappers — Invoker renders it like any
+            // other WebApplicationException. Whatever reader threw it.
+            throw new BadRequestException(nce);
         }
     }
 
