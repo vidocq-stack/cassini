@@ -386,4 +386,27 @@ class EntityReadFailureTest {
             assertTrue(line.endsWith("...)"), line);
         }
     }
+
+    @Test
+    void aTypeTheProviderCannotReachStaysAServerError() {
+        // What Champollion throws when the DTO package is not exported to it.
+        JsonbException unreachable = new JsonbException("Failed to instantiate record class",
+                new IllegalAccessException("module io.acme does not export io.acme.dto to module io.vidocq.champollion.jsonb"));
+        try (LogCapture logs = LogCapture.of(ENTITY_LOGGER, DISPATCH_LOGGER)) {
+            InMemoryExchange ex = dispatch(InMemoryExchange.post("/orders", JSON, "{\"item\":\"a\"}"),
+                    new ThrowingJsonbResolver(unreachable));
+            assertEquals(500, ex.status());
+            assertEquals(1, logs.atOrAbove(Level.SEVERE).size(), "a server fault is still logged at ERROR");
+            assertEquals(List.of(), logs.at(Level.FINE), "and not reported as a client error");
+        }
+    }
+
+    @Test
+    void aConstructorRejectingTheClientsValueIsStillA400() {
+        JsonbException rejected = new JsonbException("Cannot create instance",
+                new InvocationTargetException(new IllegalArgumentException("item is required")));
+        InMemoryExchange ex = dispatch(InMemoryExchange.post("/orders", JSON, "{\"item\":\"a\"}"),
+                new ThrowingJsonbResolver(rejected));
+        assertEquals(400, ex.status());
+    }
 }

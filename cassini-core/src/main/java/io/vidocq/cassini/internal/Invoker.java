@@ -780,6 +780,10 @@ public final class Invoker {
      *   <li>An application {@code ExceptionMapper} for the raw failure wins, as before:
      *       {@code ExceptionMapper<JsonbException>} workarounds and catch-all mappers
      *       keep working.</li>
+     *   <li>A failure that says the server cannot bind the type at all (a reflective
+     *       access, module-export or linkage error in its causes, see
+     *       {@link EntityReadFailures#isServerSide}) stays a server error: rethrown, so
+     *       the transport answers 500 and logs it at ERROR, as before.</li>
      *   <li>Otherwise it is the client's fault: one DEBUG line (stack at TRACE), then a
      *       {@code BadRequestException} wrapping the failure, which the application's
      *       {@code BadRequestException} / {@code ClientErrorException} /
@@ -788,7 +792,7 @@ public final class Invoker {
      * </ol>
      * <p>Step 1 must never reach a built-in catch-all mapper: if a default
      * {@code ExceptionMapper<Throwable>} (§4.4) is ever registered in
-     * {@link ExceptionMapperRegistry}, skip it here, or it swallows step 2 —
+     * {@link ExceptionMapperRegistry}, skip it here, or it swallows step 3 —
      * {@code EntityReadFailureTest} fails if that happens.</p>
      */
     CassiniHttpResponse renderEntityReadFailure(Throwable failure, ResourceMethod route, MediaType chosen,
@@ -796,6 +800,13 @@ public final class Invoker {
                                                 CassiniHttpExchange request) throws IOException {
         CassiniHttpResponse mapped = mapFilterThrowable(failure, route, chosen, rctx);
         if (mapped != null) return mapped;
+        if (EntityReadFailures.isServerSide(failure)) {
+            // The server cannot bind the type at all (module export, linkage, reflective
+            // access): its own fault, not the client's — the transport answers 500 and
+            // logs it at ERROR, as before cassini#39.
+            if (failure instanceof RuntimeException re) throw re;
+            throw new RuntimeException(failure);
+        }
         EntityReadFailures.logRejected(request, failure);
         return renderWebAppException(new jakarta.ws.rs.BadRequestException(failure), route, chosen, rctx);
     }
