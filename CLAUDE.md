@@ -127,7 +127,9 @@ Classpath JARs → write into `target/classes`. Java Modules named-module → fa
 
 **cassini-core**: `UriTemplateTest`, `UriRouterBestMatchTest`, `MediaTypesTest`, `FormDecoderTest`,
 `ParamValueConverterTest`, `RuntimeAdapterGeneratorTest` (includes toBytecode P3),
-`AdapterRegistrySeamTest`.
+`AdapterRegistrySeamTest`, `EntityReadFailureTest` (request-entity read failures, cassini#39 —
+end-to-end through `DefaultCassiniHttpAdapter.dispatch` on an in-memory exchange, no socket),
+`CassiniJsonbReaderWriterTest`.
 
 **cassini-processor**: `CassiniResourceProcessorTest`.
 

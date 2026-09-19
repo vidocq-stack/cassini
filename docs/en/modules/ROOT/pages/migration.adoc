@@ -91,6 +91,7 @@ Jersey and RESTEasy default to Yasson or Jackson. Cassini delegates to xref:cham
 * Static serialization: add `champollion-codegen-apt` to the build for new types.
 * Standard `@JsonbProperty`, `@JsonbDateFormat`, `@JsonbTypeAdapter` annotations supported.
 * Jackson annotations (`@JsonProperty`, `@JsonIgnore`...) **not** supported — convert to JSON-B.
+* **Unreadable JSON bodies** [.tag-new]#NEW# — with their default JSON-B providers, Jersey and RESTEasy answer `500` to a malformed or wrongly typed JSON body; for an empty body, Jersey answers `400` and RESTEasy passes `null` to the resource method. Cassini answers `400` in all these cases, after your own exception mappers — see xref:usage.adoc#unreadable-entities[Unreadable request entities].
 
 == Jakarta REST 4.0 annotations
 

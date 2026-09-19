@@ -82,6 +82,50 @@ public class NotFoundExceptionMapper implements ExceptionMapper<NotFoundExceptio
 }
 ----
 
+[#unreadable-entities]
+== Unreadable request entities [.tag-new]#NEW#
+
+When the request entity cannot be read into the resource method's entity parameter — malformed JSON, an empty body, a JSON value of the wrong shape or type for the Java type — Cassini answers `400 Bad Request` and does not call the resource method.
+
+[cols="2,3",options="header"]
+|===
+| The request entity | What Cassini does
+
+| Empty (zero bytes, or no body at all) for a type bound through JSON-B
+| The built-in JSON reader throws `NoContentException`; the runtime turns it into a `BadRequestException` wrapping it, as Jakarta REST §4.2.4 requires. `400`.
+
+| Empty, read by any reader that throws `NoContentException` — yours included
+| The same translation, the same `400`.
+
+| Malformed, or of the wrong shape or type (`{bad`, `[]` where an object is expected, `"x"` where a number is)
+| Offered first to your `ExceptionMapper` for the exception the reader threw. If none matches: `400`, and one `DEBUG` line on the `io.vidocq.cassini.entity` logger. A failure inside a `ReaderInterceptor` is treated the same way.
+
+| Readable, but the JSON-B provider cannot reach the Java type (its package is not exported to the provider, a class is missing)
+| A server error, as before: `500`, logged at `ERROR`.
+|===
+
+The default `400` has an empty body. To give it one, map `BadRequestException`; its cause is the exception the reader threw:
+
+[source,java]
+----
+@Provider
+public class BadRequestMapper implements ExceptionMapper<BadRequestException> {
+    @Override
+    public Response toResponse(BadRequestException e) {
+        return Response.status(Response.Status.BAD_REQUEST)
+            .entity(Map.of("error", "bad_request", "message", "Malformed request body"))
+            .type(MediaType.APPLICATION_JSON)
+            .build();
+    }
+}
+----
+
+A mapper for the exception the reader threw — `ExceptionMapper<JsonbException>`, or a catch-all `ExceptionMapper<RuntimeException>` — still runs first, exactly as before. What a JSON-B provider throws differs from one provider to another (Champollion throws `JsonParsingException`, `JsonbException` or `IllegalStateException`; Yasson always `JsonbException`), so mapping `BadRequestException` is the portable way to shape these answers.
+
+Logging:: No `400` in this table is logged above `DEBUG`. A malformed or mistyped entity that none of your mappers handles writes one line at `DEBUG` on the logger `io.vidocq.cassini.entity` — method, path, exception class and message — and its stack trace at `TRACE`. An empty entity (`NoContentException`) and an entity your own mapper handles write nothing. With `java.util.logging`, these are the levels `FINE` and `FINER`. Set `io.vidocq.cassini.entity.level = FINE` to enable the lines, and let the handler that prints them pass `FINE` too: the JDK's default `ConsoleHandler` stops at `INFO` (`java.util.logging.ConsoleHandler.level = FINE`).
+
+Behaviour change:: Up to {release-version}, these requests answered `500` with the parser's message as the body, and logged a full stack trace at `ERROR` each. To keep a `500` for a given exception, map that exception: your mapper runs before the `400`. An application that shaped empty-body errors by mapping the parser's exception now receives a `NoContentException` inside a `BadRequestException` instead, and should map `BadRequestException`.
+
 == Filters and interceptors
 
 [source,java]
