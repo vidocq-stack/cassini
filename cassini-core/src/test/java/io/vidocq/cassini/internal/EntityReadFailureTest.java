@@ -358,4 +358,32 @@ class EntityReadFailureTest {
         InMemoryExchange ex = dispatch(InMemoryExchange.get("/orders/count?n=abc"));
         assertEquals(404, ex.status());
     }
+
+    @Test
+    void aRejectedEntityLogsOneDebugLineAndItsStackOnlyAtTrace() {
+        try (LogCapture logs = LogCapture.of(ENTITY_LOGGER, DISPATCH_LOGGER)) {
+            dispatch(InMemoryExchange.post("/orders", JSON, "{bad"));
+            var debug = logs.at(Level.FINE);
+            assertEquals(1, debug.size(), "one DEBUG line per rejected entity");
+            String line = debug.get(0).getMessage();
+            assertTrue(line.startsWith("400 Bad Request for POST /orders: unreadable request entity ("
+                    + JsonParsingException.class.getName() + ": Unexpected character"), line);
+            assertNull(debug.get(0).getThrown(), "no stack trace at DEBUG");
+            var trace = logs.at(Level.FINER);
+            assertEquals(1, trace.size(), "the stack trace goes to TRACE");
+            assertInstanceOf(JsonParsingException.class, trace.get(0).getThrown());
+            assertNothingLoggedAboveDebug(logs);
+        }
+    }
+
+    @Test
+    void theDebugLineStaysOnOneBoundedLine() {
+        JsonbException hostile = new JsonbException("first\r\n[ERROR] forged record " + "x".repeat(500));
+        try (LogCapture logs = LogCapture.of(ENTITY_LOGGER)) {
+            dispatch(InMemoryExchange.post("/orders", JSON, "{\"item\":\"a\"}"), new ThrowingJsonbResolver(hostile));
+            String line = logs.at(Level.FINE).get(0).getMessage();
+            assertFalse(line.contains("\n") || line.contains("\r"), line);
+            assertTrue(line.endsWith("...)"), line);
+        }
+    }
 }

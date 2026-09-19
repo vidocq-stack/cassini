@@ -780,10 +780,11 @@ public final class Invoker {
      *   <li>An application {@code ExceptionMapper} for the raw failure wins, as before:
      *       {@code ExceptionMapper<JsonbException>} workarounds and catch-all mappers
      *       keep working.</li>
-     *   <li>Otherwise it is the client's fault: a {@code BadRequestException} wrapping
-     *       the failure, which the application's {@code BadRequestException} /
-     *       {@code ClientErrorException} / {@code WebApplicationException} mappers may
-     *       shape. Unmapped, it is a 400 with an empty body.</li>
+     *   <li>Otherwise it is the client's fault: one DEBUG line (stack at TRACE), then a
+     *       {@code BadRequestException} wrapping the failure, which the application's
+     *       {@code BadRequestException} / {@code ClientErrorException} /
+     *       {@code WebApplicationException} mappers may shape. Unmapped, it is a 400
+     *       with an empty body.</li>
      * </ol>
      * <p>Step 1 must never reach a built-in catch-all mapper: if a default
      * {@code ExceptionMapper<Throwable>} (§4.4) is ever registered in
@@ -795,6 +796,7 @@ public final class Invoker {
                                                 CassiniHttpExchange request) throws IOException {
         CassiniHttpResponse mapped = mapFilterThrowable(failure, route, chosen, rctx);
         if (mapped != null) return mapped;
+        EntityReadFailures.logRejected(request, failure);
         return renderWebAppException(new jakarta.ws.rs.BadRequestException(failure), route, chosen, rctx);
     }
 
