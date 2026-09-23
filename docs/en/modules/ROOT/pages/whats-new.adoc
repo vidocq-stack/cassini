@@ -1,5 +1,5 @@
 = What's new
-:description: Everything that changed in Cassini since the {release-version} release — unreadable request entities answer 400.
+:description: Everything that changed in Cassini since the {release-version} release — unreadable request entities answer 400, and a host can read the route table.
 
 [.lead]
 New in the `{project-version}` development line — everything listed here landed **after the {release-version} release** and is not part of it. Every entry links to the section that documents it, and those sections carry the [.tag-new]#NEW# badge. Each brick of the suite keeps its own page of this kind; xref:home::whats-new.adoc[the ecosystem index] gathers them. When the next release train ships, this page is frozen with it and restarts empty on the dev line.
@@ -9,3 +9,7 @@ New in the `{project-version}` development line — everything listed here lande
 * **An unreadable request entity is a 400, not a 500** — malformed JSON, an empty body, a JSON value of the wrong shape or type for the Java type: the resource method is not called and Cassini answers `400 Bad Request`, with an empty body unless the application maps `BadRequestException`. The application's `ExceptionMapper` for the exception the reader threw still runs first. Up to {release-version}, these requests answered `500` with the parser's message (cassini#39). xref:usage.adoc#unreadable-entities[Unreadable request entities].
 * **`NoContentException` becomes a `BadRequestException`** — whatever reader throws it, the application's included, as Jakarta REST §4.2.4 requires; the built-in JSON reader now throws it for an empty entity. xref:usage.adoc#unreadable-entities[Unreadable request entities].
 * **No ERROR log for a client's malformed entity** — one line at `DEBUG` on the `io.vidocq.cassini.entity` logger, and the stack trace at `TRACE`, where each such request used to log a full stack trace at `ERROR`. A type the JSON-B provider cannot reach, its package not exported to it, remains a server error logged at `ERROR`. xref:usage.adoc#unreadable-entities[Unreadable request entities].
+
+== Embedding
+
+* **A host can read the route table** — `CassiniStack.routes()` returns the routes a stack resolved, in match order, as `RouteDescription` values: HTTP method, path template, resource class and method names, produced and consumed media types. A host such as Vidocq can list what an application exposes without reaching into `cassini-core` (cassini#41). xref:usage.adoc#route-table[Reading the route table].

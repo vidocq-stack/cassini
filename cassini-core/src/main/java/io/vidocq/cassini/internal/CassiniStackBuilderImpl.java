@@ -182,7 +182,7 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
         invoker.setBeanProvider(bp);
 
         var adapter = new DefaultCassiniHttpAdapter(router, invoker);
-        return new CassiniStackImpl(adapter);
+        return new CassiniStackImpl(adapter, router.routes());
     }
 
     /**

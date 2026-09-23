@@ -251,3 +251,29 @@ server.start();
 Instead of `scanClasspath()`, beans can also be registered explicitly with `addBeanClass(TodoResource.class)`. `composeHandler()` builds the Cassini stack (`CassiniStack.builder().application(new Application() {}).build()`), which auto-detects the Vauban `BeanProvider` via `ServiceLoader`.
 
 The `CassiniScopeExtension` (BCE) automatically adds `@RequestScoped` to `@Path` classes lacking an explicit scope. See xref:internals.adoc[internals] for the diagram.
+
+[#route-table]
+== Reading the route table [.tag-new]#NEW#
+
+A host that embeds Cassini can ask a built stack what it routes, to print it at startup or show it in a console. `CassiniStack.routes()` returns the table the router resolved, in match order: when two routes match a request, the one listed first wins.
+
+[source,java]
+----
+CassiniStack stack = CassiniStack.builder().application(app).build();
+for (RouteDescription r : stack.routes()) {
+    System.out.printf("%-6s %-30s %s#%s%n",
+            r.isLocator() ? "*" : r.httpMethod(), r.path(), r.resourceClass(), r.methodName());
+}
+----
+
+For the `UsersResource` above, this prints:
+
+----
+GET    /users/{id}                    com.example.UserResource#get
+PUT    /users/{id}                    com.example.UserResource#update
+GET    /users                         com.example.UsersResource#list
+----
+
+The routes behind `user(..)` are listed with the sub-resource method that serves them, because `UserResource` is known when the stack is built. A locator declared to return `Object`, or any type Cassini cannot scan, has no such method until a request reaches it: it is listed once, with an empty `httpMethod()` (`isLocator()` is `true`), and names the locator itself.
+
+`RouteDescription` holds only strings and sets of strings — the HTTP method, the full path template, the binary name of the resource class, the method name, and the `@Produces` and `@Consumes` media types. It carries no `Class` or `Method`, so keeping it does not keep the application's class loader alive after a host has discarded it. The table is computed once, when the stack is built: reading it does no I/O, creates no resource or provider instance, and the list and its sets are immutable.

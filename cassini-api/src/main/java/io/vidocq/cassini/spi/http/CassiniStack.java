@@ -24,6 +24,7 @@ import io.vidocq.cassini.spi.resource.ResourceFactory;
 import jakarta.ws.rs.core.Application;
 
 import java.util.Comparator;
+import java.util.List;
 import java.util.ServiceLoader;
 
 /**
@@ -52,6 +53,19 @@ public interface CassiniStack {
 
     /** The HTTP adapter ready to dispatch requests. */
     CassiniHttpAdapter adapter();
+
+    /**
+     * The routes this stack resolved, in match order: when two routes match a
+     * request, the one listed first wins.
+     *
+     * <p>The table is computed once, when the stack is built. Reading it does no
+     * I/O and creates no resource or provider instance, so a host may call it from
+     * any thread, as often as it likes — to print what an application exposes, for
+     * instance. The list and every set it holds are immutable.
+     *
+     * @return the resolved routes, never {@code null}
+     */
+    List<RouteDescription> routes();
 
     static Builder builder() {
         Builder builder = ServiceLoader.load(BuilderFactory.class)

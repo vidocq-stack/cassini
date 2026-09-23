@@ -21,20 +21,57 @@ package io.vidocq.cassini.internal;
 
 import io.vidocq.cassini.spi.http.CassiniHttpAdapter;
 import io.vidocq.cassini.spi.http.CassiniStack;
+import io.vidocq.cassini.spi.http.RouteDescription;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * {@link CassiniStack} implementation — wraps a {@link DefaultCassiniHttpAdapter}.
+ * {@link CassiniStack} implementation — wraps a {@link DefaultCassiniHttpAdapter}
+ * and the route table its router resolved.
  */
 final class CassiniStackImpl implements CassiniStack {
 
-    private final CassiniHttpAdapter adapter;
+    /** Suffix of the catch-all twin {@link ResourceScanner} emits for each dynamic locator. */
+    private static final String CATCH_ALL_SUFFIX = "/{__rest:.*}";
 
-    CassiniStackImpl(CassiniHttpAdapter adapter) {
+    private final CassiniHttpAdapter adapter;
+    private final List<RouteDescription> routes;
+
+    CassiniStackImpl(CassiniHttpAdapter adapter, List<ResourceMethod> sortedRoutes) {
         this.adapter = adapter;
+        this.routes = describe(sortedRoutes);
     }
 
     @Override
     public CassiniHttpAdapter adapter() {
         return adapter;
+    }
+
+    @Override
+    public List<RouteDescription> routes() {
+        return routes;
+    }
+
+    /**
+     * Turns the router's table into plain values, keeping its order. A dynamic
+     * locator is routed through two entries, its path and a catch-all below it;
+     * only the first is listed, as the locator itself.
+     */
+    static List<RouteDescription> describe(List<ResourceMethod> sortedRoutes) {
+        List<RouteDescription> out = new ArrayList<>(sortedRoutes.size());
+        for (ResourceMethod r : sortedRoutes) {
+            if (r.dynamicLocator()) {
+                if (r.path().endsWith(CATCH_ALL_SUFFIX)) continue;
+                Method locator = r.locatorChain().getLast();
+                out.add(new RouteDescription("", r.path(), locator.getDeclaringClass().getName(),
+                        locator.getName(), r.produces(), r.consumes()));
+            } else {
+                out.add(new RouteDescription(r.httpMethod(), r.path(), r.beanClass().getName(),
+                        r.javaMethod().getName(), r.produces(), r.consumes()));
+            }
+        }
+        return List.copyOf(out);
     }
 }
