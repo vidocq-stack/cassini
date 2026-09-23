@@ -1,5 +1,5 @@
 = What's new
-:description: Everything that changed in Cassini since the {release-version} release — unreadable request entities answer 400, and a host can read the route table.
+:description: Everything that changed in Cassini since the {release-version} release — unreadable request entities answer 400, and a host can read the route table and live request figures.
 
 [.lead]
 New in the `{project-version}` development line — everything listed here landed **after the {release-version} release** and is not part of it. Every entry links to the section that documents it, and those sections carry the [.tag-new]#NEW# badge. Each brick of the suite keeps its own page of this kind; xref:home::whats-new.adoc[the ecosystem index] gathers them. When the next release train ships, this page is frozen with it and restarts empty on the dev line.
@@ -13,3 +13,4 @@ New in the `{project-version}` development line — everything listed here lande
 == Embedding
 
 * **A host can read the route table** — `CassiniStack.routes()` returns the routes a stack resolved, in match order, as `RouteDescription` values: HTTP method, path template, resource class and method names, produced and consumed media types. A host such as Vidocq can list what an application exposes without reaching into `cassini-core` (cassini#41). xref:usage.adoc#route-table[Reading the route table].
+* **Live request figures** — `CassiniStack.statistics()` returns the counters a stack keeps: requests answered, in flight, by status class, and the total and longest time spent answering them. Reading them creates nothing and takes no lock; updating them allocates nothing and costs about 25 ns per request, so they are on by default, and `statistics(false)` removes them (cassini#42). xref:usage.adoc#request-statistics[Reading live request figures].

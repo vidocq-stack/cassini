@@ -46,6 +46,7 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
     private Application application;
     private ResourceFactory resourceFactory;
     private BeanProvider beanProvider;
+    private boolean statistics = true;
     private final List<Object> extraProviders = new ArrayList<>();
 
     @Override
@@ -69,6 +70,12 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
     @Override
     public CassiniStack.Builder beanProvider(BeanProvider provider) {
         this.beanProvider = provider;
+        return this;
+    }
+
+    @Override
+    public CassiniStack.Builder statistics(boolean enabled) {
+        this.statistics = enabled;
         return this;
     }
 
@@ -181,8 +188,9 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
         // for @Context injection into @RequestScoped resources (cf. BeanProvider).
         invoker.setBeanProvider(bp);
 
-        var adapter = new DefaultCassiniHttpAdapter(router, invoker);
-        return new CassiniStackImpl(adapter, router.routes());
+        RequestStatistics counters = statistics ? new RequestStatistics() : null;
+        var adapter = new DefaultCassiniHttpAdapter(router, invoker, counters);
+        return new CassiniStackImpl(adapter, router.routes(), counters);
     }
 
     /**

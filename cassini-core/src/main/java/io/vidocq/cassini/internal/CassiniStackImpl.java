@@ -21,15 +21,17 @@ package io.vidocq.cassini.internal;
 
 import io.vidocq.cassini.spi.http.CassiniHttpAdapter;
 import io.vidocq.cassini.spi.http.CassiniStack;
+import io.vidocq.cassini.spi.http.CassiniStatistics;
 import io.vidocq.cassini.spi.http.RouteDescription;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * {@link CassiniStack} implementation — wraps a {@link DefaultCassiniHttpAdapter}
- * and the route table its router resolved.
+ * the route table its router resolved, and the adapter's counters.
  */
 final class CassiniStackImpl implements CassiniStack {
 
@@ -38,10 +40,13 @@ final class CassiniStackImpl implements CassiniStack {
 
     private final CassiniHttpAdapter adapter;
     private final List<RouteDescription> routes;
+    private final Optional<CassiniStatistics> statistics;
 
-    CassiniStackImpl(CassiniHttpAdapter adapter, List<ResourceMethod> sortedRoutes) {
+    /** @param statistics the counters the adapter updates, {@code null} when they are off */
+    CassiniStackImpl(CassiniHttpAdapter adapter, List<ResourceMethod> sortedRoutes, RequestStatistics statistics) {
         this.adapter = adapter;
         this.routes = describe(sortedRoutes);
+        this.statistics = Optional.ofNullable(statistics);
     }
 
     @Override
@@ -52,6 +57,11 @@ final class CassiniStackImpl implements CassiniStack {
     @Override
     public List<RouteDescription> routes() {
         return routes;
+    }
+
+    @Override
+    public Optional<CassiniStatistics> statistics() {
+        return statistics;
     }
 
     /**

@@ -53,23 +53,36 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
 
     private final UriRouter router;
     private final Invoker invoker;
+    /** The counters of cassini#42, or {@code null} when the stack was built without them. */
+    private final RequestStatistics statistics;
 
     public DefaultCassiniHttpAdapter(UriRouter router, Invoker invoker) {
+        this(router, invoker, null);
+    }
+
+    DefaultCassiniHttpAdapter(UriRouter router, Invoker invoker, RequestStatistics statistics) {
         this.router = router;
         this.invoker = invoker;
+        this.statistics = statistics;
     }
 
     @Override
     public CompletionStage<Void> dispatch(CassiniHttpExchange exchange) {
+        final RequestStatistics stats = statistics;
+        final long start = stats == null ? 0L : stats.begin();
         try {
             // M2h: one request-scope binding per dispatch — all per-request
             // state (matched route, providers, base URI, SSE sink) lives in
             // the RequestScope instead of ThreadLocals.
             RequestScope.<Void, Exception>call(() -> {
-                dispatchInternal(exchange);
+                int status = dispatchInternal(exchange);
+                // Counted in here, as an int: carrying the status out would box it on every request.
+                // end() is the last statement and does not throw, so the catch below never counts it twice.
+                if (stats != null) stats.end(start, status);
                 return null;
             });
         } catch (Exception e) {
+            if (stats != null) stats.end(start, 500);
             LOG.log(System.Logger.Level.ERROR, "Cassini dispatch error", e);
             try {
                 byte[] body = (e.getMessage() == null ? "Internal Server Error" : e.getMessage())
@@ -83,7 +96,8 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
         return CompletableFuture.completedFuture(null);
     }
 
-    private void dispatchInternal(CassiniHttpExchange exchange) throws Exception {
+    /** Routes and answers one request; returns the status written to the exchange. */
+    private int dispatchInternal(CassiniHttpExchange exchange) throws Exception {
         String verb = exchange.method();
         if (verb == null) verb = "GET";
 
@@ -105,7 +119,7 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
             if (holderPre[0] instanceof Invoker.PreMatchResult pmr) {
                 if (pmr.response() != null) {
                     applyResponse(pmr.response(), exchange);
-                    return;
+                    return pmr.response().status();
                 }
                 // §6.6.1: if a pre-matching filter called setMethod /
                 // setRequestUri, re-run routing on the mutated values.
@@ -172,6 +186,7 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
         }
 
         applyResponse(out, exchange);
+        return out.status();
     }
 
     private static void applyResponse(CassiniHttpResponse out, CassiniHttpExchange exchange)

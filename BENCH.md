@@ -6,6 +6,42 @@ raw results, delta vs previous run).
 
 ---
 
+## 2026-09-23 — Request counters (cassini#42): cost of `CassiniStack.statistics()`
+
+**Purpose**: cassini#42 adds counters to the request path (requests, in flight, by status class, total and max
+time). The issue asks whether they must be off by default or are free enough to stay on, stated as a number.
+
+- **Hardware / JVM**: Apple M5 Max, 18 cores, 128 GB RAM, OpenJDK 25 LTS (Temurin 25+36), macOS.
+- **Harness**: `RequestStatisticsBench` (cassini-core, opt-in). Two stacks built from the same `Application`, one with
+  `statistics(true)`, one with `statistics(false)`, serve an in-memory `GET /ping` through
+  `DefaultCassiniHttpAdapter.dispatch` — no socket, so the counters are not lost in network noise, which makes this
+  the worst case. 4 warm-up rounds, then 12 rounds alternating which stack goes first; the median round is kept.
+  Allocation is read with `ThreadMXBean.getThreadAllocatedBytes` over 50 000 requests on one thread.
+- **Command**:
+  ```bash
+  ./mvnw -ntp -pl cassini-core test -Dtest=RequestStatisticsBench -Dcassini.bench=true
+  # single client, for the latency of one request:
+  ./mvnw -ntp -pl cassini-core test -Dtest=RequestStatisticsBench -Dcassini.bench=true \
+      -Dcassini.bench.threads=1 -Dcassini.bench.perThread=200000
+  ```
+- **Raw results** (median ns per request; allocated bytes per request):
+
+  | Run | Clients | With counters | Without | Delta | Allocated, with / without |
+  |---|---|---|---|---|---|
+  | 1 | 64 virtual threads × 5 000 | 176.1 ns | 151.4 ns | +24.7 ns (+16.3 %) | 9 216 / 9 216 B |
+  | 2 | 64 virtual threads × 5 000 | 163.2 ns | 139.5 ns | +23.6 ns (+16.9 %) | 9 216 / 9 216 B |
+  | 3 | 64 virtual threads × 5 000 | 160.8 ns | 141.6 ns | +19.3 ns (+13.6 %) | 9 000 / 9 000 B |
+  | 4 | 1 virtual thread × 200 000 | 1 662.4 ns | 1 636.4 ns | +26.0 ns (+1.6 %) | 9 272 / 9 272 B |
+
+  With 64 clients the figure is throughput (18 cores share the work), with one client it is the latency of a request.
+
+- **Delta vs previous run**: first entry.
+- **Conclusion**: the counters cost **about 20-26 ns per request and allocate nothing**. The cost is the same with one
+  client and with 64, so it is the two `System.nanoTime()` reads, not contention: the `LongAdder`s absorb 64
+  concurrent writers. Against the latency of an in-memory request, 1.64 µs, that is +1.6 %; a request that crosses
+  a socket takes tens of microseconds, where 26 ns is below 0.1 %. **Statistics are on by default**;
+  `CassiniStack.Builder.statistics(false)` removes them, and the clock reads with them.
+
 ## 2026-06-11 — Suspended-load: 10 000 concurrent `@Suspended AsyncResponse`
 
 **Purpose**: measure the real cost of the blocking-on-virtual-thread model for

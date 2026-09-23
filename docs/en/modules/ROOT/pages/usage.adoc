@@ -277,3 +277,38 @@ GET    /users                         com.example.UsersResource#list
 The routes behind `user(..)` are listed with the sub-resource method that serves them, because `UserResource` is known when the stack is built. A locator declared to return `Object`, or any type Cassini cannot scan, has no such method until a request reaches it: it is listed once, with an empty `httpMethod()` (`isLocator()` is `true`), and names the locator itself.
 
 `RouteDescription` holds only strings and sets of strings — the HTTP method, the full path template, the binary name of the resource class, the method name, and the `@Produces` and `@Consumes` media types. It carries no `Class` or `Method`, so keeping it does not keep the application's class loader alive after a host has discarded it. The table is computed once, when the stack is built: reading it does no I/O, creates no resource or provider instance, and the list and its sets are immutable.
+
+[#request-statistics]
+== Reading live request figures [.tag-new]#NEW#
+
+A stack counts the requests it serves. `CassiniStack.statistics()` returns those counters, for a host that shows live figures — a console, a metrics exporter, a health page:
+
+[source,java]
+----
+CassiniStatistics stats = stack.statistics().orElseThrow();
+long served = stats.requests();
+double meanMillis = served == 0 ? 0 : stats.totalNanos() / 1e6 / served;
+System.out.printf("%d requests, %d in flight, %d server errors, mean %.2f ms, max %.2f ms%n",
+        served, stats.inFlight(), stats.responses(5), meanMillis, stats.maxNanos() / 1e6);
+----
+
+[cols="1,3"]
+|===
+| Figure | What it counts
+
+| `requests()`
+| The requests answered since the stack was built, whatever their status.
+
+| `inFlight()`
+| The requests handed to the stack and not answered yet.
+
+| `responses(statusClass)`
+| The requests answered with a `1xx` to `5xx` status, for a class from 1 to 5. A request no resource matches counts as the `404` it receives, and one whose resource method throws as the status its exception maps to.
+
+| `totalNanos()`, `maxNanos()`
+| The time spent answering, added up, and the longest single request, in nanoseconds.
+|===
+
+A request is timed from the moment the transport hands it to Cassini to the moment Cassini has written its status, headers and body: filters, routing, the resource method, exception mappers and serialisation included, the network excluded. A request suspended with `@Suspended AsyncResponse` is timed until it is resumed. A server-sent event request is timed until its resource method returns, which is not when the stream closes if the method hands the sink to another thread. The figures are totals since the stack was built, with no breakdown per route: a host that wants a rate subtracts two readings.
+
+Reading them takes no lock, does no I/O and creates no resource or provider instance, so they can be polled from any thread. Updating them allocates nothing and costs about 25 ns per request, the price of two clock reads, measured in `BENCH.md`. They are therefore on by default; `CassiniStack.builder().statistics(false)` builds a stack without them, whose `statistics()` is empty.

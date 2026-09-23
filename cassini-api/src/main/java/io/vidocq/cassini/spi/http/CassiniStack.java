@@ -25,6 +25,7 @@ import jakarta.ws.rs.core.Application;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.ServiceLoader;
 
 /**
@@ -67,6 +68,13 @@ public interface CassiniStack {
      */
     List<RouteDescription> routes();
 
+    /**
+     * The live figures of this stack: requests served, by status class, in flight, and the time they took.
+     *
+     * @return the figures, or empty when the stack was built with {@link Builder#statistics(boolean) statistics(false)}
+     */
+    Optional<CassiniStatistics> statistics();
+
     static Builder builder() {
         Builder builder = ServiceLoader.load(BuilderFactory.class)
                 .findFirst()
@@ -97,6 +105,12 @@ public interface CassiniStack {
          * (including the one auto-discovered by {@link CassiniStack#builder()}).
          */
         Builder beanProvider(BeanProvider provider);
+
+        /**
+         * Whether the stack counts the requests it serves, for {@link CassiniStack#statistics()}. On by default: the
+         * counters cost too little to measure against a request (see {@code BENCH.md}).
+         */
+        Builder statistics(boolean enabled);
 
         CassiniStack build();
     }
