@@ -32,7 +32,7 @@ Cassini is a complete implementation of **Jakarta RESTful Web Services 4.0** (Co
 | SE-Bootstrap | Via Grizzly | No | **Native** |
 | JDK minimum | 17 | 11 | **25** |
 
-Cassini is the REST engine of the [Vidocq](https://codeberg.org/Vidocq/vidocq) ecosystem.
+Cassini is the REST engine of the [Vidocq](https://codefloe.com/Vidocq/vidocq) ecosystem.
 
 ---
 
