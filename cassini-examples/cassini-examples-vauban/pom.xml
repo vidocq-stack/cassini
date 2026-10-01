@@ -118,15 +118,16 @@
                             <artifactId>jakarta.ws.rs-api</artifactId>
                             <version>${jakarta.ws.rs.version}</version>
                         </path>
+                        <!-- Ravel's extension runs in the compiler: it registers the beans behind
+                             ConfigDemoResource's @ConfigProperty points, so Vauban's compile-time
+                             validation stays on. The values are checked when the container starts
+                             (Vidocq/ravel#21). -->
+                        <path>
+                            <groupId>io.vidocq.ravel</groupId>
+                            <artifactId>ravel-cdi-vauban</artifactId>
+                            <version>${ravel.version}</version>
+                        </path>
                     </annotationProcessorPaths>
-                    <compilerArgs>
-                        <!-- ConfigDemoResource injects @ConfigProperty String/Optional<String> values,
-                             satisfied at runtime by the ravel-cdi-vauban producer (another module). The
-                             APT cannot see beans from dependency modules, so its compile-time
-                             bean-resolution check would fail; full validation happens at runtime
-                             assembly (Vidocq / Vauban container). -->
-                        <arg>-Avauban.validation=false</arg>
-                    </compilerArgs>
                 </configuration>
                 <executions>
                     <!-- Test fixtures are not application beans. Running the APT over them would
