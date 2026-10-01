@@ -94,3 +94,10 @@ behaviour). `ChappeRuntimeDelegate` now extends `CassiniRuntimeDelegate` like
 `JdkHttpRuntimeDelegate` (single copy, qualified export, `opens internal.runtime`
 removed). Contract pinned by `CassiniRuntimeDelegateTest`.
 REST 4.0 TCK after unification: 2670 run, 0 FAIL, 0 ERR, 132 SKIP (= baseline 2538 PASS).
+
+## CASSINI-004 — `cassini:generate` splits an automatic module's package into the application (grimm#15)
+- **Date**: 2026-10-01 — **Status**: FIXED (`fix/no-split-into-automatic-module`)
+- **Symptom**: with `scope=dependencies`, a dependency jar without `module-info` (Grimm's, at the time) had its adapter written into the project's output, e.g. `io/vidocq/grimm/cdi/OpenApiResource$$CassiniAdapter.class`. In a modular application that jar is an automatic module, so the package was split. Either the layer failed (`LayerInstantiationException: Package … in both module …`), or the application layer owned the package and the dependency's beans were silently lost (Grimm inactive, `/openapi` 404).
+- **Minimal repro**: `GenerateAdaptersMojoTest#anAutomaticModuleDependencyFailsAModularProject`.
+- **Cause**: the plugin assumed that a jar without `module-info` sits on the class path, which no longer holds once the project itself is a module.
+- **Fix**: when the project's output holds a `module-info.class`, such a dependency fails the build with an actionable message: give it a `module-info` (a Vidocq artifact never ships as an automatic module), or exclude it. A class-path project keeps the old behaviour (`#aClasspathProjectStillGetsTheAdapterOfAPlainJar`).

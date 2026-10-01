@@ -60,8 +60,10 @@ import java.util.logging.Logger;
  * <h2>Java Modules named-module rule</h2>
  * <p>Adapters must live in the <em>resource's package</em> so that the {@code <clinit>}
  * {@code privateLookupIn(ResourceClass, lookup)} can access private fields without requiring
- * app-side {@code opens}. For <em>plain classpath JARs</em> (no {@code module-info.class}) the
- * adapter is written into the project's output directory — no split-package problem.
+ * app-side {@code opens}. For a JAR without {@code module-info.class}, in a project that is not a
+ * module itself, the adapter is written into the project's output directory — both stay on the
+ * class path. In a modular project the same JAR is an automatic module, and the adapter would split
+ * its package: the build FAILS with an actionable message (Vidocq/grimm#15).
  * For <em>named Java modules</em> (JAR contains {@code module-info.class}) writing the adapter
  * into the project's output would split the package across two modules (forbidden). The plugin
  * handles this via the {@code repackageModularDependencies} option:</p>
@@ -268,7 +270,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
         return count;
     }
 
-    private int scanJar(File jar, org.apache.maven.artifact.Artifact artifact, URLClassLoader cl)
+    int scanJar(File jar, org.apache.maven.artifact.Artifact artifact, URLClassLoader cl)
             throws MojoExecutionException, MojoFailureException {
         boolean isNamedModule = jarHasModuleInfo(jar);
         List<String> resourceClasses = new ArrayList<>();
@@ -321,7 +323,22 @@ public class GenerateAdaptersMojo extends AbstractMojo {
             }
         }
 
-        // Plain classpath jar → write adapters into project output
+        // A jar without module-info is an automatic module once the project itself is a module: its
+        // adapter, written into the project's output, would split the package between the two
+        // modules — the layer then fails, or the application loses that jar's beans (grimm#15).
+        if (new File(outputDirectory, "module-info.class").isFile()) {
+            String fqn = resourceClasses.get(0);
+            String pkg = fqn.contains(".") ? fqn.substring(0, fqn.lastIndexOf('.')) : "";
+            String ga = artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion();
+            throw new MojoExecutionException(
+                    "Resource class " + fqn + " is in dependency " + ga + ", which has no module-info: "
+                            + "on the module path it is an automatic module, and generating its adapter in "
+                            + "this module would split package '" + pkg + "' between the two. "
+                            + "Give that dependency a module-info (a Vidocq artifact never ships as an "
+                            + "automatic module), or leave it out with <excludeArtifacts>.");
+        }
+
+        // Plain classpath jar in a classpath project → write adapters into project output
         int count = 0;
         for (String className : resourceClasses) {
             try {

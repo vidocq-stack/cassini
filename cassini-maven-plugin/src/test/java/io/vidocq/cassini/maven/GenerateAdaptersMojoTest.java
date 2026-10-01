@@ -145,6 +145,71 @@ class GenerateAdaptersMojoTest {
                 "an implementation-agnostic wrapper does not require cassini and is sealable");
     }
 
+    // ---- Dependencies without a module-info (Vidocq/grimm#15) ----
+
+    @Test
+    void anAutomaticModuleDependencyFailsAModularProject(@TempDir File dir) throws Exception {
+        // A jar without module-info is an automatic module on the module path: writing its adapter
+        // into a modular project splits the package between the two modules. grimm-cdi-vauban did
+        // that, and the application lost every Grimm bean without a word.
+        var mojo = mojoWritingInto(new File(dir, "classes"), true);
+        File jar = jarWithResource(new File(dir, "lib.jar"));
+
+        var failure = assertThrows(org.apache.maven.plugin.MojoExecutionException.class,
+                () -> mojo.scanJar(jar, artifact("com.acme", "lib"), loaderFor(jar)));
+
+        assertTrue(failure.getMessage().contains("automatic module"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("io.vidocq.cassini.maven.fixture"), failure.getMessage());
+        assertFalse(new File(dir, "classes/io/vidocq/cassini/maven/fixture").exists(),
+                "nothing may be written into the project's own module");
+    }
+
+    @Test
+    void aClasspathProjectStillGetsTheAdapterOfAPlainJar(@TempDir File dir) throws Exception {
+        var mojo = mojoWritingInto(new File(dir, "classes"), false);
+        File jar = jarWithResource(new File(dir, "lib.jar"));
+
+        assertEquals(1, mojo.scanJar(jar, artifact("com.acme", "lib"), loaderFor(jar)));
+    }
+
+    /** A mojo whose project output is {@code classes}, holding a module-info.class or not. */
+    private static GenerateAdaptersMojo mojoWritingInto(File classes, boolean modular) throws Exception {
+        classes.mkdirs();
+        if (modular) {
+            Files.write(new File(classes, "module-info.class").toPath(), ClassFile.of().buildModule(
+                    java.lang.classfile.attribute.ModuleAttribute.of(
+                            java.lang.constant.ModuleDesc.of("app"), b -> { })));
+        }
+        var mojo = new GenerateAdaptersMojo();
+        var field = GenerateAdaptersMojo.class.getDeclaredField("outputDirectory");
+        field.setAccessible(true);
+        field.set(mojo, classes);
+        return mojo;
+    }
+
+    /** A jar without module-info holding a top-level JAX-RS resource (scanJar skips nested ones). */
+    private static File jarWithResource(File jar) throws IOException {
+        var resource = io.vidocq.cassini.maven.fixture.PlainJarResource.class;
+        String entry = resource.getName().replace('.', '/') + ".class";
+        try (var in = resource.getClassLoader().getResourceAsStream(entry);
+             var jos = new java.util.jar.JarOutputStream(Files.newOutputStream(jar.toPath()))) {
+            jos.putNextEntry(new java.util.jar.JarEntry(entry));
+            jos.write(in.readAllBytes());
+            jos.closeEntry();
+        }
+        return jar;
+    }
+
+    private static URLClassLoader loaderFor(File jar) throws IOException {
+        return new URLClassLoader(new java.net.URL[]{jar.toURI().toURL()},
+                GenerateAdaptersMojoTest.class.getClassLoader());
+    }
+
+    private static org.apache.maven.artifact.Artifact artifact(String groupId, String artifactId) {
+        return new org.apache.maven.artifact.DefaultArtifact(groupId, artifactId, "1.0", "compile", "jar",
+                null, new org.apache.maven.artifact.handler.DefaultArtifactHandler("jar"));
+    }
+
     // ---- Helpers ----
 
     /** Builds a jar containing a real (parseable) module-info.class with the given requires. */
