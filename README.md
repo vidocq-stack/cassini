@@ -109,7 +109,7 @@ sequenceDiagram
 | Module | Role | Key dependencies |
 |--------|------|------------------|
 | `cassini-api` | Public SPI: `CassiniHttpExchange`, `CassiniHttpAdapter`, `ResourceFactory`, `BeanProvider` | `jakarta.ws.rs-api` only |
-| `cassini-core` | Full engine: routing, route table, params, MBR/MBW, filters, SSE, codegen (`RuntimeAdapterGenerator`, `AdapterRegistry`) | `cassini-api`, `champollion-jsonp`, `champollion-jsonb` (JSON-B) |
+| `cassini-core` | Full engine: routing, route table, params, MBR/MBW, filters, SSE, codegen (`RuntimeAdapterGenerator`, `AdapterRegistry`) | `cassini-api`, the JSON-P and JSON-B APIs (the application picks the implementation, Champollion in Vidocq) |
 | `cassini-client` | JAX-RS 4.0 client: zero-dep `ClientBuilder` on `java.net.http` + virtual threads | `cassini-api`, `cassini-core`, `java.net.http` |
 | `cassini-cdi-vauban` | Vauban CDI adapter: `VaubanBeanProvider` (BeanProvider SPI), automatic BCE `@RequestScoped` | `cassini-api`, CDI 4.1, `io.vidocq.vauban.core` |
 | `cassini-chappe` | Adapter Chappe + `ChappeRuntimeDelegate` (SE-Bootstrap) | `cassini-core`, `io.vidocq.chappe` |

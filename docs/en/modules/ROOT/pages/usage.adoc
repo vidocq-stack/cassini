@@ -36,7 +36,7 @@ public class UserResource {
 
 == Providers — `MessageBodyReader` / `MessageBodyWriter`
 
-Cassini ships `CassiniJsonbReaderWriter` covering `application/json` via xref:champollion::index.adoc[Champollion]. To add a custom format:
+Cassini ships `CassiniJsonbReaderWriter` covering `application/json` through the JSON-B API, with the implementation the application brings: xref:champollion::index.adoc[Champollion] in Vidocq (see xref:getting-started.adoc#json-implementation[the JSON-B implementation]). To add a custom format:
 
 [source,java]
 ----

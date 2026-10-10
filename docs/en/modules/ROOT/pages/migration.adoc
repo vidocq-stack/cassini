@@ -86,7 +86,7 @@ CXF tracks the spec closely. Migration is largely a Maven-coordinate swap and re
 
 == JSON binding — heads-up
 
-Jersey and RESTEasy default to Yasson or Jackson. Cassini delegates to xref:champollion::index.adoc[Champollion]:
+Jersey and RESTEasy default to Yasson or Jackson. Cassini goes through the JSON-B API; the Vidocq runtime, and the examples, use xref:champollion::index.adoc[Champollion]:
 
 * Static serialization: add `champollion-codegen-apt` to the build for new types.
 * Standard `@JsonbProperty`, `@JsonbDateFormat`, `@JsonbTypeAdapter` annotations supported.

@@ -77,6 +77,19 @@
             <artifactId>cassini-chappe</artifactId>
             <version>${cassini.version}</version>
         </dependency>
+        <!-- The JSON-P and JSON-B implementations: cassini-core depends on their APIs only
+             (Vidocq/vidocq-workspace#17), so the runner picks them, as the Vidocq REST
+             extension does. -->
+        <dependency>
+            <groupId>io.vidocq.champollion</groupId>
+            <artifactId>champollion-jsonb</artifactId>
+            <version>${champollion.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.champollion</groupId>
+            <artifactId>champollion-jsonp</artifactId>
+            <version>${champollion.version}</version>
+        </dependency>
         <dependency>
             <groupId>io.vidocq.chappe</groupId>
             <artifactId>chappe-api</artifactId>

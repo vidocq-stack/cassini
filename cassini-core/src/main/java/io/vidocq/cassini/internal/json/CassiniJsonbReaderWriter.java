@@ -43,7 +43,7 @@ import java.lang.reflect.Type;
 /**
  * §4.2.3 / Core Profile: MBR/MBW for {@code application/json} (and the
  * compatible suffix {@code application/*+json}) backed by Jakarta JSON
- * Binding (Yasson).
+ * Binding, through whichever implementation {@link JsonbBuilder} finds.
  *
  * <p>§9.2: if the application provides a {@link ContextResolver}{@code <Jsonb>}
  * for the target type, its {@link Jsonb} is used. Otherwise, a default instance
@@ -54,7 +54,14 @@ import java.lang.reflect.Type;
 public final class CassiniJsonbReaderWriter
         implements MessageBodyReader<Object>, MessageBodyWriter<Object> {
 
-    private static final Jsonb DEFAULT = JsonbBuilder.create();
+    /**
+     * Created on first use, not when the class loads: Cassini depends on the JSON-B API only, and
+     * the implementation comes from the application or its runtime (Champollion in Vidocq). A
+     * deployment without one still starts and serves everything but JSON.
+     */
+    private static final class DefaultJsonb {
+        static final Jsonb INSTANCE = JsonbBuilder.create();
+    }
 
     @Override
     public boolean isReadable(Class<?> type, Type genericType, Annotation[] annotations, MediaType mediaType) {
@@ -107,7 +114,7 @@ public final class CassiniJsonbReaderWriter
                 }
             } catch (RuntimeException ignored) {}
         }
-        return DEFAULT;
+        return DefaultJsonb.INSTANCE;
     }
 
     private static boolean isJson(MediaType mt) {

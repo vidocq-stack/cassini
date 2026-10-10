@@ -27,8 +27,6 @@ module io.vidocq.cassini.core {
     requires static jakarta.activation;
     requires jakarta.json;
     requires jakarta.json.bind;
-    requires io.vidocq.champollion.jsonp;
-    requires io.vidocq.champollion.jsonb;
 
     requires static java.net.http;
     requires java.xml;

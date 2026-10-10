@@ -51,13 +51,19 @@
             <artifactId>jakarta.activation-api</artifactId>
             <optional>true</optional>
         </dependency>
+
+        <!-- cassini-core depends on the JSON-P and JSON-B APIs only: the implementation comes from
+             the application or its runtime (the Vidocq REST extension brings Champollion).
+             Vidocq/vidocq-workspace#17. -->
         <dependency>
             <groupId>io.vidocq.champollion</groupId>
             <artifactId>champollion-jsonb</artifactId>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.vidocq.champollion</groupId>
             <artifactId>champollion-jsonp</artifactId>
+            <scope>test</scope>
         </dependency>
 
         <dependency>

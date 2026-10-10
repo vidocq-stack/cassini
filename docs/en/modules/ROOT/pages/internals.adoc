@@ -147,7 +147,7 @@ Benefits: cold start under ~50 ms, **AOT**-compatible (GraalVM `native-image`, L
 
 == Champollion integration (JSON)
 
-`CassiniJsonbReaderWriter` (in `cassini-core/internal`) implements `MessageBodyReader<Object>` + `MessageBodyWriter<Object>` for `application/json` and delegates to xref:champollion::index.adoc[Champollion] (`Jsonb.create().toJson(...)` / `fromJson(...)`).
+`CassiniJsonbReaderWriter` (in `cassini-core/internal`) implements `MessageBodyReader<Object>` + `MessageBodyWriter<Object>` for `application/json` and delegates to the JSON-B implementation that `JsonbBuilder.create()` finds, on first use: xref:champollion::index.adoc[Champollion] in Vidocq. `cassini-core` depends on the JSON-P and JSON-B APIs only.
 
 The binding itself is static: `champollion-codegen-apt` emits a `<Type>_Binding` at compile time per serializable type. No runtime reflection, no on-the-fly `setAccessible`.
 

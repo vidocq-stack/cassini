@@ -53,6 +53,13 @@ A single, complete `pom.xml` — nothing else to configure:
             <version>{project-version}</version>
             <scope>runtime</scope>
         </dependency>
+        <!-- JSON-B implementation: cassini-core depends on the API only -->
+        <dependency>
+            <groupId>io.vidocq.champollion</groupId>
+            <artifactId>champollion-jsonb</artifactId>
+            <version>{project-version}</version>
+            <scope>runtime</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -123,7 +130,8 @@ public class HelloResource {
 }
 ----
 
-JSON marshalling of the `Item` record works out of the box — `cassini-core` embeds Champollion (JSON-B).
+[#json-implementation]
+JSON marshalling of the `Item` record works with the `champollion-jsonb` dependency above. [.tag-new]#NEW# `cassini-core` depends on the JSON-P and JSON-B APIs only and no longer embeds Champollion: any JSON-B implementation found by `JsonbBuilder` will do. Without one, the application still starts, and only a JSON entity fails. The Vidocq runtime brings Champollion for you.
 
 == Bootstrap
 
