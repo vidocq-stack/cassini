@@ -10,12 +10,19 @@
 
     <artifactId>cassini-cdi-vauban</artifactId>
     <name>Cassini :: CDI Vauban Adapter</name>
-    <description>Vauban CDI adapter for Cassini: implements the BeanProvider SPI and provides a @RequestScoped BCE for @Path resources.</description>
+    <description>Vauban CDI adapter for Cassini: a BeanProvider that reads Vauban's container directly. The default scopes of @Path and @Provider classes come from cassini-cdi.</description>
 
     <dependencies>
         <dependency>
             <groupId>io.vidocq.cassini</groupId>
             <artifactId>cassini-api</artifactId>
+        </dependency>
+        <!-- The container-neutral part: CassiniScopeExtension (the @Path/@Provider default scopes)
+             and the CDI BeanProvider this module outranks when Vauban runs (cassini#53). -->
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-cdi</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>jakarta.enterprise</groupId>

@@ -19,6 +19,7 @@
  */
 package io.vidocq.cassini.cdi.vauban;
 
+import io.vidocq.cassini.cdi.CassiniScopeExtension;
 import io.vidocq.vauban.core.container.VaubanContainer;
 import jakarta.enterprise.inject.Any;
 import jakarta.enterprise.inject.spi.Bean;

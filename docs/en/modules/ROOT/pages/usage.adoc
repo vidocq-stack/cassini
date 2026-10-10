@@ -232,7 +232,7 @@ Response r = client.target(base).path("/orders")
 
 == CDI / Vauban integration
 
-With `cassini-cdi-vauban` on the classpath, `VaubanBeanProvider.getResourceClasses()` walks the `BeanManager` and exposes all `@Path` / `@Provider` classes to the stack. No manual list of singletons is required.
+With `cassini-cdi-vauban` on the classpath (or `cassini-cdi` under another CDI container, see xref:reference.adoc#other-containers[Other CDI containers]), `VaubanBeanProvider.getResourceClasses()` walks the `BeanManager` and exposes all `@Path` / `@Provider` classes to the stack. No manual list of singletons is required.
 
 [source,java]
 ----

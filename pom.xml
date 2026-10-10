@@ -90,7 +90,9 @@
         <module>cassini-core</module>
         <module>cassini-processor</module>
         <module>cassini-maven-plugin</module>
+        <module>cassini-cdi</module>
         <module>cassini-cdi-vauban</module>
+        <module>cassini-it-other-containers</module>
         <module>cassini-chappe</module>
         <module>cassini-jdk-http</module>
         <module>cassini-client</module>

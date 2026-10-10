@@ -109,8 +109,10 @@ sequenceDiagram
               ├─ cassini-client ──→ requires cassini-api + cassini-core + java.net.http
               │     provides ClientBuilder + RuntimeDelegate, uses Feature (VT-based)
               │
-              ├─ cassini-cdi-vauban ──→ requires cassini-api + io.vidocq.vauban.core
-              │     provides BeanProvider.Factory + BuildCompatibleExtension
+              ├─ cassini-cdi ─────────→ requires cassini-api + jakarta.cdi
+              │     provides BeanProvider.Factory (50) + BuildCompatibleExtension
+              ├─ cassini-cdi-vauban ──→ requires cassini-cdi + io.vidocq.vauban.core
+              │     provides BeanProvider.Factory (100)
               │
               └─ cassini-processor ──→ APT, provides javax.annotation.processing.Processor
                     cassini-maven-plugin (no module-info) — build-time codegen for dep JARs

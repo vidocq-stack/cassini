@@ -38,7 +38,8 @@ Cassini cleanly separates the **REST** layer (annotation parsing, dispatch, cont
 * `cassini-core` — JAX-RS engine (Invoker, ResourceScanner, MessageBodyRegistry). Strict-spec, transport-agnostic.
 * `cassini-chappe` — wires the engine onto xref:chappe::index.adoc[Chappe] (HTTP/1.1, H2, virtual threads). **TCK reference transport.**
 * `cassini-jdk-http` — JDK 25 `com.sun.net.httpserver` fallback (zero external dependency, ideal for smoke tests).
-* `cassini-cdi-vauban` — `BeanProvider` adapter that resolves resources through xref:vauban::index.adoc[Vauban].
+* `cassini-cdi` [.tag-new]#NEW# — container-neutral `BeanProvider`, for any CDI 4 container.
+* `cassini-cdi-vauban` — `BeanProvider` adapter that resolves resources through xref:vauban::index.adoc[Vauban] directly.
 * `cassini-client` — zero-dependency JAX-RS `ClientBuilder` on `java.net.http` + virtual threads (server-independent).
 
 `CassiniStack.builder()` picks the transport via `ServiceLoader` — application code references no transport-specific symbol.
@@ -46,7 +47,7 @@ Cassini cleanly separates the **REST** layer (annotation parsing, dispatch, cont
 == Two resource instantiation modes
 
 . **Mode A — without CDI**: `new()` via `ResourceFactory.defaultFactory()`. Used by `cassini-jdk-http` standalone and demos. Resources are `@Singleton` or per-request depending on declared scope.
-. **Mode B — DI via `BeanProvider` SPI**: `cassini-cdi-vauban` or any other `ServiceLoader` adapter. No `jakarta.cdi` import in `cassini-api` / `cassini-core` — strict decoupling.
+. **Mode B — DI via `BeanProvider` SPI**: `cassini-cdi` (any CDI container), `cassini-cdi-vauban` or any other `ServiceLoader` adapter; the highest priority wins. No `jakarta.cdi` import in `cassini-api` / `cassini-core` — strict decoupling.
 
 == Routing: Cassini's map
 

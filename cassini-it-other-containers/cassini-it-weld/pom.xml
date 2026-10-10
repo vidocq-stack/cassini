@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.vidocq.cassini</groupId>
+        <artifactId>cassini-it-other-containers</artifactId>
+        <version>0.4.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>cassini-it-weld</artifactId>
+    <name>Cassini :: Integration tests on Weld</name>
+    <description>Portability proof: Cassini on Chappe with Weld SE (CDI 4.1) as the CDI container instead
+        of Vauban — resources get injection, @RequestScoped beans live per request, and interceptors on
+        resources apply, over HTTP (vidocq-workspace#15).</description>
+
+    <properties>
+        <!-- Weld 6.0 implements CDI 4.1, the level Cassini targets (Weld 7 is CDI 5.0). -->
+        <weld.version>6.0.4.Final</weld.version>
+    </properties>
+
+    <!--
+        Every dependency is test-scoped: the module ships nothing. Weld is the reference CDI
+        implementation, used here as a test container only — it never reaches a Cassini artifact.
+        The Vauban container is deliberately absent from the class path, which WeldPortabilityTest
+        asserts: Cassini finds its beans through cassini-cdi, the container-neutral BeanProvider.
+        Chappe is the HTTP server, as in a Cassini application.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-cdi</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-chappe</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.chappe</groupId>
+            <artifactId>chappe-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.weld.se</groupId>
+            <artifactId>weld-se-core</artifactId>
+            <version>${weld.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- A class path, as in an application server or a plain Weld SE application: the
+                 module descriptors (and their `provides`) are ignored, only META-INF/services and
+                 META-INF/beans.xml count. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <useModulePath>false</useModulePath>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

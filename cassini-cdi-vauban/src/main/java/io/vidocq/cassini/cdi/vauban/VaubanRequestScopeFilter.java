@@ -32,7 +32,7 @@ import jakarta.ws.rs.ext.Provider;
  * Activates the Vauban {@link io.vidocq.vauban.core.context.RequestContext} around
  * each Cassini HTTP request, then deactivates it on the way out. This is required so
  * that {@code @RequestScoped} JAX-RS resources (= every {@code @Path} class after the
- * {@link CassiniScopeExtension} BCE) can be instantiated — without it, the CDI proxy
+ * {@link io.vidocq.cassini.cdi.CassiniScopeExtension} BCE) can be instantiated — without it, the CDI proxy
  * throws {@code ContextNotActiveException: RequestScope is not active}.
  *
  * <p>Automatically registered by {@link VaubanBeanProvider#getResourceClasses()}

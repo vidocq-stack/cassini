@@ -17,7 +17,7 @@
  *
  * SPDX-License-Identifier: EPL-2.0 OR EUPL-1.2 OR GPL-2.0-or-later
  */
-package io.vidocq.cassini.cdi.vauban;
+package io.vidocq.cassini.cdi;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.Dependent;
@@ -31,12 +31,16 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.ext.Provider;
 
 /**
- * {@link BuildCompatibleExtension} that aligns Vauban with JAX-RS 4.0 spec §11.2.5:
+ * {@link BuildCompatibleExtension} that aligns a CDI container with JAX-RS 4.0 spec §11.2.5:
  * classes annotated with {@code @Path} or {@code @Provider} must be discoverable
  * as managed CDI beans even without an explicit scope. Without this BCE, a generic
- * CDI container like Vauban ignores these classes during bean discovery
- * (no bean-defining annotation), so Cassini cannot find them through
- * {@link VaubanBeanProvider#getResourceClasses()}.
+ * CDI container (Vauban, Weld) leaves these classes out of the beans when they have
+ * no bean-defining annotation, so Cassini cannot find them through
+ * {@link io.vidocq.cassini.spi.bean.BeanProvider#getResourceClasses()}.
+ *
+ * <p>The extension only visits classes the container discovers: in {@code annotated}
+ * discovery mode, a {@code @Path} class with no bean-defining annotation is not one,
+ * so give it a scope or list it in a {@code beans.xml} with {@code bean-discovery-mode="all"}.</p>
  *
  * <ul>
  *   <li>{@code @Path} without a scope → {@code @RequestScoped} (standard JAX-RS semantics:
@@ -47,8 +51,9 @@ import jakarta.ws.rs.ext.Provider;
  * </ul>
  *
  * <p>This BCE is Cassini's counterpart to the standard CDI "bean-defining
- * annotation" rule. It avoids forcing Vauban (a generic CDI container) to know
- * about {@code jakarta.ws.rs} and keeps the separation of concerns clean.</p>
+ * annotation" rule. It avoids forcing a generic CDI container to know
+ * about {@code jakarta.ws.rs} and keeps the separation of concerns clean. It moved from
+ * {@code cassini-cdi-vauban} to this container-neutral module (cassini#53).</p>
  */
 public class CassiniScopeExtension implements BuildCompatibleExtension {
 
