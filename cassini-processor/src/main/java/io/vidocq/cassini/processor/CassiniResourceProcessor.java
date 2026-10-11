@@ -66,19 +66,27 @@ import java.util.Set;
  *       {@code RuntimeAdapterGenerator.collectMethods}.</li>
  * </ul>
  *
+ * <p>Each {@code Application} subclass annotated with {@code @ApplicationPath} gets a
+ * {@code <ApplicationClass>$$CassiniApplication} implementing
+ * {@link io.vidocq.cassini.spi.gen.ApplicationDescriptor}, so a runtime finds the path without
+ * the class being a CDI bean.</p>
+ *
  * <p>{@code AdapterRegistry.lookup} tries {@code Class.forName(beanClass + "$$CassiniAdapter")}
  * first, so APT-generated adapters are used in preference to the runtime generator, making the
  * application AOT-safe (GraalVM native-image, Project Leyden CDS).</p>
  */
 @SupportedAnnotationTypes({
         "jakarta.ws.rs.Path",
-        "jakarta.ws.rs.ext.Provider"
+        "jakarta.ws.rs.ext.Provider",
+        "jakarta.ws.rs.ApplicationPath"
 })
 @SupportedSourceVersion(SourceVersion.RELEASE_25)
 public class CassiniResourceProcessor extends AbstractProcessor {
 
     private static final String ADAPTER_SUFFIX = "$$CassiniAdapter";
     private static final String ROUTES_SUFFIX  = "$$CassiniRoutes";
+    private static final String APPLICATION_SUFFIX = "$$CassiniApplication";
+    private static final String APPLICATION_PATH = "jakarta.ws.rs.ApplicationPath";
 
     private Filer filer;
     private Messager messager;
@@ -89,6 +97,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
     private final Set<String> processed = new HashSet<>();
     private final Set<String> generatedAdapters = new LinkedHashSet<>();
     private final Set<String> generatedRoutes = new LinkedHashSet<>();
+    private final Set<String> generatedApplications = new LinkedHashSet<>();
 
     /** Writes {@code META-INF/services/<service>} listing {@code providers} (if any). */
     private void writeServiceFile(String service, Set<String> providers) {
@@ -131,11 +140,20 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             // module-info.java (the Maven plugin sealing covers pre-built jars).
             writeServiceFile("io.vidocq.cassini.spi.gen.ResourceAdapter", generatedAdapters);
             writeServiceFile("io.vidocq.cassini.spi.gen.RouteProvider", generatedRoutes);
+            writeServiceFile("io.vidocq.cassini.spi.gen.ApplicationDescriptor", generatedApplications);
             return false;
         }
 
         Set<TypeElement> toProcess = new LinkedHashSet<>();
         for (TypeElement annotation : annotations) {
+            if (annotation.getQualifiedName().contentEquals(APPLICATION_PATH)) {
+                for (Element element : roundEnv.getElementsAnnotatedWith(annotation)) {
+                    if (element.getKind() == ElementKind.CLASS) {
+                        processApplication((TypeElement) element);
+                    }
+                }
+                continue;
+            }
             for (Element element : roundEnv.getElementsAnnotatedWith(annotation)) {
                 if (element.getKind() == ElementKind.CLASS) {
                     toProcess.add((TypeElement) element);
@@ -176,6 +194,62 @@ public class CassiniResourceProcessor extends AbstractProcessor {
     // -------------------------------------------------------------------------
     // Source generation
     // -------------------------------------------------------------------------
+
+    // ---- Application descriptor ---------------------------------------------
+
+    /** Generates the {@code $$CassiniApplication} of a concrete {@code Application} subclass. */
+    private void processApplication(TypeElement type) {
+        String binaryName = elements.getBinaryName(type).toString();
+        if (!generatedApplications.add(binaryName + APPLICATION_SUFFIX)) return;
+        TypeElement application = elements.getTypeElement("jakarta.ws.rs.core.Application");
+        if (application == null || !types.isSubtype(type.asType(), types.erasure(application.asType()))) {
+            generatedApplications.remove(binaryName + APPLICATION_SUFFIX);
+            messager.printMessage(Diagnostic.Kind.WARNING,
+                    "cassini-processor: @ApplicationPath on " + binaryName
+                            + ", which does not extend jakarta.ws.rs.core.Application: ignored", type);
+            return;
+        }
+        if (type.getModifiers().contains(Modifier.ABSTRACT)) {
+            generatedApplications.remove(binaryName + APPLICATION_SUFFIX);
+            return;
+        }
+        String path = null;
+        for (var mirror : type.getAnnotationMirrors()) {
+            if (((TypeElement) mirror.getAnnotationType().asElement()).getQualifiedName().contentEquals(APPLICATION_PATH)) {
+                for (var entry : mirror.getElementValues().entrySet()) {
+                    if (entry.getKey().getSimpleName().contentEquals("value")) {
+                        path = (String) entry.getValue().getValue();
+                    }
+                }
+            }
+        }
+        String name = binaryName + APPLICATION_SUFFIX;
+        int lastDot = name.lastIndexOf('.');
+        String pkg = lastDot > 0 ? name.substring(0, lastDot) : "";
+        String simple = lastDot > 0 ? name.substring(lastDot + 1) : name;
+        try {
+            JavaFileObject src = filer.createSourceFile(name, type);
+            try (PrintWriter w = new PrintWriter(src.openWriter())) {
+                if (!pkg.isEmpty()) {
+                    w.println("package " + pkg + ";");
+                    w.println();
+                }
+                w.println("/** Generated by cassini-processor: the {@code @ApplicationPath} of "
+                        + type.getSimpleName() + ". */");
+                w.println("public final class " + simple
+                        + " implements io.vidocq.cassini.spi.gen.ApplicationDescriptor {");
+                w.println("    @Override public Class<?> applicationClass() { return "
+                        + type.getQualifiedName() + ".class; }");
+                String literal = path == null ? "null" : "\"" + escapeString(path) + "\"";
+                w.println("    @Override public String applicationPath() { return " + literal + "; }");
+                w.println("}");
+            }
+        } catch (IOException e) {
+            generatedApplications.remove(name);
+            messager.printMessage(Diagnostic.Kind.ERROR,
+                    "cassini-processor: failed to generate " + name + ": " + e.getMessage(), type);
+        }
+    }
 
     // ---- Route generation ---------------------------------------------------
 

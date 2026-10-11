@@ -124,6 +124,7 @@ Rather than reflecting on every dispatch, Cassini generates two artefacts per re
 
 * `<ResourceClass>$$CassiniAdapter` — a `ResourceAdapter` (SPI `cassini-api`, package `io.vidocq.cassini.spi.gen`) that performs **direct method invocation** (no `Method.invoke`), **field injection** of `@Context` / `@*Param`, and **inline `@*Param` coercion**: String/CharSequence, primitives + wrappers, enums (`fromString` or `Enum.valueOf`), public `valueOf`/`fromString`/`(String)`-ctor types, and `List`/`Set`/`SortedSet`/`Collection` of those.
 * `<ResourceClass>$$CassiniRoutes` — a `RouteProvider` exposing the route table as string/class literals (`RouteDescriptor`). `RouteRegistry` converts each to a `ResourceMethod` via a targeted `getDeclaredMethod(...)` plus `UriTemplate.compile(...)` — no annotation scan. Classes carrying sub-resource locators set `hasLocators()` and fall back to `ResourceScanner` for the whole class.
+* `<ApplicationClass>$$CassiniApplication` [.tag-new]#NEW# — an `ApplicationDescriptor` for each `Application` subclass with an `@ApplicationPath`: the class and the path as written, listed in `META-INF/services`. A host finds the path through `ServiceLoader`, even when the `Application` is no CDI bean (an unscoped class under `annotated` discovery).
 
 === Three generation tiers
 

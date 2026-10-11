@@ -19,6 +19,7 @@
  */
 package io.vidocq.cassini.processor;
 
+import io.vidocq.cassini.spi.gen.ApplicationDescriptor;
 import io.vidocq.cassini.spi.gen.InjectionSupport;
 import io.vidocq.cassini.spi.gen.ParamKind;
 import io.vidocq.cassini.spi.gen.ResourceAdapter;
@@ -238,6 +239,73 @@ class CassiniResourceProcessorTest {
      * Core test: compile a @Path resource, verify the $$CassiniAdapter is generated,
      * and test both injectFields and invoke on it.
      */
+    @Test
+    void applicationPathGeneratesADescriptorWithoutCdi() throws Throwable {
+        // An Application subclass with no CDI scope is no bean under annotated discovery:
+        // the generated descriptor is how a runtime finds its @ApplicationPath (vidocq#219).
+        File src = writeSource("io/vidocq/cassini/test/apt/Api.java", """
+                package io.vidocq.cassini.test.apt;
+
+                import jakarta.ws.rs.ApplicationPath;
+                import jakarta.ws.rs.core.Application;
+
+                @ApplicationPath("api")
+                public class Api extends Application {}
+                """);
+        File outDir = tempDir.resolve("out-app").toFile();
+        outDir.mkdirs();
+
+        URLClassLoader loader = compileWithProcessor(outDir, src);
+
+        Class<?> type = loader.loadClass("io.vidocq.cassini.test.apt.Api$$CassiniApplication");
+        ApplicationDescriptor descriptor =
+                (ApplicationDescriptor) type.getDeclaredConstructor().newInstance();
+        assertSame(loader.loadClass("io.vidocq.cassini.test.apt.Api"), descriptor.applicationClass());
+        assertEquals("api", descriptor.applicationPath());
+        assertEquals(List.of("io.vidocq.cassini.test.apt.Api$$CassiniApplication"), java.nio.file.Files.readAllLines(
+                outDir.toPath().resolve("META-INF/services/io.vidocq.cassini.spi.gen.ApplicationDescriptor")));
+        assertThrows(ClassNotFoundException.class,
+                () -> loader.loadClass("io.vidocq.cassini.test.apt.Api$$CassiniAdapter"),
+                "an Application is no resource: no adapter");
+    }
+
+    @Test
+    void applicationPathValueIsEscapedInTheDescriptor() throws Throwable {
+        File src = writeSource("io/vidocq/cassini/test/apt/Odd.java", """
+                package io.vidocq.cassini.test.apt;
+
+                @jakarta.ws.rs.ApplicationPath("a\\\\b\\\"c")
+                public class Odd extends jakarta.ws.rs.core.Application {}
+                """);
+        File outDir = tempDir.resolve("out-odd").toFile();
+        outDir.mkdirs();
+
+        URLClassLoader loader = compileWithProcessor(outDir, src);
+
+        ApplicationDescriptor descriptor = (ApplicationDescriptor) loader
+                .loadClass("io.vidocq.cassini.test.apt.Odd$$CassiniApplication").getDeclaredConstructor().newInstance();
+        assertEquals("a\\b\"c", descriptor.applicationPath());
+    }
+
+    @Test
+    void applicationPathOnANonApplicationGeneratesNothing() throws Throwable {
+        File src = writeSource("io/vidocq/cassini/test/apt/NotAnApp.java", """
+                package io.vidocq.cassini.test.apt;
+
+                @jakarta.ws.rs.ApplicationPath("x")
+                public class NotAnApp {}
+                """);
+        File outDir = tempDir.resolve("out-notapp").toFile();
+        outDir.mkdirs();
+
+        URLClassLoader loader = compileWithProcessor(outDir, src);
+
+        assertThrows(ClassNotFoundException.class,
+                () -> loader.loadClass("io.vidocq.cassini.test.apt.NotAnApp$$CassiniApplication"));
+        assertFalse(outDir.toPath().resolve("META-INF/services/io.vidocq.cassini.spi.gen.ApplicationDescriptor")
+                .toFile().exists());
+    }
+
     @Test
     void processorGeneratesAdapterForExceptionMapperOfThrowable() throws Throwable {
         // Regression: a @Provider implementing ExceptionMapper<E extends Throwable> exposes the

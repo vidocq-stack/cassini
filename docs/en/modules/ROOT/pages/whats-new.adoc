@@ -19,6 +19,10 @@ New in the `{project-version}` development line — everything listed here lande
 * **A host can read the route table** — `CassiniStack.routes()` returns the routes a stack resolved, in match order, as `RouteDescription` values: HTTP method, path template, resource class and method names, produced and consumed media types. A host such as Vidocq can list what an application exposes without reaching into `cassini-core` (cassini#41). xref:usage.adoc#route-table[Reading the route table].
 * **Live request figures** — `CassiniStack.statistics()` returns the counters a stack keeps: requests answered, in flight, by status class, and the total and longest time spent answering them. Reading them creates nothing and takes no lock; updating them allocates nothing and costs about 25 ns per request, so they are on by default, and `statistics(false)` removes them (cassini#42). xref:usage.adoc#request-statistics[Reading live request figures].
 
+== Code generation
+
+* **`@ApplicationPath` without CDI** — `cassini-processor` generates an `ApplicationDescriptor` for each `Application` subclass annotated with `@ApplicationPath`, found by `ServiceLoader`. A host reads the path of an `Application` that has no CDI scope, which a container in `annotated` discovery mode never discovers (vidocq#219). xref:internals.adoc#_static_resource_codegen[Static resource codegen].
+
 == Other CDI containers
 
 * **`cassini-core` no longer brings Champollion** — it depends on the JSON-P and JSON-B APIs only, and the application, or its runtime, picks the implementation: the Vidocq REST extension brings Champollion, so nothing changes in a Vidocq application. A standalone application that relied on `cassini-core` for JSON adds `champollion-jsonb` (or another JSON-B implementation). Without one, the stack still starts and only a JSON entity fails (vidocq-workspace#17). xref:getting-started.adoc#json-implementation[Getting started].
