@@ -178,7 +178,7 @@ provides io.vidocq.cassini.spi.bean.BeanProvider.Factory
 
 Cassini discovers Vauban via `ServiceLoader`, walks the `BeanManager` at stack construction, and stores `@Path` / `@Provider` classes. For every dispatch, `getBean()` calls `container.select(type)` — the CDI scope (`@RequestScoped`, `@ApplicationScoped`, ...) is honoured. `contextualInstance(...)` unwraps the client proxy of a normal-scoped bean to the real contextual instance, so `@Context` field injection lands on the object the method body actually executes on (invocation still goes through the proxy).
 
-The `CassiniScopeExtension` (Vauban Build Compatible Extension) adds `@RequestScoped` to `@Path` classes lacking an explicit scope — automatic alignment with the semantics filters and interceptors expect.
+The `CassiniScopeExtension` (Vauban Build Compatible Extension) adds `@RequestScoped` to `@Path` classes lacking an explicit scope — automatic alignment with the semantics filters and interceptors expect. Interfaces, such as MicroProfile Rest Client contracts, keep no scope [.tag-new]#NEW#.
 
 == JAX-RS Client (`cassini-client`)
 

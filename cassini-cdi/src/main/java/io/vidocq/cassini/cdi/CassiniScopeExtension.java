@@ -44,7 +44,8 @@ import jakarta.ws.rs.ext.Provider;
  *
  * <ul>
  *   <li>{@code @Path} without a scope → {@code @RequestScoped} (standard JAX-RS semantics:
- *       a new resource instance per request)</li>
+ *       a new resource instance per request); interfaces, such as Rest Client contracts, are
+ *       left alone</li>
  *   <li>{@code @Provider} without a scope → {@code @Dependent} (JAX-RS-side singleton equivalent:
  *       providers are singleton per class by default — {@code @Dependent}
  *       allows on-demand instantiation without the overhead of a normal-scope proxy)</li>
@@ -78,10 +79,15 @@ public class CassiniScopeExtension implements BuildCompatibleExtension {
         }
     }
 
-    /** {@code @Path} without a scope → {@code @RequestScoped}. */
+    /**
+     * {@code @Path} class without a scope → {@code @RequestScoped}. An interface is skipped: it is a
+     * client contract (MicroProfile Rest Client), and a scope would make the container generate a
+     * client proxy for it (cassini#59).
+     */
     @SuppressWarnings("unused")
     @Enhancement(types = Object.class, withAnnotations = Path.class)
     public void addPathDefaultScope(ClassConfig clazz) {
+        if (clazz.info().isInterface()) return;
         if (!hasAnyScope(clazz)) {
             clazz.addAnnotation(RequestScoped.class);
             LOG.log(System.Logger.Level.INFO,
@@ -90,10 +96,11 @@ public class CassiniScopeExtension implements BuildCompatibleExtension {
         }
     }
 
-    /** {@code @Provider} without a scope → {@code @Dependent}. */
+    /** {@code @Provider} class without a scope → {@code @Dependent}; an interface is skipped. */
     @SuppressWarnings("unused")
     @Enhancement(types = Object.class, withAnnotations = Provider.class)
     public void addProviderDefaultScope(ClassConfig clazz) {
+        if (clazz.info().isInterface()) return;
         // Exclude classes that are also @Path (already handled by addPathDefaultScope)
         if (clazz.info().hasAnnotation(Path.class)) return;
         if (!hasAnyScope(clazz)) {

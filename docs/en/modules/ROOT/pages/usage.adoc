@@ -269,7 +269,7 @@ server.start();
 
 Instead of `scanClasspath()`, beans can also be registered explicitly with `addBeanClass(TodoResource.class)`. `composeHandler()` builds the Cassini stack (`CassiniStack.builder().application(new Application() {}).build()`), which auto-detects the Vauban `BeanProvider` via `ServiceLoader`.
 
-The `CassiniScopeExtension` (BCE) automatically adds `@RequestScoped` to `@Path` classes lacking an explicit scope. See xref:internals.adoc[internals] for the diagram.
+The `CassiniScopeExtension` (BCE) automatically adds `@RequestScoped` to `@Path` classes lacking an explicit scope; a `@Path` interface, such as a Rest Client contract, gets none [.tag-new]#NEW#. See xref:internals.adoc[internals] for the diagram.
 
 [#route-table]
 == Reading the route table [.tag-new]#NEW#
