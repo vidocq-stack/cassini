@@ -111,6 +111,11 @@ public final class ChappeHttpAdapter implements Handler {
                     LOG.log(System.Logger.Level.ERROR,
                             "Request failed: " + exchange.method() + " " + exchange.routingPath(), ex);
                     future.completeExceptionally(ex);
+                } else if (exchange.streamingInfo() != null) {
+                    // Streaming mode: the handler thread already answered from the
+                    // streaming snapshot; building a buffered response here is useless
+                    // and would log a second diagnostic if that build failed too.
+                    future.complete(null);
                 } else {
                     future.complete(buildChappeResponse(exchange));
                 }
@@ -179,9 +184,9 @@ public final class ChappeHttpAdapter implements Handler {
 
     /**
      * Logs why the Chappe response could not be built and answers a bare 500. A rejected
-     * header is named, but neither its value nor the transport's exception message is
+     * header is named, but neither its value nor the transport's exception message is ever
      * logged: the value may carry a secret or an injection attempt, and a transport may
-     * build its message from it.
+     * build its message from it. Only the exception class (and its stack frames) is logged.
      */
     private static Response failedResponse(ChappeHttpExchange exchange, RuntimeException e) {
         String request = exchange.method() + " " + printable(exchange.routingPath());
@@ -193,8 +198,13 @@ public final class ChappeHttpAdapter implements Handler {
                     + " control characters, and not null. Encode non-Latin-1 text per RFC 8187,"
                     + " e.g. Content-Disposition: attachment; filename*=UTF-8''%E2%82%AC.pdf");
         } else {
+            // Only the class: a transport that validates headers in build() may put a
+            // value in its message. The stack trace goes through a message-less copy.
+            var trace = new RuntimeException(e.getClass().getName() + " (message not logged)");
+            trace.setStackTrace(e.getStackTrace());
             LOG.log(System.Logger.Level.ERROR, "Response of " + request
-                    + " could not be built by the HTTP transport; answering 500 instead", e);
+                    + " could not be built by the HTTP transport (" + e.getClass().getName()
+                    + "); answering 500 instead. The exception message is not logged.", trace);
         }
         return Response.builder().status(StatusCode.of(500)).body(Body.empty()).build();
     }

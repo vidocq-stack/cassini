@@ -123,6 +123,35 @@ class ResponseHeaderRejectionTest {
         }
     }
 
+    @Test
+    void buffered_failure_in_build_never_logs_the_exception_message() throws Exception {
+        var adapter = new ChappeHttpAdapter(bufferedEngine("X-Note", POISON_VALUE),
+                ChappeHttpAdapter.Scoped.IDENTITY, failingOnBuild(POISON_VALUE));
+        try (var logs = LogCapture.of(LOGGER)) {
+            Response response = adapter.handle(request());
+            assertEquals(500, response.status().code());
+            LogRecord r = singleErrorRecord(logs);
+            assertTrue(r.getMessage().contains(IllegalArgumentException.class.getName()), r.getMessage());
+            assertValueNotLogged(r, POISON_VALUE);
+        }
+    }
+
+    @Test
+    void streaming_failure_in_build_releases_the_writer_and_never_logs_the_message() throws Exception {
+        var writer = new AtomicReference<Thread>();
+        var writeFailure = new AtomicReference<Throwable>();
+        var adapter = new ChappeHttpAdapter(streamingEngine("X-Note", POISON_VALUE, writer, writeFailure),
+                ChappeHttpAdapter.Scoped.IDENTITY, failingOnBuild(POISON_VALUE));
+        try (var logs = LogCapture.of(LOGGER)) {
+            Response response = adapter.handle(request());
+            assertEquals(500, response.status().code());
+            assertWriterTerminated(writer, writeFailure);
+            LogRecord r = singleErrorRecord(logs);
+            assertTrue(r.getMessage().contains(IllegalArgumentException.class.getName()), r.getMessage());
+            assertValueNotLogged(r, POISON_VALUE);
+        }
+    }
+
     // ---- real Chappe builder: skipped if the installed Chappe accepts the field --------
 
     static Stream<Arguments> rejectedByChappe() {
@@ -241,36 +270,67 @@ class ResponseHeaderRejectionTest {
     }
 
     /**
-     * Exactly one WARNING-or-above record, naming the header and echoing neither the value
-     * nor the exception message (which a Chappe builder may build from the value).
+     * Exactly one record at WARNING or above, and it is at ERROR ({@code SEVERE} in
+     * {@code java.util.logging}): it names the header and echoes neither the value nor the
+     * exception message (which a Chappe builder may build from the value).
      *
      * @return the message of that record
      */
     private static String assertSingleDiagnostic(LogCapture logs, String name, String value) {
+        LogRecord r = singleErrorRecord(logs);
+        String message = r.getMessage();
+        assertTrue(message.contains(name), message);
+        assertValueNotLogged(r, value);
+        return message;
+    }
+
+    /** The only record at WARNING or above, checked to be at ERROR ({@code SEVERE}). */
+    private static LogRecord singleErrorRecord(LogCapture logs) {
         List<LogRecord> records = logs.atOrAbove(Level.WARNING);
         assertEquals(1, records.size(), () -> "expected one diagnostic, got " + records.stream()
                 .map(LogRecord::getMessage).toList());
         LogRecord r = records.getFirst();
+        assertEquals(Level.SEVERE, r.getLevel(), "the diagnostic is logged at ERROR");
+        return r;
+    }
+
+    /** Neither the message nor any throwable of the chain (message or stack trace) holds {@code value}. */
+    private static void assertValueNotLogged(LogRecord r, String value) {
+        if (value == null) return;
         String message = r.getMessage();
-        assertTrue(message.contains(name), message);
-        if (value != null) {
-            assertFalse(message.contains(value), "the header value must never be logged: " + message);
-            for (Throwable t = r.getThrown(); t != null; t = t.getCause()) {
-                String m = String.valueOf(t.getMessage());
-                assertFalse(m.contains(value), "the header value leaks through the logged throwable: " + m);
-            }
+        assertFalse(message.contains(value), "the header value must never be logged: " + message);
+        for (Throwable t = r.getThrown(); t != null; t = t.getCause()) {
+            String m = String.valueOf(t.getMessage());
+            assertFalse(m.contains(value), "the header value leaks through the logged throwable: " + m);
+            assertFalse(String.valueOf(t).contains(value), "the header value leaks through the logged throwable");
         }
-        return message;
     }
 
     /** A real Chappe builder whose {@code header(poison, ...)} throws, with the value in the message. */
     private static Supplier<Response.Builder> failingOn(String poison,
                                                         java.util.function.Function<String, RuntimeException> failure) {
+        return seamBuilder((name, value) -> {
+            if (poison.equals(name)) throw failure.apply("rejected value " + value);
+        }, () -> { });
+    }
+
+    /**
+     * A real Chappe builder that accepts every header but whose {@code build()} throws, with the
+     * given value in the message — a transport that validates headers only when it builds.
+     */
+    private static Supplier<Response.Builder> failingOnBuild(String value) {
+        return seamBuilder((name, v) -> { }, () -> {
+            throw new IllegalArgumentException("Invalid header value " + value);
+        });
+    }
+
+    private static Supplier<Response.Builder> seamBuilder(
+            java.util.function.BiConsumer<String, String> onHeader, Runnable onBuild) {
         return () -> new Response.Builder() {
             private final Response.Builder delegate = Response.builder();
             @Override public Response.Builder status(StatusCode status) { delegate.status(status); return this; }
             @Override public Response.Builder header(String name, String value) {
-                if (poison.equals(name)) throw failure.apply("rejected value " + value);
+                onHeader.accept(name, value);
                 delegate.header(name, value);
                 return this;
             }
@@ -280,7 +340,10 @@ class ResponseHeaderRejectionTest {
             @Override public Response.Builder body(Body body) { delegate.body(body); return this; }
             @Override public Response.Builder body(String text) { delegate.body(text); return this; }
             @Override public Response.Builder body(byte[] bytes) { delegate.body(bytes); return this; }
-            @Override public Response build() { return delegate.build(); }
+            @Override public Response build() {
+                onBuild.run();
+                return delegate.build();
+            }
         };
     }
 
