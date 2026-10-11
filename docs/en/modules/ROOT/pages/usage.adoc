@@ -126,6 +126,25 @@ Logging:: No `400` in this table is logged above `DEBUG`. A malformed or mistype
 
 Behaviour change:: Up to {release-version}, these requests answered `500` with the parser's message as the body, and logged a full stack trace at `ERROR` each. To keep a `500` for a given exception, map that exception: your mapper runs before the `400`. An application that shaped empty-body errors by mapping the parser's exception now receives a `NoContentException` inside a `BadRequestException` instead, and should map `BadRequestException`.
 
+[#non-latin1-headers]
+== Response headers with non-Latin-1 text [.tag-new]#NEW#
+
+An HTTP header value is ISO-8859-1 text: no CR, LF, NUL or other control character, and no character above `U+00FF`. A header name is an RFC 9110 token. Chappe refuses a response header that breaks these rules, or that has a `null` value, rather than send it mangled. On the Chappe transport, Cassini then answers `500` with an empty body and logs one line at `ERROR` on the logger `io.vidocq.cassini.chappe.ChappeHttpAdapter`. The line names the header and never contains its value.
+
+The usual cause is a file name with accented, Cyrillic or CJK characters, or a `€` sign, written as raw text in `Content-Disposition`. Encode such text as RFC 8187 says, in the `filename*` parameter, and keep a plain ASCII `filename` as a fallback for old clients:
+
+[source,java]
+----
+String name = "Отчёт-€.pdf";
+String encoded = URLEncoder.encode(name, StandardCharsets.UTF_8).replace("+", "%20");
+return Response.ok(file)
+    .header("Content-Disposition",
+            "attachment; filename=\"report.pdf\"; filename*=UTF-8''" + encoded)
+    .build();
+----
+
+`URLEncoder` also percent-encodes a few characters that RFC 8187 allows as they are, such as `!` or `~`. Clients decode them all the same.
+
 == Filters and interceptors
 
 [source,java]

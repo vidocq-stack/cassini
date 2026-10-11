@@ -26,8 +26,13 @@ import io.vidocq.chappe.api.Response;
 import io.vidocq.chappe.api.StatusCode;
 import io.vidocq.cassini.spi.http.CassiniHttpAdapter;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Supplier;
 
 /**
  * Chappe → Cassini HTTP adapter.
@@ -52,14 +57,22 @@ public final class ChappeHttpAdapter implements Handler {
 
     private final CassiniHttpAdapter engine;
     private final Scoped scoped;
+    /** Source of Chappe response builders — {@link Response#builder()} outside tests. */
+    private final Supplier<Response.Builder> builders;
 
     public ChappeHttpAdapter(CassiniHttpAdapter engine) {
         this(engine, Scoped.IDENTITY);
     }
 
     public ChappeHttpAdapter(CassiniHttpAdapter engine, Scoped scoped) {
+        this(engine, scoped, Response::builder);
+    }
+
+    /** Test seam: lets a test make the Chappe response build fail on any Chappe version. */
+    ChappeHttpAdapter(CassiniHttpAdapter engine, Scoped scoped, Supplier<Response.Builder> builders) {
         this.engine = engine;
         this.scoped = scoped == null ? Scoped.IDENTITY : scoped;
+        this.builders = builders;
     }
 
     /**
@@ -117,9 +130,17 @@ public final class ChappeHttpAdapter implements Handler {
         if (streaming != null) {
             // Streaming mode: headers/status snapshot taken at openForStreaming
             // time (the dispatch may still be mutating the exchange concurrently).
-            var b = Response.builder().status(StatusCode.of(streaming.status()));
-            streaming.headers().forEach((k, vs) -> vs.forEach(v -> b.header(k, v)));
-            return b.body(Body.streaming(streaming.input())).build();
+            try {
+                var b = builders.get().status(StatusCode.of(streaming.status()));
+                copyHeaders(b, streaming.headers());
+                return b.body(Body.streaming(streaming.input())).build();
+            } catch (RuntimeException e) {
+                // cassini#56: Chappe never received the pipe, so nobody would ever read
+                // or close it and the thread writing the entity would block forever.
+                // Closing it makes the writer's next write fail with an IOException.
+                closeQuietly(streaming.input());
+                return failedResponse(exchange, e);
+            }
         }
 
         try {
@@ -134,10 +155,79 @@ public final class ChappeHttpAdapter implements Handler {
         }
     }
 
-    private static Response buildChappeResponse(ChappeHttpExchange exchange) {
-        var b = Response.builder().status(StatusCode.of(exchange.collectedStatus()));
-        exchange.collectedHeaders().forEach((k, vs) -> vs.forEach(v -> b.header(k, v)));
-        byte[] body = exchange.collectedBody();
-        return b.body(body.length > 0 ? Body.of(body) : Body.empty()).build();
+    private Response buildChappeResponse(ChappeHttpExchange exchange) {
+        try {
+            var b = builders.get().status(StatusCode.of(exchange.collectedStatus()));
+            copyHeaders(b, exchange.collectedHeaders());
+            byte[] body = exchange.collectedBody();
+            return b.body(body.length > 0 ? Body.of(body) : Body.empty()).build();
+        } catch (RuntimeException e) {
+            return failedResponse(exchange, e);
+        }
+    }
+
+    /** Copies the JAX-RS headers, turning a Chappe refusal into a {@link RejectedHeader}. */
+    private static void copyHeaders(Response.Builder b, Map<String, List<String>> headers) {
+        headers.forEach((name, values) -> values.forEach(value -> {
+            try {
+                b.header(name, value);
+            } catch (RuntimeException e) {
+                throw new RejectedHeader(name, e);
+            }
+        }));
+    }
+
+    /**
+     * Logs why the Chappe response could not be built and answers a bare 500. A rejected
+     * header is named, but neither its value nor the transport's exception message is
+     * logged: the value may carry a secret or an injection attempt, and a transport may
+     * build its message from it.
+     */
+    private static Response failedResponse(ChappeHttpExchange exchange, RuntimeException e) {
+        String request = exchange.method() + " " + printable(exchange.routingPath());
+        if (e instanceof RejectedHeader rejected) {
+            LOG.log(System.Logger.Level.ERROR, "Response header " + printable(rejected.name)
+                    + " of " + request + " rejected by the HTTP transport (" + rejected.causeType
+                    + "); answering 500 instead. The value is not logged. A header name must be"
+                    + " an RFC 9110 token, a value ISO-8859-1 text without CR, LF, NUL or other"
+                    + " control characters, and not null. Encode non-Latin-1 text per RFC 8187,"
+                    + " e.g. Content-Disposition: attachment; filename*=UTF-8''%E2%82%AC.pdf");
+        } else {
+            LOG.log(System.Logger.Level.ERROR, "Response of " + request
+                    + " could not be built by the HTTP transport; answering 500 instead", e);
+        }
+        return Response.builder().status(StatusCode.of(500)).body(Body.empty()).build();
+    }
+
+    private static void closeQuietly(InputStream in) {
+        try {
+            in.close();
+        } catch (IOException | RuntimeException ignored) {
+            // Best effort: the response is already lost.
+        }
+    }
+
+    /** {@code s} quoted, with every char outside printable ASCII escaped as {@code \}{@code uXXXX}. */
+    private static String printable(String s) {
+        if (s == null) return "null";
+        var sb = new StringBuilder(s.length() + 2).append('"');
+        for (int i = 0, len = s.length(); i < len; i++) {
+            char c = s.charAt(i);
+            if (c >= 0x20 && c <= 0x7E) sb.append(c);
+            else sb.append(String.format("\\u%04X", (int) c));
+        }
+        return sb.append('"').toString();
+    }
+
+    /** A response header the transport refused. Carries the name only, never the value. */
+    private static final class RejectedHeader extends RuntimeException {
+        final String name;
+        final String causeType;
+
+        RejectedHeader(String name, RuntimeException cause) {
+            super(null, null, false, false);
+            this.name = name;
+            this.causeType = cause.getClass().getName();
+        }
     }
 }

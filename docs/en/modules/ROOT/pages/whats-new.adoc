@@ -10,6 +10,10 @@ New in the `{project-version}` development line — everything listed here lande
 * **`NoContentException` becomes a `BadRequestException`** — whatever reader throws it, the application's included, as Jakarta REST §4.2.4 requires; the built-in JSON reader now throws it for an empty entity. xref:usage.adoc#unreadable-entities[Unreadable request entities].
 * **No ERROR log for a client's malformed entity** — one line at `DEBUG` on the `io.vidocq.cassini.entity` logger, and the stack trace at `TRACE`, where each such request used to log a full stack trace at `ERROR`. A type the JSON-B provider cannot reach, its package not exported to it, remains a server error logged at `ERROR`. xref:usage.adoc#unreadable-entities[Unreadable request entities].
 
+== Response headers
+
+* **A response header Chappe refuses is a clear 500** — a header whose value holds CR, LF, a control character or a character above `U+00FF` (a raw UTF-8 file name in `Content-Disposition`, typically), whose name is not a token, or whose value is `null`. Cassini answers `500` and logs one `ERROR` line that names the header, never its value, and points to the RFC 8187 encoding. A streamed response in that case now releases the thread writing its entity instead of leaving it blocked (cassini#56). xref:usage.adoc#non-latin1-headers[Response headers with non-Latin-1 text].
+
 == Embedding
 
 * **A host can read the route table** — `CassiniStack.routes()` returns the routes a stack resolved, in match order, as `RouteDescription` values: HTTP method, path template, resource class and method names, produced and consumed media types. A host such as Vidocq can list what an application exposes without reaching into `cassini-core` (cassini#41). xref:usage.adoc#route-table[Reading the route table].

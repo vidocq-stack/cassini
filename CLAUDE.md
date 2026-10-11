@@ -137,6 +137,9 @@ end-to-end through `DefaultCassiniHttpAdapter.dispatch` on an in-memory exchange
 
 **cassini-client**: `ClientBuilderDiscoveryTest`, `BasicGetTest`, `FiltersTest`.
 
+**cassini-chappe**: `ResponseHeaderRejectionTest` (a response header Chappe refuses: 500, one log line
+without the value, streaming pipe released — cassini#56).
+
 ## Documented TCK challenges
 
 3 tests disabled via `TckChallengeExclusions` with justification in `TCK.md`:
