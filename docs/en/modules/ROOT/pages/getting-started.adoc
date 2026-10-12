@@ -36,11 +36,7 @@ A single, complete `pom.xml` — nothing else to configure:
     </properties>
 
     <dependencies>
-        <dependency>
-            <groupId>jakarta.ws.rs</groupId>
-            <artifactId>jakarta.ws.rs-api</artifactId>
-            <version>4.0.0</version>
-        </dependency>
+        <!-- brings the Jakarta REST API transitively -->
         <dependency>
             <groupId>io.vidocq.cassini</groupId>
             <artifactId>cassini-core</artifactId>
