@@ -44,9 +44,9 @@ The REST resource tree is a map. Cassini is the runtime that draws it and routes
 flowchart LR
   Client[HTTP client] -->|HTTP/1.1, H2, H3| Chappe[Chappe<br/>transport]
   Chappe -->|CassiniHttpExchange| Cassini[Cassini<br/>JAX-RS router]
-  Cassini -->|@Inject| Vauban[Vauban<br/>CDI Lite]
+  Cassini -->|"@Inject"| Vauban[Vauban<br/>CDI Lite]
   Cassini -->|JSON-B| Champollion[Champollion<br/>JSON-P / JSON-B]
-  Cassini -->|dispatch| Resource[@Path UserResource]
+  Cassini -->|dispatch| Resource["@Path UserResource"]
   Resource --> Cassini
   Cassini -->|response| Chappe
   Chappe --> Client
