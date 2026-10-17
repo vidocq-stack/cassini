@@ -14,6 +14,8 @@ New in the `{project-version}` development line — everything listed here lande
 
 * **A response header Chappe refuses is a clear 500** — a header whose value holds CR, LF, a control character or a character above `U+00FF` (a raw UTF-8 file name in `Content-Disposition`, typically), whose name is not a token, or whose value is `null`. Cassini answers `500` and logs one `ERROR` line that names the header, never its value, and points to the RFC 8187 encoding. A streamed response in that case now releases the thread writing its entity instead of leaving it blocked (cassini#56). xref:usage.adoc#non-latin1-headers[Response headers with non-Latin-1 text].
 
+* [.tag-new]#NEW# **`cassini-jdk-http` answers an empty 500 and refuses the same headers** — a request that fails on the JDK `HttpServer` transport used to answer `500` with the exception's message as its body, which could carry request or header values to the client. It now answers an empty `500` and logs one `ERROR` line with the exception's class only. A response header the wire cannot carry answers `500` as on Chappe, with a line that names the header and never its value; the JDK only refused CR and LF and sent anything else mangled (cassini#58). xref:usage.adoc#non-latin1-headers[Response headers with non-Latin-1 text].
+
 == Embedding
 
 * **A host can read the route table** — `CassiniStack.routes()` returns the routes a stack resolved, in match order, as `RouteDescription` values: HTTP method, path template, resource class and method names, produced and consumed media types. A host such as Vidocq can list what an application exposes without reaching into `cassini-core` (cassini#41). xref:usage.adoc#route-table[Reading the route table].

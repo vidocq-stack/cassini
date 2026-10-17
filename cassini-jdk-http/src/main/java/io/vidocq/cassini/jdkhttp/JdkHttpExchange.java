@@ -45,6 +45,8 @@ import java.util.concurrent.CompletionStage;
  */
 public final class JdkHttpExchange implements CassiniHttpExchange {
 
+    private static final System.Logger LOG = System.getLogger(JdkHttpExchange.class.getName());
+
     private final HttpExchange exchange;
     private final String contextPath;
     private int responseStatus = 200;
@@ -106,6 +108,17 @@ public final class JdkHttpExchange implements CassiniHttpExchange {
      */
     @Override
     public CassiniStreamingSink openForStreaming(int status, Map<String, List<String>> headers) {
+        try {
+            ResponseHeaders.check(headers);
+        } catch (ResponseHeaders.Rejected rejected) {
+            // cassini#58: nothing is sent yet; no sink means "fall back to buffered mode" for the caller.
+            LOG.log(System.Logger.Level.ERROR, "Response header " + ResponseHeaders.printable(rejected.name())
+                    + " of " + exchange.getRequestMethod() + " "
+                    + ResponseHeaders.printable(exchange.getRequestURI().getPath()) + " cannot be sent ("
+                    + rejected.reason() + "); streaming is not opened. The value is not logged. "
+                    + ResponseHeaders.RULE);
+            return null;
+        }
         try {
             for (var e : headers.entrySet()) {
                 exchange.getResponseHeaders().put(e.getKey(),

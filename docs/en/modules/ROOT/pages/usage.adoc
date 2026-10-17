@@ -129,7 +129,7 @@ Behaviour change:: Up to {release-version}, these requests answered `500` with t
 [#non-latin1-headers]
 == Response headers with non-Latin-1 text [.tag-new]#NEW#
 
-An HTTP header value is ISO-8859-1 text: no CR, LF, NUL or other control character, and no character above `U+00FF`. A header name is an RFC 9110 token. Chappe refuses a response header that breaks these rules, or that has a `null` value, rather than send it mangled. On the Chappe transport, Cassini then answers `500` with an empty body and logs one line at `ERROR` on the logger `io.vidocq.cassini.chappe.ChappeHttpAdapter`. The line names the header and never contains its value.
+An HTTP header value is ISO-8859-1 text: no CR, LF, NUL or other control character, and no character above `U+00FF`. A header name is an RFC 9110 token. Chappe refuses a response header that breaks these rules, or that has a `null` value, rather than send it mangled. On the Chappe transport, Cassini then answers `500` with an empty body and logs one line at `ERROR` on the logger `io.vidocq.cassini.chappe.ChappeHttpAdapter`. The line names the header and never contains its value. [.tag-new]#NEW# `cassini-jdk-http` applies the same rule before sending anything, although the JDK `HttpServer` itself only refuses CR and LF: it answers `500` with an empty body and logs the line on `io.vidocq.cassini.jdkhttp.JdkHttpAdapter`, or on `io.vidocq.cassini.jdkhttp.JdkHttpExchange` for a streamed response, which then falls back to a buffered one (cassini#58).
 
 The usual cause is a file name with accented, Cyrillic or CJK characters, or a `€` sign, written as raw text in `Content-Disposition`. Encode such text as RFC 8187 says, in the `filename*` parameter, and keep a plain ASCII `filename` as a fallback for old clients:
 

@@ -42,6 +42,8 @@ import java.util.ArrayList;
  */
 public final class JdkHttpAdapter {
 
+    private static final System.Logger LOG = System.getLogger(JdkHttpAdapter.class.getName());
+
     private final CassiniHttpAdapter engine;
     private final String contextPath;
 
@@ -62,18 +64,47 @@ public final class JdkHttpAdapter {
                 engine.dispatch(exchange).toCompletableFuture().get();
                 writeResponse(jdkExchange, exchange);
             } catch (Exception e) {
-                byte[] body = (e.getMessage() == null ? "Internal Server Error" : e.getMessage())
-                        .getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                jdkExchange.getResponseHeaders().add("Content-Type", "text/plain;charset=utf-8");
-                jdkExchange.sendResponseHeaders(500, body.length);
-                try (var os = jdkExchange.getResponseBody()) { os.write(body); }
+                failed(jdkExchange, e);
             }
         };
+    }
+
+    /**
+     * Ends a request that failed with an empty 500 (cassini#58): the exception message, and the header values or
+     * request data it may carry, reach neither the client nor the log. Nothing more is sent when the response had
+     * already started.
+     */
+    private static void failed(com.sun.net.httpserver.HttpExchange jdkEx, Exception e) throws IOException {
+        Throwable cause = e;
+        while ((cause instanceof java.util.concurrent.ExecutionException
+                || cause instanceof java.util.concurrent.CompletionException) && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        String request = jdkEx.getRequestMethod() + " "
+                + ResponseHeaders.printable(jdkEx.getRequestURI().getPath());
+        if (cause instanceof ResponseHeaders.Rejected rejected) {
+            LOG.log(System.Logger.Level.ERROR, "Response header " + ResponseHeaders.printable(rejected.name())
+                    + " of " + request + " cannot be sent (" + rejected.reason() + "); answering 500 instead."
+                    + " The value is not logged. " + ResponseHeaders.RULE);
+        } else {
+            // Only the class: the message may carry request or header values. The stack trace goes
+            // through a message-less copy.
+            var trace = new RuntimeException(cause.getClass().getName() + " (message not logged)");
+            trace.setStackTrace(cause.getStackTrace());
+            LOG.log(System.Logger.Level.ERROR, "Request " + request + " failed (" + cause.getClass().getName()
+                    + "); answering 500 instead. The exception message is not logged.", trace);
+        }
+        if (jdkEx.getResponseCode() == -1) {
+            jdkEx.getResponseHeaders().clear();
+            jdkEx.sendResponseHeaders(500, -1);
+        }
+        jdkEx.close();
     }
 
     private static void writeResponse(com.sun.net.httpserver.HttpExchange jdkEx,
                                       JdkHttpExchange exchange) throws IOException {
         var headers = exchange.collectedHeaders();
+        ResponseHeaders.check(headers);
         for (var e : headers.entrySet()) {
             jdkEx.getResponseHeaders().put(e.getKey(), new ArrayList<>(e.getValue()));
         }
