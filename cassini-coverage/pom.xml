@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.vidocq.cassini</groupId>
+        <artifactId>cassini-parent</artifactId>
+        <version>0.4.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>cassini-coverage</artifactId>
+    <packaging>pom</packaging>
+
+    <name>Cassini :: Coverage</name>
+    <description>Aggregated JaCoCo report of the reactor, read by SonarQube (quality profile only)</description>
+
+    <properties>
+        <!-- Quality-only module, listed by the quality profile of cassini-parent: never released,
+             installed or deployed. -->
+        <maven.deploy.skip>true</maven.deploy.skip>
+        <maven.install.skip>true</maven.install.skip>
+        <maven.javadoc.skip>true</maven.javadoc.skip>
+        <maven.source.skip>true</maven.source.skip>
+        <gpg.skip>true</gpg.skip>
+    </properties>
+
+    <!--
+        report-aggregate reads these dependencies: in compile scope, their classes, sources and
+        execution data make up the report; in test scope, only their execution data counts.
+        cassini-it-weld only holds tests of the other modules, so without this report they would
+        not count for the code they exercise (Vidocq/vidocq#284). The examples are listed in test
+        scope: their own code is excluded from the coverage, but their tests exercise Cassini and
+        count for it. cassini-tck only joins the reactor under the tck profile.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-processor</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-maven-plugin</artifactId>
+            <version>${project.version}</version>
+            <type>maven-plugin</type>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-cdi</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-cdi-vauban</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-chappe</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-jdk-http</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-client</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-testing</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-it-weld</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-examples-chappe</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-examples-jdkhttp</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-examples-vauban</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>report-aggregate</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report-aggregate</goal>
+                        </goals>
+                        <configuration>
+                            <formats>
+                                <format>XML</format>
+                            </formats>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

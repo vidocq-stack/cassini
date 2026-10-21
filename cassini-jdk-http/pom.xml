@@ -37,7 +37,8 @@
                 <configuration>
                     <!-- Tests capture the adapter's System.Logger output through
                          java.util.logging; the main module does not read java.logging. -->
-                    <argLine>--add-reads io.vidocq.cassini.jdkhttp=java.logging</argLine>
+                    <!-- @{argLine} keeps the JaCoCo agent of the quality profile (vidocq-parent). -->
+                    <argLine>@{argLine} --add-reads io.vidocq.cassini.jdkhttp=java.logging</argLine>
                 </configuration>
             </plugin>
         </plugins>

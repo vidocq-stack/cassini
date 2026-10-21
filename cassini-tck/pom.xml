@@ -336,7 +336,8 @@
                                 <signature.sigTestClasspath>${user.home}/.m2/repository/jakarta/ws/rs/jakarta.ws.rs-api/4.0.0/jakarta.ws.rs-api-4.0.0.jar${path.separator}${project.build.directory}/jimage/java.base${path.separator}${project.build.directory}/jimage/java.xml</signature.sigTestClasspath>
                                 <jakarta.ws.rs.ext.RuntimeDelegate>io.vidocq.cassini.chappe.ChappeRuntimeDelegate</jakarta.ws.rs.ext.RuntimeDelegate>
                             </systemPropertyVariables>
-                            <argLine>-Djdk.httpclient.allowRestrictedHeaders=host,connection,content-length,expect,upgrade,origin,date,via,cookie</argLine>
+                            <!-- @{argLine} keeps the JaCoCo agent of the quality profile (vidocq-parent). -->
+                            <argLine>@{argLine} -Djdk.httpclient.allowRestrictedHeaders=host,connection,content-length,expect,upgrade,origin,date,via,cookie</argLine>
                         </configuration>
                     </plugin>
                 </plugins>
