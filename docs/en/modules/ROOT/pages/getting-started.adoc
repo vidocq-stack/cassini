@@ -127,7 +127,7 @@ public class HelloResource {
 ----
 
 [#json-implementation]
-JSON marshalling of the `Item` record works with the `champollion-jsonb` dependency above. [.tag-new]#NEW# `cassini-core` depends on the JSON-P and JSON-B APIs only and no longer embeds Champollion: any JSON-B implementation found by `JsonbBuilder` will do. Without one, the application still starts, and only a JSON entity fails. The Vidocq runtime brings Champollion for you.
+JSON marshalling of the `Item` record works with the `champollion-jsonb` dependency above.`cassini-core` depends on the JSON-P and JSON-B APIs only and no longer embeds Champollion: any JSON-B implementation found by `JsonbBuilder` will do. Without one, the application still starts, and only a JSON entity fails. The Vidocq runtime brings Champollion for you.
 
 == Bootstrap
 

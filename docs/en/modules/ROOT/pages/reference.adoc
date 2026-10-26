@@ -19,7 +19,7 @@ Factual reference: published Maven artefacts, exported Java modules, supported J
 | `io.vidocq.cassini:cassini-client:{project-version}`
 | JAX-RS Client 4.0 — zero-dependency `ClientBuilder` on `java.net.http` + virtual threads. Reuses `MessageBodyRegistry` from `cassini-core`.
 
-| `io.vidocq.cassini:cassini-cdi:{project-version}` [.tag-new]#NEW#
+| `io.vidocq.cassini:cassini-cdi:{project-version}`
 | Container-neutral `BeanProvider`: resolves resources and providers as beans of any CDI 4 container (Weld, Vauban, ...) through `CDI.current()`, the `BeanManager` and `RequestContextController`, and activates the request context around each request. Ships the BCE `CassiniScopeExtension`. See <<other-containers>>.
 
 | `io.vidocq.cassini:cassini-cdi-vauban:{project-version}`
@@ -106,7 +106,7 @@ provides io.vidocq.cassini.spi.bean.BeanProvider.Factory
     with ...VaubanBeanProviderFactory;     // priority 100
 ----
 
-| `io.vidocq.cassini.cdi` [.tag-new]#NEW#
+| `io.vidocq.cassini.cdi`
 a|
 [source]
 ----
@@ -155,7 +155,7 @@ NOTE: `cassini-core` deliberately does **not** expose its `CassiniRuntimeDelegat
 CDI (with `cassini-cdi` or `cassini-cdi-vauban`): `@ApplicationScoped`, `@RequestScoped`, `@Singleton`, `@Inject`, and the interceptors of the container.
 
 [#other-containers]
-== Other CDI containers [.tag-new]#NEW#
+== Other CDI containers
 
 Cassini does not need Vauban. `cassini-cdi` finds the running container through `CDI.current()` and resolves the resources and providers as its beans; with Vauban, `cassini-cdi-vauban` outranks it. With no container running, Cassini runs without CDI, as before (cassini#53).
 

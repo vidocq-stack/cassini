@@ -124,7 +124,7 @@ Rather than reflecting on every dispatch, Cassini generates two artefacts per re
 
 * `<ResourceClass>$$CassiniAdapter` — a `ResourceAdapter` (SPI `cassini-api`, package `io.vidocq.cassini.spi.gen`) that performs **direct method invocation** (no `Method.invoke`), **field injection** of `@Context` / `@*Param`, and **inline `@*Param` coercion**: String/CharSequence, primitives + wrappers, enums (`fromString` or `Enum.valueOf`), public `valueOf`/`fromString`/`(String)`-ctor types, and `List`/`Set`/`SortedSet`/`Collection` of those.
 * `<ResourceClass>$$CassiniRoutes` — a `RouteProvider` exposing the route table as string/class literals (`RouteDescriptor`). `RouteRegistry` converts each to a `ResourceMethod` via a targeted `getDeclaredMethod(...)` plus `UriTemplate.compile(...)` — no annotation scan. Classes carrying sub-resource locators set `hasLocators()` and fall back to `ResourceScanner` for the whole class.
-* `<ApplicationClass>$$CassiniApplication` [.tag-new]#NEW# — an `ApplicationDescriptor` for each `Application` subclass with an `@ApplicationPath`: the class and the path as written, listed in `META-INF/services`. A host finds the path through `ServiceLoader`, even when the `Application` is no CDI bean (an unscoped class under `annotated` discovery).
+* `<ApplicationClass>$$CassiniApplication`— an `ApplicationDescriptor` for each `Application` subclass with an `@ApplicationPath`: the class and the path as written, listed in `META-INF/services`. A host finds the path through `ServiceLoader`, even when the `Application` is no CDI bean (an unscoped class under `annotated` discovery).
 
 === Three generation tiers
 
@@ -178,7 +178,7 @@ provides io.vidocq.cassini.spi.bean.BeanProvider.Factory
 
 Cassini discovers Vauban via `ServiceLoader`, walks the `BeanManager` at stack construction, and stores `@Path` / `@Provider` classes. For every dispatch, `getBean()` calls `container.select(type)` — the CDI scope (`@RequestScoped`, `@ApplicationScoped`, ...) is honoured. `contextualInstance(...)` unwraps the client proxy of a normal-scoped bean to the real contextual instance, so `@Context` field injection lands on the object the method body actually executes on (invocation still goes through the proxy).
 
-The `CassiniScopeExtension` (Vauban Build Compatible Extension) adds `@RequestScoped` to `@Path` classes lacking an explicit scope — automatic alignment with the semantics filters and interceptors expect. Interfaces, such as MicroProfile Rest Client contracts, keep no scope [.tag-new]#NEW#.
+The `CassiniScopeExtension` (Vauban Build Compatible Extension) adds `@RequestScoped` to `@Path` classes lacking an explicit scope — automatic alignment with the semantics filters and interceptors expect. Interfaces, such as MicroProfile Rest Client contracts, keep no scope.
 
 == JAX-RS Client (`cassini-client`)
 

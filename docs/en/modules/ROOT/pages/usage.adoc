@@ -83,7 +83,7 @@ public class NotFoundExceptionMapper implements ExceptionMapper<NotFoundExceptio
 ----
 
 [#unreadable-entities]
-== Unreadable request entities [.tag-new]#NEW#
+== Unreadable request entities
 
 When the request entity cannot be read into the resource method's entity parameter — malformed JSON, an empty body, a JSON value of the wrong shape or type for the Java type — Cassini answers `400 Bad Request` and does not call the resource method.
 
@@ -127,9 +127,9 @@ Logging:: No `400` in this table is logged above `DEBUG`. A malformed or mistype
 Behaviour change:: Up to {release-version}, these requests answered `500` with the parser's message as the body, and logged a full stack trace at `ERROR` each. To keep a `500` for a given exception, map that exception: your mapper runs before the `400`. An application that shaped empty-body errors by mapping the parser's exception now receives a `NoContentException` inside a `BadRequestException` instead, and should map `BadRequestException`.
 
 [#non-latin1-headers]
-== Response headers with non-Latin-1 text [.tag-new]#NEW#
+== Response headers with non-Latin-1 text
 
-An HTTP header value is ISO-8859-1 text: no CR, LF, NUL or other control character, and no character above `U+00FF`. A header name is an RFC 9110 token. Chappe refuses a response header that breaks these rules, or that has a `null` value, rather than send it mangled. On the Chappe transport, Cassini then answers `500` with an empty body and logs one line at `ERROR` on the logger `io.vidocq.cassini.chappe.ChappeHttpAdapter`. The line names the header and never contains its value. [.tag-new]#NEW# `cassini-jdk-http` applies the same rule before sending anything, although the JDK `HttpServer` itself only refuses CR and LF: it answers `500` with an empty body and logs the line on `io.vidocq.cassini.jdkhttp.JdkHttpAdapter`, or on `io.vidocq.cassini.jdkhttp.JdkHttpExchange` for a streamed response, which then falls back to a buffered one (cassini#58).
+An HTTP header value is ISO-8859-1 text: no CR, LF, NUL or other control character, and no character above `U+00FF`. A header name is an RFC 9110 token. Chappe refuses a response header that breaks these rules, or that has a `null` value, rather than send it mangled. On the Chappe transport, Cassini then answers `500` with an empty body and logs one line at `ERROR` on the logger `io.vidocq.cassini.chappe.ChappeHttpAdapter`. The line names the header and never contains its value.`cassini-jdk-http` applies the same rule before sending anything, although the JDK `HttpServer` itself only refuses CR and LF: it answers `500` with an empty body and logs the line on `io.vidocq.cassini.jdkhttp.JdkHttpAdapter`, or on `io.vidocq.cassini.jdkhttp.JdkHttpExchange` for a streamed response, which then falls back to a buffered one (cassini#58).
 
 The usual cause is a file name with accented, Cyrillic or CJK characters, or a `€` sign, written as raw text in `Content-Disposition`. Encode such text as RFC 8187 says, in the `filename*` parameter, and keep a plain ASCII `filename` as a fallback for old clients:
 
@@ -269,10 +269,10 @@ server.start();
 
 Instead of `scanClasspath()`, beans can also be registered explicitly with `addBeanClass(TodoResource.class)`. `composeHandler()` builds the Cassini stack (`CassiniStack.builder().application(new Application() {}).build()`), which auto-detects the Vauban `BeanProvider` via `ServiceLoader`.
 
-The `CassiniScopeExtension` (BCE) automatically adds `@RequestScoped` to `@Path` classes lacking an explicit scope; a `@Path` interface, such as a Rest Client contract, gets none [.tag-new]#NEW#. See xref:internals.adoc[internals] for the diagram.
+The `CassiniScopeExtension` (BCE) automatically adds `@RequestScoped` to `@Path` classes lacking an explicit scope; a `@Path` interface, such as a Rest Client contract, gets none. See xref:internals.adoc[internals] for the diagram.
 
 [#route-table]
-== Reading the route table [.tag-new]#NEW#
+== Reading the route table
 
 A host that embeds Cassini can ask a built stack what it routes, to print it at startup or show it in a console. `CassiniStack.routes()` returns the table the router resolved, in match order: when two routes match a request, the one listed first wins.
 
@@ -298,7 +298,7 @@ The routes behind `user(..)` are listed with the sub-resource method that serves
 `RouteDescription` holds only strings and sets of strings — the HTTP method, the full path template, the binary name of the resource class, the method name, and the `@Produces` and `@Consumes` media types. It carries no `Class` or `Method`, so keeping it does not keep the application's class loader alive after a host has discarded it. The table is computed once, when the stack is built: reading it does no I/O, creates no resource or provider instance, and the list and its sets are immutable.
 
 [#request-statistics]
-== Reading live request figures [.tag-new]#NEW#
+== Reading live request figures
 
 A stack counts the requests it serves. `CassiniStack.statistics()` returns those counters, for a host that shows live figures — a console, a metrics exporter, a health page:
 

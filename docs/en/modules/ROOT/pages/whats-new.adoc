@@ -1,33 +1,7 @@
 = What's new
-:description: Everything that changed in Cassini since the {release-version} release — unreadable request entities answer 400, a host can read the route table and live request figures, and a container-neutral CDI integration.
+:description: Everything that changed in this component since the {release-version} release.
 
 [.lead]
 New in the `{project-version}` development line — everything listed here landed **after the {release-version} release** and is not part of it. Every entry links to the section that documents it, and those sections carry the [.tag-new]#NEW# badge. Each brick of the suite keeps its own page of this kind; xref:home::whats-new.adoc[the ecosystem index] gathers them. When the next release train ships, this page is frozen with it and restarts empty on the dev line.
 
-== Request entities
-
-* **An unreadable request entity is a 400, not a 500** — malformed JSON, an empty body, a JSON value of the wrong shape or type for the Java type: the resource method is not called and Cassini answers `400 Bad Request`, with an empty body unless the application maps `BadRequestException`. The application's `ExceptionMapper` for the exception the reader threw still runs first. Up to {release-version}, these requests answered `500` with the parser's message (cassini#39). xref:usage.adoc#unreadable-entities[Unreadable request entities].
-* **`NoContentException` becomes a `BadRequestException`** — whatever reader throws it, the application's included, as Jakarta REST §4.2.4 requires; the built-in JSON reader now throws it for an empty entity. xref:usage.adoc#unreadable-entities[Unreadable request entities].
-* **No ERROR log for a client's malformed entity** — one line at `DEBUG` on the `io.vidocq.cassini.entity` logger, and the stack trace at `TRACE`, where each such request used to log a full stack trace at `ERROR`. A type the JSON-B provider cannot reach, its package not exported to it, remains a server error logged at `ERROR`. xref:usage.adoc#unreadable-entities[Unreadable request entities].
-
-== Response headers
-
-* **A response header Chappe refuses is a clear 500** — a header whose value holds CR, LF, a control character or a character above `U+00FF` (a raw UTF-8 file name in `Content-Disposition`, typically), whose name is not a token, or whose value is `null`. Cassini answers `500` and logs one `ERROR` line that names the header, never its value, and points to the RFC 8187 encoding. A streamed response in that case now releases the thread writing its entity instead of leaving it blocked (cassini#56). xref:usage.adoc#non-latin1-headers[Response headers with non-Latin-1 text].
-
-* [.tag-new]#NEW# **`cassini-jdk-http` answers an empty 500 and refuses the same headers** — a request that fails on the JDK `HttpServer` transport used to answer `500` with the exception's message as its body, which could carry request or header values to the client. It now answers an empty `500` and logs one `ERROR` line with the exception's class only. A response header the wire cannot carry answers `500` as on Chappe, with a line that names the header and never its value; the JDK only refused CR and LF and sent anything else mangled (cassini#58). xref:usage.adoc#non-latin1-headers[Response headers with non-Latin-1 text].
-
-== Embedding
-
-* **A host can read the route table** — `CassiniStack.routes()` returns the routes a stack resolved, in match order, as `RouteDescription` values: HTTP method, path template, resource class and method names, produced and consumed media types. A host such as Vidocq can list what an application exposes without reaching into `cassini-core` (cassini#41). xref:usage.adoc#route-table[Reading the route table].
-* **Live request figures** — `CassiniStack.statistics()` returns the counters a stack keeps: requests answered, in flight, by status class, and the total and longest time spent answering them. Reading them creates nothing and takes no lock; updating them allocates nothing and costs about 25 ns per request, so they are on by default, and `statistics(false)` removes them (cassini#42). xref:usage.adoc#request-statistics[Reading live request figures].
-
-== Code generation
-
-* **`@ApplicationPath` without CDI** — `cassini-processor` generates an `ApplicationDescriptor` for each `Application` subclass annotated with `@ApplicationPath`, found by `ServiceLoader`. A host reads the path of an `Application` that has no CDI scope, which a container in `annotated` discovery mode never discovers (vidocq#219). xref:internals.adoc#_static_resource_codegen[Static resource codegen].
-
-== Other CDI containers
-
-* **`cassini-core` no longer brings Champollion** — it depends on the JSON-P and JSON-B APIs only, and the application, or its runtime, picks the implementation: the Vidocq REST extension brings Champollion, so nothing changes in a Vidocq application. A standalone application that relied on `cassini-core` for JSON adds `champollion-jsonb` (or another JSON-B implementation). Without one, the stack still starts and only a JSON entity fails (vidocq-workspace#17). xref:getting-started.adoc#json-implementation[Getting started].
-* **`cassini-cdi`, a container-neutral `BeanProvider`** — Cassini resolves its resources and providers as beans of any CDI 4 container, through `CDI.current()`, the `BeanManager` and `RequestContextController`, and activates the request context around each request. `cassini-it-weld` proves it on Chappe with Weld SE: injection, a `@RequestScoped` bean per request, interceptors on resources (cassini#53). xref:reference.adoc#other-containers[Other CDI containers].
-* **`CassiniScopeExtension` leaves interfaces alone** — a `@Path` or `@Provider` interface, a MicroProfile Rest Client contract typically, no longer gets a default scope: a container that ran the extension at build time generated a client proxy for the interface, and the application did not compile. Only classes get `@RequestScoped` or `@Dependent` (cassini#59). xref:internals.adoc[Internals].
-* **`CassiniScopeExtension` moved to `cassini-cdi`** — the BCE that gives `@Path` and `@Provider` classes their default scope is now `io.vidocq.cassini.cdi.CassiniScopeExtension`; `cassini-cdi-vauban` depends on `cassini-cdi` and keeps its own, faster provider, which outranks the neutral one when Vauban runs. Nothing changes for a Vidocq application. Code that named the class `io.vidocq.cassini.cdi.vauban.CassiniScopeExtension` uses the new package. xref:reference.adoc#java-modules[Java modules].
+_Nothing documented yet for this cycle. Add entries here (and place [.tag-new]#NEW# badges on the relevant pages) as features land on main._
