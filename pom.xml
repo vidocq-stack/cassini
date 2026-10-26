@@ -1,17 +1,17 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
         <groupId>io.vidocq</groupId>
         <artifactId>vidocq-parent</artifactId>
-        <version>0.4.0-SNAPSHOT</version>
+        <version>0.4.0-RC1</version>
         <relativePath />
     </parent>
 
     <groupId>io.vidocq.cassini</groupId>
     <artifactId>cassini-parent</artifactId>
-    <version>0.4.0-SNAPSHOT</version>
+    <version>0.4.0-RC1</version>
     <packaging>pom</packaging>
 
     <name>Cassini</name>
@@ -29,13 +29,7 @@
         </developer>
     </developers>
 
-    <!--
-        Disjunctive triple license: a recipient may use this software under
-        ANY ONE of the three licences below, at their option. EPL-2.0 is the
-        anchor (see the LICENSE file); per EPL-2.0 section 1, GPL-2.0-or-later
-        is offered as a Secondary License.
-        SPDX-License-Identifier: EPL-2.0 OR EUPL-1.2 OR GPL-2.0-or-later
-    -->
+    
     <licenses>
         <license>
             <name>EPL-2.0</name>
@@ -68,46 +62,28 @@
         <jakarta.json.bind.version>3.0.1</jakarta.json.bind.version>
         <jakarta.xml.bind.version>4.0.2</jakarta.xml.bind.version>
         <jakarta.activation.version>2.1.3</jakarta.activation.version>
-        <champollion.version>0.4.0-SNAPSHOT</champollion.version>
+        <champollion.version>0.4.0-RC1</champollion.version>
 
-        <chappe.version>0.4.0-SNAPSHOT</chappe.version>
-        <vauban.version>0.4.0-SNAPSHOT</vauban.version>
-        <ravel.version>0.4.0-SNAPSHOT</ravel.version>
+        <chappe.version>0.4.0-RC1</chappe.version>
+        <vauban.version>0.4.0-RC1</vauban.version>
+        <ravel.version>0.4.0-RC1</ravel.version>
 
         <microprofile.config.version>3.1.1</microprofile.config.version>
 
-        <!--
-            The official Jakarta REST 4.0 TCK, run on every pull request by the producer job of
-            pr.yml ("TCK declared by this repository"). The script installs the reactor, downloads
-            the EFTL bundle for the signature test and exits non-zero on a red suite (set -e).
-
-            Measured on 2026-10-26 with an empty local repository, the state of a CI runner: 2670
-            tests, 131 skipped, 0 failures, 4 min 34 s from the first download to the verdict.
-        -->
+        
         <ci.tck.command>./run-official-tck-restful-4.0.sh all</ci.tck.command>
 
-        <!--
-            SonarQube (Vidocq/vidocq#284): every module reads the aggregated JaCoCo report of
-            cassini-coverage (quality profile), so the tests of cassini-it-weld count for the code
-            they exercise in the other modules.
-        -->
+        
         <sonar.coverage.jacoco.xmlReportPaths>${maven.multiModuleProjectDirectory}/cassini-coverage/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
-        <!-- The examples are analysed (people copy them) but kept out of the coverage. -->
+        
         <sonar.coverage.exclusions>**/cassini-examples/**</sonar.coverage.exclusions>
-        <!-- Writing to the console (java:S106) is what the examples are for. -->
+        
         <sonar.issue.ignore.multicriteria>examples</sonar.issue.ignore.multicriteria>
         <sonar.issue.ignore.multicriteria.examples.ruleKey>java:S106</sonar.issue.ignore.multicriteria.examples.ruleKey>
         <sonar.issue.ignore.multicriteria.examples.resourceKey>**/cassini-examples/**/src/main/java/**</sonar.issue.ignore.multicriteria.examples.resourceKey>
     </properties>
 
-    <!--
-        cassini-tck joins the reactor only under the `tck` profile (see
-        <profiles> below) — TCK harmonisation, same pattern as the
-        vidocq-runtime-tck-* runners and the dirac pilot: a plain `mvn install`
-        neither downloads nor runs anything TCK-related. The historical
-        out-of-reactor constraint (ShrinkWrap Maven Resolver 3.3 vs Model 4.1.0
-        POMs) disappeared with the Maven 3.9.16 / Model 4.0.0 migration.
-    -->
+    
     <modules>
         <module>cassini-api</module>
         <module>cassini-core</module>
@@ -119,16 +95,14 @@
         <module>cassini-chappe</module>
         <module>cassini-jdk-http</module>
         <module>cassini-client</module>
-        <!-- Published test support: the embedded harness other bricks drive their
-             own TCK runners with. Extracted from cassini-tck, which is not deployed
-             and therefore could never be depended on from a clean runner (cassini#36). -->
+        
         <module>cassini-testing</module>
         <module>cassini-examples</module>
     </modules>
 
     <dependencyManagement>
         <dependencies>
-            <!-- Jakarta APIs -->
+            
             <dependency>
                 <groupId>jakarta.ws.rs</groupId>
                 <artifactId>jakarta.ws.rs-api</artifactId>
@@ -165,7 +139,7 @@
                 <version>${jakarta.activation.version}</version>
             </dependency>
 
-            <!-- JSON-B / JSON-P implementations: Champollion (zero-dep, strict Java Modules, native record support) -->
+            
             <dependency>
                 <groupId>io.vidocq.champollion</groupId>
                 <artifactId>champollion-api</artifactId>
@@ -182,7 +156,7 @@
                 <version>${champollion.version}</version>
             </dependency>
 
-            <!-- Chappe -->
+            
             <dependency>
                 <groupId>io.vidocq.chappe</groupId>
                 <artifactId>chappe-api</artifactId>
@@ -194,7 +168,7 @@
                 <version>${chappe.version}</version>
             </dependency>
 
-            <!-- Vauban (compile scope for cassini-cdi-vauban) -->
+            
             <dependency>
                 <groupId>io.vidocq.vauban</groupId>
                 <artifactId>vauban-api</artifactId>
@@ -206,14 +180,14 @@
                 <version>${vauban.version}</version>
             </dependency>
 
-            <!-- Internal Cassini modules -->
+            
             <dependency>
                 <groupId>io.vidocq.cassini</groupId>
                 <artifactId>cassini-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
-            <!-- Ravel — MicroProfile Config 3.1 (zero third-party dependency implementation) -->
+            
             <dependency>
                 <groupId>io.vidocq.ravel</groupId>
                 <artifactId>ravel-api</artifactId>
@@ -229,7 +203,7 @@
                 <artifactId>ravel-cdi-vauban</artifactId>
                 <version>${ravel.version}</version>
             </dependency>
-            <!-- MicroProfile Config API (re-exported by ravel-api) -->
+            
             <dependency>
                 <groupId>org.eclipse.microprofile.config</groupId>
                 <artifactId>microprofile-config-api</artifactId>
@@ -273,24 +247,14 @@
         </dependencies>
     </dependencyManagement>
     <profiles>
-        <!--
-            TCK harmonisation: the official Jakarta RESTful WS 4.0 TCK runner
-            joins the reactor only when this profile is active.
-
-                ./mvnw -Ptck,tck-official -pl cassini-tck verify    # full suite
-
-            run-official-tck-restful-4.0.sh remains the friendly wrapper.
-        -->
+        
         <profile>
             <id>tck</id>
             <modules>
                 <module>cassini-tck</module>
             </modules>
         </profile>
-        <!--
-            Quality profile (with the one of vidocq-parent, which runs the JaCoCo agent): adds
-            the aggregated coverage report that SonarQube reads (Vidocq/vidocq#284).
-        -->
+        
         <profile>
             <id>quality</id>
             <modules>
