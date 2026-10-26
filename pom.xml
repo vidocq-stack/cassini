@@ -77,6 +77,16 @@
         <microprofile.config.version>3.1.1</microprofile.config.version>
 
         <!--
+            The official Jakarta REST 4.0 TCK, run on every pull request by the producer job of
+            pr.yml ("TCK declared by this repository"). The script installs the reactor, downloads
+            the EFTL bundle for the signature test and exits non-zero on a red suite (set -e).
+
+            Measured on 2026-10-26 with an empty local repository, the state of a CI runner: 2670
+            tests, 131 skipped, 0 failures, 4 min 34 s from the first download to the verdict.
+        -->
+        <ci.tck.command>./run-official-tck-restful-4.0.sh all</ci.tck.command>
+
+        <!--
             SonarQube (Vidocq/vidocq#284): every module reads the aggregated JaCoCo report of
             cassini-coverage (quality profile), so the tests of cassini-it-weld count for the code
             they exercise in the other modules.
