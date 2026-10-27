@@ -403,6 +403,16 @@ class CassiniRuntimeDelegateTest {
         assertTrue(delegate.createVariantListBuilder().build().isEmpty());
     }
 
+    @Test
+    void variantListBuilder_is_reset_by_build() {
+        // CASSINI-016. Variant.VariantListBuilder#build: "After this method is called the builder is reset to an
+        // empty state."
+        Variant.VariantListBuilder b = delegate.createVariantListBuilder();
+        assertEquals(1, b.mediaTypes(MediaType.TEXT_PLAIN_TYPE).build().size());
+        assertEquals(List.of(new Variant(null, Locale.ENGLISH, null)), b.languages(Locale.ENGLISH).build());
+        assertTrue(b.build().isEmpty());
+    }
+
     // ── Link builder ─────────────────────────────────────────────────────────
 
     @Test

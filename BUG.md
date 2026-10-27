@@ -202,3 +202,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: any request without (or with a blank) `Accept-Language`.
 - **Cause**: `CassiniHttpHeaders.getAcceptableLanguages` returned `List.of()`; the Javadoc asks for "a read-only list containing a single wildcard Locale instance (with language field set to "*")" (the media-type counterpart already returned `*/*`).
 - **Fix**: return `List.of(Locale.of("*"))`. Regression test: `CassiniHttpHeadersTest.without_accept_language_any_language_is_acceptable`.
+
+## CASSINI-016 — `Variant.VariantListBuilder.build()` does not reset the builder
+- **Date**: 2026-10-27 — **Status**: FIXED (found while covering `CassiniRuntimeDelegate` with unit tests)
+- **Severity**: low. Reusing one `VariantListBuilder` for two lists gave the second list the variants of the first.
+- **Symptom**: `b.mediaTypes(TEXT_PLAIN).build()` then `b.languages(ENGLISH).build()` returned both variants the second time.
+- **Minimal repro**: as above, with `Variant.VariantListBuilder b = Variant.VariantListBuilder.newInstance()`.
+- **Cause**: `StubVariantListBuilder.build()` copied the accumulated list without clearing it; the Javadoc says "After this method is called the builder is reset to an empty state".
+- **Fix**: clear the accumulated variants after copying them. Regression test: `CassiniRuntimeDelegateTest.variantListBuilder_is_reset_by_build`.

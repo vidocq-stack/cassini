@@ -447,7 +447,10 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
 
         @Override public java.util.List<Variant> build() {
             add();
-            return java.util.List.copyOf(variants);
+            java.util.List<Variant> built = java.util.List.copyOf(variants);
+            // The Javadoc resets the builder to an empty state after build() (CASSINI-016).
+            variants.clear();
+            return built;
         }
 
         @Override public Variant.VariantListBuilder add() {
