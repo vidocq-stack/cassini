@@ -509,7 +509,7 @@ public final class RuntimeAdapterGenerator {
                                 emitSupportParam(cob, fd);
                             } else {
                                 // emit inline typed conversion
-                                emitInlineParam(cob, fd, strategy, afterField);
+                                emitInlineParam(cob, fd, strategy);
                                 // value is on stack — store to slot 4
                                 cob.astore(4);
                                 // if (value == null) skip assignment
@@ -701,7 +701,7 @@ public final class RuntimeAdapterGenerator {
      * <p>Slot 5 always holds a {@code List&lt;String&gt;}: the raw list from the request, or
      * a {@code List.of(defaultValue)} when the raw list is empty and a default is present.</p>
      */
-    private static void emitInlineParam(CodeBuilder cob, FieldDesc fd, InlineStrategy strategy, Label afterField) {
+    private static void emitInlineParam(CodeBuilder cob, FieldDesc fd, InlineStrategy strategy) {
         // support is on stack; call rawValues → List<String>
         cob.getstatic(CD_ParamKind, fd.paramKind().name(), CD_ParamKind);
         cob.ldc(fd.paramAnnotationValue());
