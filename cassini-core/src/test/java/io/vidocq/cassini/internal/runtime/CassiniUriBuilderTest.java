@@ -413,6 +413,17 @@ class CassiniUriBuilderTest {
     }
 
     @Test
+    void build_substitutes_values_in_order_of_appearance() {
+        // CASSINI-011. UriBuilder#build: values are taken in the order the templates appear in the URI (path,
+        // query, then fragment); a repeated parameter keeps the value of its first instance.
+        assertEquals("/1/2/1?q=3#4",
+                UriBuilder.fromPath("/{a}/{b}/{a}").replaceQuery("q={c}").fragment("{d}")
+                        .build("1", "2", "3", "4").toString());
+        assertEquals("http://u@h:8080/1/x?q=2#3",
+                UriBuilder.newInstance().uri("http://u@h:8080/{p a}/x?q={v}#{f}").build("1", "2", "3").toString());
+    }
+
+    @Test
     void clone_is_independent_of_the_original() {
         UriBuilder original = UriBuilder.fromUri("http://h/a?q=1#f").resolveTemplate("t", "v");
         UriBuilder copy = original.clone();

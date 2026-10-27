@@ -458,9 +458,10 @@ public final class CassiniUriBuilder extends UriBuilder {
         int[] posIdx = new int[]{0};
         String pathOut = substituteLiteralAndTemplates(path.toString(), values, valueMap,
                 seen, posIdx, Comp.PATH, encodeSlash, valuesAlreadyEncoded);
+        // Positional values follow the order of appearance in the URI: path, query, fragment (CASSINI-011).
+        String queryOut = buildQuery(values, valueMap, seen, posIdx, valuesAlreadyEncoded);
         String fragmentOut = substituteLiteralAndTemplates(fragment, values, valueMap,
                 seen, posIdx, Comp.FRAGMENT, true, valuesAlreadyEncoded);
-        String queryOut = buildQuery(values, valueMap, seen, posIdx, valuesAlreadyEncoded);
         return assemble(pathOut, queryOut, fragmentOut);
     }
 

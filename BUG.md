@@ -162,3 +162,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `UriBuilder.fromPath("/").queryParam("q", "😀").build()` → `/?q=%3F%3F`.
 - **Cause**: `encode` walked the string `char` by `char` and UTF-8-encoded each one alone; a lone surrogate has no UTF-8 form, so the JDK encoder substituted `?` for each half of the pair.
 - **Fix**: encode a whole code point at a time (`codePointAt` / `charCount`). Regression test: `CassiniUriBuilderTest.characters_outside_the_basic_multilingual_plane_are_encoded_as_utf_8`.
+
+## CASSINI-011 — `UriBuilder.build(...)` gives the fragment's value to the query and vice versa
+- **Date**: 2026-10-27 — **Status**: FIXED (found while covering `CassiniUriBuilder` with unit tests)
+- **Severity**: medium. A URI template with parameters in both its query and its fragment received its positional values swapped, silently.
+- **Symptom**: `UriBuilder.fromPath("/{a}").replaceQuery("q={b}").fragment("{c}").build("1", "2", "3")` gave `/1?q=3#2`.
+- **Minimal repro**: `UriBuilder.fromUri("http://h/{p}?q={v}#{f}")` (a template, parsed by `uri(String)`) `.build("1", "2", "3")` → `http://h/1?q=3#2`, expected `http://h/1?q=2#3`.
+- **Cause**: `buildInternal` substituted the path, then the fragment, then the query, consuming the positional values in that order. The `UriBuilder#build` Javadoc takes them in the order the templates appear in the URI.
+- **Fix**: substitute the query before the fragment. Regression test: `CassiniUriBuilderTest.build_substitutes_values_in_order_of_appearance`.
