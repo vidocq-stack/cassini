@@ -172,7 +172,7 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
 
     private CassiniHttpResponse respond(String verb, String path, CassiniHttpExchange exchange) throws Exception {
         List<MatchResult> candidates = router.matchAll(verb, path);
-        if (candidates.isEmpty()) return noRoute(verb, path, exchange);
+        if (candidates.isEmpty()) return noRoute(verb, path);
         MatchResult first = candidates.get(0);
         CassiniHttpResponse out = invoker.invoke(candidates, exchange);
         // §3.3.5: HEAD invoked on a @GET method → the headers without the body.
@@ -185,7 +185,7 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
     /** No route for this verb and path: 404 when no verb has one, 405 otherwise (§3.7.2), through
      *  a WebApplicationException so that an ExceptionMapper can intercept it; OPTIONS answers
      *  200 with the Allow header (§3.3.5). */
-    private CassiniHttpResponse noRoute(String verb, String path, CassiniHttpExchange exchange) throws IOException {
+    private CassiniHttpResponse noRoute(String verb, String path) throws IOException {
         List<String> allowed = router.methodsAllowedFor(path);
         if (allowed.isEmpty()) {
             return invoker.renderThrowable(

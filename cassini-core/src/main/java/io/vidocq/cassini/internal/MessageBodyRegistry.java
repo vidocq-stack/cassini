@@ -85,8 +85,6 @@ public final class MessageBodyRegistry {
             return typeApplies && declaredCompatible(requested);
         }
 
-        /** §4.2.4 step 1 : @Consumes / @Produces absent → wildcard implicite ; sinon une des
-         *  valeurs déclarées doit être compatible avec le media type demandé. */
         /** §4.2.4 step 1: how specifically the declared {@code @Consumes} / {@code @Produces}
          *  match {@code requested}: 0 = wildcard (or no annotation), 1 = type/*, 2 = type/subtype. */
         int specificity(MediaType requested) {
@@ -100,6 +98,8 @@ public final class MessageBodyRegistry {
             return best;
         }
 
+        /** §4.2.4 step 1: without @Consumes / @Produces the provider takes any media type;
+         *  otherwise one of the declared values must be compatible with the requested one. */
         private boolean declaredCompatible(MediaType requested) {
             if (requested == null) return true;
             for (MediaType d : declared) {
