@@ -72,7 +72,8 @@ public final class ChappeRuntimeDelegate extends CassiniRuntimeDelegate {
 
     private static final class ChappeSeBootstrapInstance implements SeBootstrap.Instance {
         private final SeBootstrap.Configuration config;
-        private volatile Server server;
+        private final java.util.concurrent.atomic.AtomicReference<Server> server =
+                new java.util.concurrent.atomic.AtomicReference<>();
 
         ChappeSeBootstrapInstance(Application application,
                                   SeBootstrap.Configuration requested) {
@@ -159,9 +160,9 @@ public final class ChappeRuntimeDelegate extends CassiniRuntimeDelegate {
                 Server s = Server.builder()
                         .host("127.0.0.1").port(reqPort).handler(handler).build();
                 s.start();
-                this.server = s;
+                this.server.set(s);
             } catch (RuntimeException e) {
-                this.server = null;
+                this.server.set(null);
                 throw e;
             }
         }
@@ -171,8 +172,9 @@ public final class ChappeRuntimeDelegate extends CassiniRuntimeDelegate {
         @Override
         public CompletionStage<SeBootstrap.Instance.StopResult> stop() {
             return CompletableFuture.supplyAsync(() -> {
-                if (server != null) {
-                    try { server.stop(); } catch (RuntimeException ignored) {}
+                Server running = server.get();
+                if (running != null) {
+                    try { running.stop(); } catch (RuntimeException ignored) {}
                 }
                 return new SeBootstrap.Instance.StopResult() {
                     @Override public <T> T unwrap(Class<T> nativeClass) {
@@ -183,7 +185,8 @@ public final class ChappeRuntimeDelegate extends CassiniRuntimeDelegate {
         }
 
         @Override public <T> T unwrap(Class<T> nativeClass) {
-            if (nativeClass.isInstance(server)) return nativeClass.cast(server);
+            Server running = server.get();
+            if (nativeClass.isInstance(running)) return nativeClass.cast(running);
             throw new IllegalArgumentException("Cannot unwrap to " + nativeClass);
         }
     }

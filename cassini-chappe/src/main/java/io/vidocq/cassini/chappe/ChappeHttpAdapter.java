@@ -161,6 +161,9 @@ public final class ChappeHttpAdapter implements Handler {
             scoped.runInScope(() -> {
                 try {
                     engine.dispatch(exchange).toCompletableFuture().get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    error[0] = e;
                 } catch (Exception e) {
                     error[0] = e;
                 }

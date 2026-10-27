@@ -75,14 +75,12 @@ public record FilterEntry<T>(
      * registered programmatically).
      */
     private static Class<?> providerClass(Class<?> c) {
+        // c is the class of an instance: its superclass chain always ends at Object.
         Class<?> cur = c;
-        while (cur != null && cur != Object.class) {
-            if (cur.isAnnotationPresent(jakarta.ws.rs.ext.Provider.class)) {
-                return cur;
-            }
+        while (cur != Object.class && !cur.isAnnotationPresent(jakarta.ws.rs.ext.Provider.class)) {
             cur = cur.getSuperclass();
         }
-        return c;
+        return cur == Object.class ? c : cur;
     }
 
     /** True if the filter applies to the target method (name-bindings + dynamic target). */

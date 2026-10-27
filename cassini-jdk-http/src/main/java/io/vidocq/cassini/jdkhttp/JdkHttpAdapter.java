@@ -63,6 +63,13 @@ public final class JdkHttpAdapter {
             try {
                 engine.dispatch(exchange).toCompletableFuture().get();
                 writeResponse(jdkExchange, exchange);
+            } catch (InterruptedException e) {
+                try {
+                    failed(jdkExchange, e);
+                } finally {
+                    // After the 500 went out: an interrupted thread could not write it on an interruptible channel.
+                    Thread.currentThread().interrupt();
+                }
             } catch (Exception e) {
                 failed(jdkExchange, e);
             }

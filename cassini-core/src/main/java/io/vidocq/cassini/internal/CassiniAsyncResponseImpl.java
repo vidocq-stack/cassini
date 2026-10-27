@@ -58,8 +58,11 @@ public final class CassiniAsyncResponseImpl implements AsyncResponse {
 
     private final CompletableFuture<Object> future = new CompletableFuture<>();
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
-    private volatile ScheduledFuture<?> timeoutTask;
-    private volatile TimeoutHandler timeoutHandler;
+    // volatile only publishes the reference, written by one thread and read by the timeout thread:
+    // a ScheduledFuture is thread-safe and the handler is the application's. An AtomicReference
+    // would cost two more objects per suspended request for the same guarantee.
+    private volatile ScheduledFuture<?> timeoutTask; // NOSONAR java:S3077 - see above
+    private volatile TimeoutHandler timeoutHandler; // NOSONAR java:S3077 - see above
 
     /** Stage completed when {@link #resume} or {@link #cancel} is called. */
     public CompletableFuture<Object> completionFuture() { return future; }

@@ -114,7 +114,7 @@ final class RouteNegotiation {
         for (MediaType a : accepts) {
             for (MediaType p : produces) {
                 if (!MediaTypes.matches(a, p)) continue;
-                double spec = (!p.isWildcardType() ? 2 : 0) + (!p.isWildcardSubtype() ? 1 : 0);
+                int spec = (!p.isWildcardType() ? 2 : 0) + (!p.isWildcardSubtype() ? 1 : 0);
                 if (spec > best) best = spec;
             }
         }
@@ -151,7 +151,7 @@ final class RouteNegotiation {
         double best = 0;
         for (MediaType c : consumes) {
             if (!MediaTypes.consumesMatches(ct, java.util.List.of(c))) continue;
-            double spec = (!c.isWildcardType() ? 2 : 0) + (!c.isWildcardSubtype() ? 1 : 0);
+            int spec = (!c.isWildcardType() ? 2 : 0) + (!c.isWildcardSubtype() ? 1 : 0);
             if (spec > best) best = spec;
         }
         return best;

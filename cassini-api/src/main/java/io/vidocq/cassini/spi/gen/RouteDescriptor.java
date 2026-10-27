@@ -55,4 +55,39 @@ public record RouteDescriptor(
         String[] produces,
         String[] consumes,
         int classPathLiterals
-) {}
+) {
+
+    /** Value equality: the arrays are compared by content, not by identity. */
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof RouteDescriptor that
+                && classPathLiterals == that.classPathLiterals
+                && java.util.Objects.equals(beanClass, that.beanClass)
+                && java.util.Objects.equals(methodName, that.methodName)
+                && java.util.Arrays.equals(paramTypeNames, that.paramTypeNames)
+                && java.util.Objects.equals(httpMethod, that.httpMethod)
+                && java.util.Objects.equals(pathTemplate, that.pathTemplate)
+                && java.util.Arrays.equals(produces, that.produces)
+                && java.util.Arrays.equals(consumes, that.consumes);
+    }
+
+    @Override
+    public int hashCode() {
+        int h = java.util.Objects.hash(beanClass, methodName, httpMethod, pathTemplate, classPathLiterals);
+        h = 31 * h + java.util.Arrays.hashCode(paramTypeNames);
+        h = 31 * h + java.util.Arrays.hashCode(produces);
+        return 31 * h + java.util.Arrays.hashCode(consumes);
+    }
+
+    @Override
+    public String toString() {
+        return "RouteDescriptor[beanClass=" + beanClass
+                + ", methodName=" + methodName
+                + ", paramTypeNames=" + java.util.Arrays.toString(paramTypeNames)
+                + ", httpMethod=" + httpMethod
+                + ", pathTemplate=" + pathTemplate
+                + ", produces=" + java.util.Arrays.toString(produces)
+                + ", consumes=" + java.util.Arrays.toString(consumes)
+                + ", classPathLiterals=" + classPathLiterals + "]";
+    }
+}

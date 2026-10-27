@@ -129,6 +129,17 @@ class RouteRegistryEquivalenceTest {
     }
 
     @Test
+    void discoveryAfterAResetFindsTheSameRoutes() {
+        Set<RouteKey> before = RouteRegistry.discover(PingResource.class).stream()
+                .map(RouteRegistryEquivalenceTest::key).collect(java.util.stream.Collectors.toSet());
+        RouteRegistry.resetAll();
+        RouteRegistry.resetServiceProviders();
+        Set<RouteKey> after = RouteRegistry.discover(PingResource.class).stream()
+                .map(RouteRegistryEquivalenceTest::key).collect(java.util.stream.Collectors.toSet());
+        assertEquals(before, after);
+    }
+
+    @Test
     void simpleResource_generatedEqualsScanned() throws Exception {
         // Hand-build the RouteProvider for PingResource (simulating APT output)
         RouteProvider provider = new RouteProvider() {

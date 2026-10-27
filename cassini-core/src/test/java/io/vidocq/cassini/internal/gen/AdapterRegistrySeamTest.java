@@ -81,6 +81,20 @@ class AdapterRegistrySeamTest {
     }
 
     @Test
+    void aResetDropsTheCachedAdaptersAndTheNextLookupResolvesAgain() {
+        var adapter = new CountingAdapter();
+        AdapterRegistry.register(FakeResource.class, adapter);
+        AdapterRegistry.resetAll();
+        var afterFullReset = AdapterRegistry.lookup(FakeResource.class);
+        assertTrue(afterFullReset.isPresent(), "the adapter must be resolved again after a full reset");
+        assertNotSame(adapter, afterFullReset.get(), "a full reset must drop the cached adapter");
+
+        AdapterRegistry.resetServiceAdapters();
+        assertSame(afterFullReset.get(), AdapterRegistry.lookup(FakeResource.class).orElseThrow(),
+                "dropping the ServiceLoader map keeps the resolved adapters");
+    }
+
+    @Test
     void registeredAdapterTakesPrecedenceOverGenerated() {
         // Explicitly registered adapter wins over the generated one (cache-first lookup)
         var adapter = new CountingAdapter();

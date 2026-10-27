@@ -436,7 +436,12 @@ public final class MessageBodyRegistry {
         @Override public void writeTo(javax.xml.transform.Source v, Class<?> t, Type gt, Annotation[] a, MediaType mt,
                                       MultivaluedMap<String, Object> h, OutputStream s) throws IOException {
             try {
-                javax.xml.transform.Transformer tr = javax.xml.transform.TransformerFactory.newInstance().newTransformer();
+                // The Source may hold a document the application did not write: never fetch an
+                // external DTD or stylesheet while copying it (XXE).
+                javax.xml.transform.TransformerFactory factory = javax.xml.transform.TransformerFactory.newInstance();
+                factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "");
+                factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "");
+                javax.xml.transform.Transformer tr = factory.newTransformer();
                 tr.transform(v, new javax.xml.transform.stream.StreamResult(s));
             } catch (javax.xml.transform.TransformerException e) {
                 throw new IOException(e);
@@ -523,8 +528,7 @@ public final class MessageBodyRegistry {
                         && pt.getActualTypeArguments().length == 1
                         && pt.getActualTypeArguments()[0] instanceof Class<?> innerCls) {
                     jakarta.xml.bind.JAXBContext ctx = jakarta.xml.bind.JAXBContext.newInstance(innerCls);
-                    return ctx.createUnmarshaller().unmarshal(
-                            javax.xml.stream.XMLInputFactory.newInstance().createXMLStreamReader(in), innerCls);
+                    return ctx.createUnmarshaller().unmarshal(xmlStreamReader(in), innerCls);
                 }
                 jakarta.xml.bind.JAXBContext ctx = jakarta.xml.bind.JAXBContext.newInstance(t);
                 return ctx.createUnmarshaller().unmarshal(in);
@@ -534,6 +538,17 @@ public final class MessageBodyRegistry {
                 throw new jakarta.ws.rs.BadRequestException("Failed to parse XML: " + e.getMessage());
             }
         }
+    }
+
+    /**
+     * A StAX reader over a request entity that never resolves an external entity nor fetches an
+     * external DTD (XXE): the entity comes from the client.
+     */
+    static javax.xml.stream.XMLStreamReader xmlStreamReader(InputStream in) throws javax.xml.stream.XMLStreamException {
+        javax.xml.stream.XMLInputFactory factory = javax.xml.stream.XMLInputFactory.newInstance();
+        factory.setProperty(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        factory.setProperty(javax.xml.stream.XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
+        return factory.createXMLStreamReader(in);
     }
 
     // ---- Primitives / wrappers / BigDecimal / BigInteger / Character ----

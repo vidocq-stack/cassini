@@ -92,7 +92,8 @@ public final class AdapterRegistry {
      * {@code ServiceLoader.load(ResourceAdapter.class)} — i.e. module-path {@code provides} directives
      * and classpath {@code META-INF/services} entries. {@code null} until the first scan.
      */
-    private static volatile Map<Class<?>, ResourceAdapter> serviceAdapters;
+    private static final java.util.concurrent.atomic.AtomicReference<Map<Class<?>, ResourceAdapter>> SERVICE_ADAPTERS =
+            new java.util.concurrent.atomic.AtomicReference<>();
 
     /** Counter: number of adapters resolved via the APT/plugin pre-generated path (Class.forName). */
     private static final java.util.concurrent.atomic.AtomicInteger PRE_GENERATED_HITS =
@@ -196,7 +197,7 @@ public final class AdapterRegistry {
                 message = current.getMessage();
             }
         }
-        return message != null ? message : t.toString();
+        return message != null ? message : String.valueOf(t);
     }
 
     /**
@@ -250,13 +251,13 @@ public final class AdapterRegistry {
      * {@code Class.forName} / the runtime generator.
      */
     private static Map<Class<?>, ResourceAdapter> serviceAdapters() {
-        Map<Class<?>, ResourceAdapter> m = serviceAdapters;
+        Map<Class<?>, ResourceAdapter> m = SERVICE_ADAPTERS.get();
         if (m == null) {
             synchronized (AdapterRegistry.class) {
-                m = serviceAdapters;
+                m = SERVICE_ADAPTERS.get();
                 if (m == null) {
                     m = loadServiceAdapters();
-                    serviceAdapters = m;
+                    SERVICE_ADAPTERS.set(m);
                 }
             }
         }
@@ -306,7 +307,7 @@ public final class AdapterRegistry {
      * Package-visible: used by unit tests that register/unregister services between cases.
      */
     static void resetServiceAdapters() {
-        serviceAdapters = null;
+        SERVICE_ADAPTERS.set(null);
     }
 
     /**
@@ -318,6 +319,6 @@ public final class AdapterRegistry {
     public static void resetAll() {
         CACHE.clear();
         METHOD_IDS.clear();
-        serviceAdapters = null;
+        SERVICE_ADAPTERS.set(null);
     }
 }

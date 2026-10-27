@@ -190,6 +190,13 @@ class CassiniRuntimeDelegateTest {
     }
 
     @Test
+    void linkBuilder_substitutesTheTemplateValues() {
+        Link l = delegate.createLinkBuilder()
+                .uriBuilder(jakarta.ws.rs.core.UriBuilder.fromUri("http://e.org/items/{id}")).rel("self").build("42");
+        assertEquals("http://e.org/items/42", l.getUri().toString());
+    }
+
+    @Test
     void linkBuilder_paramOrderIsPreservedInToString() {
         // LinkedHashMap-backed params: insertion order must survive build().
         Link l = delegate.createLinkBuilder()

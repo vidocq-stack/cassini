@@ -190,6 +190,36 @@ class JdkHttpAdapterFailureTest {
         }
     }
 
+    /**
+     * A dispatch interrupted while the handler waits for it answers a 500, and the handler gives the thread its
+     * interrupt status back instead of swallowing it.
+     */
+    @Test
+    void an_interrupted_dispatch_answers_a_500_and_keeps_the_interrupt_status() throws Exception {
+        var interruptedAfter = new CompletableFuture<Boolean>();
+        var handler = new JdkHttpAdapter(exchange -> {
+            Thread.currentThread().interrupt();
+            return new CompletableFuture<>();
+        }).asHandler();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            try {
+                handler.handle(exchange);
+            } finally {
+                // Thread.interrupted() also clears the status, so the server thread goes on unharmed.
+                interruptedAfter.complete(Thread.interrupted());
+            }
+        });
+        server.start();
+        URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/resource");
+        try (var logs = LogCapture.of(LOGGER)) {
+            assertEquals(500, get(uri, "Content-Type").status());
+            assertTrue(interruptedAfter.get(10, java.util.concurrent.TimeUnit.SECONDS),
+                    "the handler swallowed the interrupt status of its thread");
+            singleError(logs);
+        }
+    }
+
     @Test
     void a_valid_response_goes_through_unchanged() throws Exception {
         URI uri = serve(answering(exchange -> exchange.responseHeaders()

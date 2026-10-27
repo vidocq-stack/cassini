@@ -575,7 +575,7 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
         }
 
         private static String substituteTemplates(String tpl, Object[] values) {
-            if (tpl == null || tpl.indexOf('{') < 0) return tpl;
+            if (tpl.indexOf('{') < 0) return tpl;
             StringBuilder out = new StringBuilder();
             int i = 0, pos = 0;
             java.util.Map<String, Object> seen = new java.util.LinkedHashMap<>();

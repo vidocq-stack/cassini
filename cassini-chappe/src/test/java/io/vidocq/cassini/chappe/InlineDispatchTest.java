@@ -138,6 +138,35 @@ class InlineDispatchTest {
         assertSame(Thread.currentThread(), engine.ranOn.get());
     }
 
+    /**
+     * A dispatch interrupted while its thread waits for it fails the request, and its thread keeps
+     * the interrupt status instead of having it swallowed.
+     */
+    @Test
+    void anInterruptedDispatchKeepsTheInterruptStatusOfItsThread() {
+        var interruptedAfter = new AtomicReference<Boolean>();
+        ChappeHttpAdapter.Scoped scoped = action -> {
+            action.run();
+            interruptedAfter.set(Thread.currentThread().isInterrupted());
+        };
+        CassiniHttpAdapter engine = new CassiniHttpAdapter() {
+            @Override
+            public CompletionStage<Void> dispatch(CassiniHttpExchange exchange) {
+                Thread.currentThread().interrupt();
+                return new CompletableFuture<>();
+            }
+
+            @Override
+            public boolean mayStream() {
+                return true;
+            }
+        };
+        var adapter = new ChappeHttpAdapter(engine, scoped);
+        var request = request();
+        assertThrows(InterruptedException.class, () -> adapter.handle(request));
+        assertEquals(Boolean.TRUE, interruptedAfter.get(), "the dispatch swallowed the interrupt status");
+    }
+
     private static Request request() {
         return new Request() {
             @Override public HttpMethod method() { return HttpMethod.GET; }

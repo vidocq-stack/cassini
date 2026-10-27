@@ -33,6 +33,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Asynchronous JAX-RS examples (§8.2): {@code @Suspended AsyncResponse}
@@ -47,11 +48,13 @@ public class AsyncResource {
     // --- Test/observability hooks (same pattern as TodoResource.reset()) ---
     public record Events(CountDownLatch disconnected, CountDownLatch completed) {}
 
-    private static volatile Events events = new Events(new CountDownLatch(1), new CountDownLatch(1));
+    private static final AtomicReference<Events> EVENTS =
+            new AtomicReference<>(new Events(new CountDownLatch(1), new CountDownLatch(1)));
 
     public static Events reset() {
-        events = new Events(new CountDownLatch(1), new CountDownLatch(1));
-        return events;
+        Events fresh = new Events(new CountDownLatch(1), new CountDownLatch(1));
+        EVENTS.set(fresh);
+        return fresh;
     }
 
     /** Resumed from another virtual thread — the basic async pattern. */
@@ -59,7 +62,7 @@ public class AsyncResource {
     @Path("echo/{value}")
     @Produces(MediaType.TEXT_PLAIN)
     public void echo(@PathParam("value") String value, @Suspended AsyncResponse ar) {
-        ar.register((CompletionCallback) t -> events.completed().countDown());
+        ar.register((CompletionCallback) t -> EVENTS.get().completed().countDown());
         Thread.startVirtualThread(() -> ar.resume("async:" + value));
     }
 
@@ -73,8 +76,8 @@ public class AsyncResource {
     @Produces(MediaType.TEXT_PLAIN)
     public void suspend(@Suspended AsyncResponse ar) {
         ar.setTimeout(10, TimeUnit.SECONDS);
-        ar.register((ConnectionCallback) disconnected -> events.disconnected().countDown());
-        ar.register((CompletionCallback) t -> events.completed().countDown());
+        ar.register((ConnectionCallback) disconnected -> EVENTS.get().disconnected().countDown());
+        ar.register((CompletionCallback) t -> EVENTS.get().completed().countDown());
     }
 
     // --- Suspended-load bench support ---

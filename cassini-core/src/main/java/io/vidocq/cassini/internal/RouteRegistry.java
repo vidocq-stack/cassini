@@ -77,7 +77,8 @@ public final class RouteRegistry {
      * from {@code ServiceLoader.load(RouteProvider.class)}; {@code null} until the first scan. Empty
      * on the classpath / TCK (no {@code provides}), so the lookup falls through transparently.
      */
-    private static volatile Map<Class<?>, RouteProvider> serviceProviders;
+    private static final java.util.concurrent.atomic.AtomicReference<Map<Class<?>, RouteProvider>> SERVICE_PROVIDERS =
+            new java.util.concurrent.atomic.AtomicReference<>();
 
     private RouteRegistry() {}
 
@@ -149,13 +150,13 @@ public final class RouteRegistry {
      * registered (classpath / TCK), so the lookup falls through to {@code Class.forName} / scanner.
      */
     private static Map<Class<?>, RouteProvider> serviceProviders() {
-        Map<Class<?>, RouteProvider> m = serviceProviders;
+        Map<Class<?>, RouteProvider> m = SERVICE_PROVIDERS.get();
         if (m == null) {
             synchronized (RouteRegistry.class) {
-                m = serviceProviders;
+                m = SERVICE_PROVIDERS.get();
                 if (m == null) {
                     m = loadServiceProviders();
-                    serviceProviders = m;
+                    SERVICE_PROVIDERS.set(m);
                 }
             }
         }
@@ -194,7 +195,7 @@ public final class RouteRegistry {
 
     /** Discards the cached ServiceLoader provider map so the next discover rebuilds it (tests). */
     static void resetServiceProviders() {
-        serviceProviders = null;
+        SERVICE_PROVIDERS.set(null);
     }
 
     /**
@@ -204,7 +205,7 @@ public final class RouteRegistry {
      * the old {@code Class} objects must be rebuilt).
      */
     public static void resetAll() {
-        serviceProviders = null;
+        SERVICE_PROVIDERS.set(null);
     }
 
     /**
