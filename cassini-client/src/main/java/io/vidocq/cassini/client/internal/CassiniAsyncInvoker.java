@@ -74,7 +74,7 @@ final class CassiniAsyncInvoker implements AsyncInvoker {
     private <T> CompletableFuture<T> supply(String method, Entity<?> entity, Function<Response, T> reader) {
         Object ctx = AsyncContextPropagator.capture();
         return CompletableFuture.supplyAsync(() -> {
-            try (AsyncContextPropagator.Scope scope = AsyncContextPropagator.activate(ctx)) {
+            try (AsyncContextPropagator.Scope _ = AsyncContextPropagator.activate(ctx)) {
                 return reader.apply(builder.invoke(method, entity));
             }
         }, executor);
