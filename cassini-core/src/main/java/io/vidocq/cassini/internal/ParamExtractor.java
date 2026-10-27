@@ -36,6 +36,8 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.core.UriInfo;
+import jakarta.ws.rs.ext.ParamConverter;
+import jakarta.ws.rs.ext.ParamConverterProvider;
 import jakarta.ws.rs.ext.Providers;
 
 import java.lang.reflect.Parameter;
@@ -338,45 +340,38 @@ public final class ParamExtractor {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static Object tryUserParamConverter(Class<?> raw, Class<?> element, MethodParameters.Param p, List<String> raws) {
         var scope = RequestScope.current();
-        java.util.List<jakarta.ws.rs.ext.ParamConverterProvider> pcps = scope == null ? null : scope.paramConverterProviders;
+        List<ParamConverterProvider> pcps = scope == null ? null : scope.paramConverterProviders;
         if (pcps == null || pcps.isEmpty()) return USE_FALLBACK;
         // §6.1.4: we first offer the 'raw' type (collection or direct) then
         // the element type (for List<X> with a converter for X).
-        Class<?> targetType = raw;
-        java.lang.reflect.Type targetGeneric = p.genericType();
-        java.lang.annotation.Annotation[] anns = p.annotations();
-        jakarta.ws.rs.ext.ParamConverter conv = null;
+        ParamConverter<?> conv = converterFor(pcps, raw, p.genericType(), p.annotations());
+        if (conv != null) return fromString(conv, raws.isEmpty() ? null : raws.get(0), p);
+        if (element == raw) return USE_FALLBACK;
+        conv = converterFor(pcps, element, element, p.annotations());
+        if (conv == null) return USE_FALLBACK;
+        List<Object> out = new ArrayList<>(raws.size());
+        for (String r : raws) out.add(fromString(conv, r, p));
+        if (raw == java.util.Set.class) return new java.util.LinkedHashSet<>(out);
+        if (raw == java.util.SortedSet.class) return new java.util.TreeSet<>((List) out);
+        return out;
+    }
+
+    /** The converter of the first provider that offers one for {@code type}, or null. */
+    private static ParamConverter<?> converterFor(List<ParamConverterProvider> pcps, Class<?> type,
+                                                  java.lang.reflect.Type genericType,
+                                                  java.lang.annotation.Annotation[] annotations) {
         for (var pcp : pcps) {
             try {
-                conv = pcp.getConverter(targetType, targetGeneric, anns);
-                if (conv != null) break;
-            } catch (RuntimeException ignored) {}
-        }
-        if (conv == null && element != raw) {
-            // collection-like: try on the element
-            for (var pcp : pcps) {
-                try {
-                    conv = pcp.getConverter(element, element, anns);
-                    if (conv != null) break;
-                } catch (RuntimeException ignored) {}
+                ParamConverter<?> conv = pcp.getConverter(type, genericType, annotations);
+                if (conv != null) return conv;
+            } catch (RuntimeException _) {
+                // A provider that fails on this type does not convert it: ask the next one.
             }
-            if (conv != null) {
-                java.util.List<Object> out = new java.util.ArrayList<>();
-                for (String r : raws) {
-                    try { out.add(conv.fromString(r)); }
-                    catch (RuntimeException e) {
-                        throw new WebApplicationException("Invalid value for parameter "
-                                + p.parameter().getName() + ": " + e.getMessage(), e, javax404Response(400));
-                    }
-                }
-                if (raw == java.util.Set.class) return new java.util.LinkedHashSet<>(out);
-                if (raw == java.util.SortedSet.class) return new java.util.TreeSet<>((java.util.List) out);
-                return out;
-            }
-            return USE_FALLBACK;
         }
-        if (conv == null) return USE_FALLBACK;
-        String value = raws.isEmpty() ? null : raws.get(0);
+        return null;
+    }
+
+    private static Object fromString(ParamConverter<?> conv, String value, MethodParameters.Param p) {
         try {
             return conv.fromString(value);
         } catch (RuntimeException e) {

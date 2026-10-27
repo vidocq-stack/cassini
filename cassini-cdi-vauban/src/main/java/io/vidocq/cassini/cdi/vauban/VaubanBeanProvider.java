@@ -101,7 +101,7 @@ public final class VaubanBeanProvider implements BeanProvider {
             var bm = container.getBeanManager();
             Object contextual = fromContext(bm.getContext(resolution.bean().getScope()), resolution.bean(), bm);
             return contextual != null ? contextual : bean;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException _) {
             // inactive scope → keep the original object (the proxy).
             return bean;
         }
@@ -124,7 +124,7 @@ public final class VaubanBeanProvider implements BeanProvider {
             var scope = bean.getScope();
             boolean normal = scope != null && scope.isAnnotationPresent(NormalScope.class);
             return new Resolution(bean, normal ? container.select(type) : null);
-        } catch (RuntimeException e) {
+        } catch (RuntimeException _) {
             // Unresolvable: getBean() asks the container on each call and reports its error.
             return UNRESOLVED;
         }

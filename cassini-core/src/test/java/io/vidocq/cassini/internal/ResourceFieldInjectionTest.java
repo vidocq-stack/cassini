@@ -29,6 +29,8 @@ import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.ext.RuntimeDelegate;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -53,7 +55,8 @@ class ResourceFieldInjectionTest {
     @Path("/plain")
     public static class Plain {
         private final String greeting = "hello";
-        private static UriInfo ignoredBecauseStatic;
+        /** Never injected: Cassini injects instance fields only. */
+        @Context static UriInfo staticField;
 
         @GET
         public String get() {
@@ -115,31 +118,16 @@ class ResourceFieldInjectionTest {
         return exchange;
     }
 
-    @Test
-    void aResourceWithoutInjectableFieldsIsNotLookedUpAgain() {
+    /** No injectable field: no lookup. A {@code @Context} field, or a {@code @QueryParam} field
+     *  inherited from a superclass: still looked up and injected. */
+    @ParameterizedTest
+    @CsvSource({"/plain, hello, 0", "/contextual, contextual, 1", "/inherited?q=x, x, 1"})
+    void aResourceIsLookedUpAgainOnlyWhenItHasFieldsToInject(String path, String body, int lookups) {
         CountingProvider provider = new CountingProvider();
-        InMemoryExchange exchange = get(provider, "/plain");
+        InMemoryExchange exchange = get(provider, path);
         assertEquals(200, exchange.status());
-        assertEquals("hello", exchange.responseText());
-        assertEquals(0, provider.contextualLookups.get());
-    }
-
-    @Test
-    void aResourceWithAContextFieldStillHasItInjected() {
-        CountingProvider provider = new CountingProvider();
-        InMemoryExchange exchange = get(provider, "/contextual");
-        assertEquals(200, exchange.status());
-        assertEquals("contextual", exchange.responseText());
-        assertEquals(1, provider.contextualLookups.get());
-    }
-
-    @Test
-    void aParamFieldInheritedFromASuperclassStillHasItInjected() {
-        CountingProvider provider = new CountingProvider();
-        InMemoryExchange exchange = get(provider, "/inherited?q=x");
-        assertEquals(200, exchange.status());
-        assertEquals("x", exchange.responseText());
-        assertEquals(1, provider.contextualLookups.get());
+        assertEquals(body, exchange.responseText());
+        assertEquals(lookups, provider.contextualLookups.get());
     }
 
     @Test

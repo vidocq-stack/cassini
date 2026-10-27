@@ -96,7 +96,25 @@ public final class ChappeHttpAdapter implements Handler {
      */
     @Override
     public Response handle(Request request) throws Exception {
-        return inline ? handleHere(request) : handleOnItsOwnThread(request);
+        var exchange = new ChappeHttpExchange(request);
+        if (inline) {
+            Exception failure = dispatchHere(exchange);
+            if (failure != null) throw failure;
+            return buildChappeResponse(exchange);
+        }
+        CompletableFuture<Response> response = dispatchOnItsOwnThread(exchange);
+        var streaming = exchange.streamingInfo();
+        if (streaming != null) return streamingResponse(exchange, streaming);
+        try {
+            return response.get();
+        } catch (ExecutionException ee) {
+            Throwable cause = ee.getCause();
+            if (cause instanceof Exception ex) throw ex;
+            throw new IllegalStateException(cause);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted waiting for virtual thread", ie);
+        }
     }
 
     /**
@@ -104,94 +122,91 @@ public final class ChappeHttpAdapter implements Handler {
      * thread to start, no hand-off to wait for. Only with a {@link Scoped} hook, which enters and
      * leaves the request scope around the call: without one, a CDI container may keep the request
      * context on the thread (a {@code RequestContextController} activated by a request filter), and
-     * the thread started per request is what discards it. Failures end the request as on the
-     * dispatch thread: logged, then thrown to Chappe, which answers 500.
+     * the thread started per request is what discards it. A failure ends the request as on the
+     * dispatch thread: logged, then returned for {@link #handle} to throw to Chappe, which answers
+     * 500.
+     *
+     * @return the failure of the dispatch, or null when it succeeded
      */
-    private Response handleHere(Request request) throws Exception {
-        var exchange = new ChappeHttpExchange(request);
+    private Exception dispatchHere(ChappeHttpExchange exchange) {
         try {
             scoped.runInScope(() -> engine.dispatch(exchange).toCompletableFuture().join());
+            return null;
         } catch (RuntimeException e) {
             Throwable failure = e instanceof CompletionException ce && ce.getCause() != null ? ce.getCause() : e;
-            // Never let a request die silently: Chappe answers a generic 500, so this log line is
-            // the only trace.
-            LOG.log(System.Logger.Level.ERROR,
-                    "Request failed: " + exchange.method() + " " + exchange.routingPath(), failure);
-            if (failure instanceof Exception ex) throw ex;
-            throw e;
+            logFailure(exchange, failure);
+            return failure instanceof Exception ex ? ex : e;
         }
-        return buildChappeResponse(exchange);
     }
 
-    private Response handleOnItsOwnThread(Request request) throws Exception {
-        var exchange = new ChappeHttpExchange(request);
+    /**
+     * Starts the dispatch on a virtual thread of its own and waits until it either opened a
+     * stream ({@link ChappeHttpExchange#openForStreaming}) or ended.
+     *
+     * @return the buffered response, completed when the dispatch ends
+     */
+    private CompletableFuture<Response> dispatchOnItsOwnThread(ChappeHttpExchange exchange) throws InterruptedException {
         var streamingReady = new java.util.concurrent.CountDownLatch(1);
         exchange.setStreamingLatch(streamingReady);
         var future = new CompletableFuture<Response>();
-
-        Thread.ofVirtual().name("cassini-req").start(() -> {
-            try {
-                final Object[] error = {null};
-                scoped.runInScope(() -> {
-                    try {
-                        engine.dispatch(exchange).toCompletableFuture().get();
-                    } catch (Exception e) {
-                        error[0] = e;
-                    }
-                });
-                if (error[0] instanceof Exception ex) {
-                    // Never let a request die silently: the transport answers a generic
-                    // 500 from the failed future, so this log line is the only trace.
-                    LOG.log(System.Logger.Level.ERROR,
-                            "Request failed: " + exchange.method() + " " + exchange.routingPath(), ex);
-                    future.completeExceptionally(ex);
-                } else if (exchange.streamingInfo() != null) {
-                    // Streaming mode: the handler thread already answered from the
-                    // streaming snapshot; building a buffered response here is useless
-                    // and would log a second diagnostic if that build failed too.
-                    future.complete(null);
-                } else {
-                    future.complete(buildChappeResponse(exchange));
-                }
-            } catch (Throwable t) {
-                LOG.log(System.Logger.Level.ERROR,
-                        "Request failed: " + exchange.method() + " " + exchange.routingPath(), t);
-                future.completeExceptionally(t);
-            } finally {
-                // Buffered mode: unblock the caller once the response is ready.
-                streamingReady.countDown();
-            }
-        });
-
+        Thread.ofVirtual().name("cassini-req").start(() -> dispatchInto(future, exchange, streamingReady));
         streamingReady.await();
+        return future;
+    }
 
-        var streaming = exchange.streamingInfo();
-        if (streaming != null) {
-            // Streaming mode: headers/status snapshot taken at openForStreaming
-            // time (the dispatch may still be mutating the exchange concurrently).
-            try {
-                var b = builders.get().status(StatusCode.of(streaming.status()));
-                copyHeaders(b, streaming.headers());
-                return b.body(Body.streaming(streaming.input())).build();
-            } catch (RuntimeException e) {
-                // cassini#56: Chappe never received the pipe, so nobody would ever read
-                // or close it and the thread writing the entity would block forever.
-                // Closing it makes the writer's next write fail with an IOException.
-                closeQuietly(streaming.input());
-                return failedResponse(exchange, e);
-            }
-        }
-
+    private void dispatchInto(CompletableFuture<Response> future, ChappeHttpExchange exchange,
+                              java.util.concurrent.CountDownLatch streamingReady) {
         try {
-            return future.get();
-        } catch (ExecutionException ee) {
-            Throwable cause = ee.getCause();
-            if (cause instanceof Exception ex) throw ex;
-            throw new RuntimeException(cause);
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Interrupted waiting for virtual thread", ie);
+            final Object[] error = {null};
+            scoped.runInScope(() -> {
+                try {
+                    engine.dispatch(exchange).toCompletableFuture().get();
+                } catch (Exception e) {
+                    error[0] = e;
+                }
+            });
+            if (error[0] instanceof Exception ex) {
+                // Never let a request die silently: the transport answers a generic
+                // 500 from the failed future, so this log line is the only trace.
+                logFailure(exchange, ex);
+                future.completeExceptionally(ex);
+            } else if (exchange.streamingInfo() != null) {
+                // Streaming mode: the handler thread already answered from the
+                // streaming snapshot; building a buffered response here is useless
+                // and would log a second diagnostic if that build failed too.
+                future.complete(null);
+            } else {
+                future.complete(buildChappeResponse(exchange));
+            }
+        } catch (Throwable t) {
+            logFailure(exchange, t);
+            future.completeExceptionally(t);
+        } finally {
+            // Buffered mode: unblock the caller once the response is ready.
+            streamingReady.countDown();
         }
+    }
+
+    /** Streaming mode: headers/status snapshot taken at openForStreaming time (the dispatch may
+     *  still be mutating the exchange concurrently). */
+    private Response streamingResponse(ChappeHttpExchange exchange, ChappeHttpExchange.StreamingInfo streaming) {
+        try {
+            var b = builders.get().status(StatusCode.of(streaming.status()));
+            copyHeaders(b, streaming.headers());
+            return b.body(Body.streaming(streaming.input())).build();
+        } catch (RuntimeException e) {
+            // cassini#56: Chappe never received the pipe, so nobody would ever read
+            // or close it and the thread writing the entity would block forever.
+            // Closing it makes the writer's next write fail with an IOException.
+            closeQuietly(streaming.input());
+            return failedResponse(exchange, e);
+        }
+    }
+
+    /** Never let a request die silently: Chappe answers a generic 500, so this line is the only trace. */
+    private static void logFailure(ChappeHttpExchange exchange, Throwable failure) {
+        LOG.log(System.Logger.Level.ERROR,
+                "Request failed: " + exchange.method() + " " + exchange.routingPath(), failure);
     }
 
     private Response buildChappeResponse(ChappeHttpExchange exchange) {

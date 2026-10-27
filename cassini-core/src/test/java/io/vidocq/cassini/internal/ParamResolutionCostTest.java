@@ -58,7 +58,9 @@ class ParamResolutionCostTest {
         @POST public String create(String body) { return body; }
         @PUT @Path("/{id}") public String update(@PathParam("id") long id, String body) { return body; }
         @GET @Path("/odd") public void odd(@Context UriInfo uri, @Suspended AsyncResponse async,
-                @Encoded @QueryParam("q") String q, @DefaultValue("x") String noSource) { }
+                @Encoded @QueryParam("q") String q, @DefaultValue("x") String noSource) {
+            // Never invoked: only the annotations of its parameters matter.
+        }
     }
 
     private final UriRouter router = new UriRouter(List.copyOf(RouteRegistry.discover(Things.class)));

@@ -669,6 +669,17 @@ public final class Invoker {
     }
 
     /**
+     * Injects the {@code @Context}, {@code @BeanParam} and {@code @*Param} fields of a resource
+     * instance (§3.2, §9.2) into its contextual instance ({@link #injectionTarget}). A class that
+     * declares none, the common case, costs neither the injection nor the bean provider lookup.
+     */
+    void injectResourceFields(Class<?> beanClass, Object resolved, MatchResult match, CassiniHttpExchange request) {
+        if (resolved == null) return;
+        if (!InjectableFields.declaredBy(beanClass) && !InjectableFields.declaredBy(resolved.getClass())) return;
+        injectFields(beanClass, injectionTarget(beanClass, resolved), match, request, true);
+    }
+
+    /**
      * Seam: injects fields into {@code target} using the registered adapter if available,
      * otherwise falls back to {@link FieldInjector#inject}.
      *
@@ -681,17 +692,6 @@ public final class Invoker {
      * @param request      the HTTP exchange
      * @param injectParams whether to inject @*Param fields (false for sub-resource roots per §3.4.1)
      */
-    /**
-     * Injects the {@code @Context}, {@code @BeanParam} and {@code @*Param} fields of a resource
-     * instance (§3.2, §9.2) into its contextual instance ({@link #injectionTarget}). A class that
-     * declares none, the common case, costs neither the injection nor the bean provider lookup.
-     */
-    void injectResourceFields(Class<?> beanClass, Object resolved, MatchResult match, CassiniHttpExchange request) {
-        if (resolved == null) return;
-        if (!InjectableFields.declaredBy(beanClass) && !InjectableFields.declaredBy(resolved.getClass())) return;
-        injectFields(beanClass, injectionTarget(beanClass, resolved), match, request, true);
-    }
-
     void injectFields(Class<?> beanClass, Object target,
                               MatchResult match, CassiniHttpExchange request, boolean injectParams) {
         var adapter = AdapterRegistry.lookup(beanClass);

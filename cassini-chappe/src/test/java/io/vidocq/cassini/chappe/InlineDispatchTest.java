@@ -121,7 +121,8 @@ class InlineDispatchTest {
     void aFailedInlineDispatchFailsTheRequestAsBefore() {
         var failure = new IllegalStateException("boom");
         var adapter = new ChappeHttpAdapter(new RecordingEngine(false, failure), SCOPE);
-        assertSame(failure, assertThrows(IllegalStateException.class, () -> adapter.handle(request())));
+        var request = request();
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> adapter.handle(request)));
     }
 
     @Test
