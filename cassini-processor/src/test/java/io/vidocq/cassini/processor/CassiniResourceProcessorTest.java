@@ -23,7 +23,6 @@ import io.vidocq.cassini.spi.gen.ApplicationDescriptor;
 import io.vidocq.cassini.spi.gen.InjectionSupport;
 import io.vidocq.cassini.spi.gen.ParamKind;
 import io.vidocq.cassini.spi.gen.ResourceAdapter;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -42,12 +41,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.PathSegment;
 import jakarta.ws.rs.core.SecurityContext;
-import jakarta.ws.rs.core.UriInfo;
 
 import static org.junit.jupiter.api.Assertions.*;
 

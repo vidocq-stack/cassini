@@ -52,7 +52,7 @@ class ConfigDemoResourceTest {
     }
 
     @AfterAll
-    static void close() throws Exception {
+    static void close() {
         server.close();
     }
 

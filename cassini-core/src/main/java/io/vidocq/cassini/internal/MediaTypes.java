@@ -22,7 +22,6 @@ package io.vidocq.cassini.internal;
 import jakarta.ws.rs.core.MediaType;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -177,7 +176,7 @@ public final class MediaTypes {
     public static double quality(MediaType mt) {
         String q = mt.getParameters().get("q");
         if (q == null) return 1.0;
-        try { return Double.parseDouble(q); } catch (NumberFormatException e) { return 1.0; }
+        try { return Double.parseDouble(q); } catch (NumberFormatException _) { return 1.0; }
     }
 
     private static int specificity(MediaType mt) {

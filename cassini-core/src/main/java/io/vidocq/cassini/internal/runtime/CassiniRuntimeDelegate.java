@@ -167,8 +167,14 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
             if (s == null) throw new IllegalArgumentException("value is null");
             // Parsing basique name=value; attr=val; ...
             String[] parts = s.split(";");
-            String name = null, value = null, path = null, domain = null, comment = null;
-            int maxAge = -1; boolean secure = false, httpOnly = false;
+            String name = null;
+            String value = null;
+            String path = null;
+            String domain = null;
+            String comment = null;
+            int maxAge = -1;
+            boolean secure = false;
+            boolean httpOnly = false;
             int version = 1;
             for (int i = 0; i < parts.length; i++) {
                 String p = parts[i].trim();
@@ -180,8 +186,8 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
                     case "path" -> path = v;
                     case "domain" -> domain = v;
                     case "comment" -> comment = v;
-                    case "max-age" -> { try { maxAge = Integer.parseInt(v); } catch (NumberFormatException ignored) {} }
-                    case "version" -> { try { version = Integer.parseInt(v); } catch (NumberFormatException ignored) {} }
+                    case "max-age" -> { try { maxAge = Integer.parseInt(v); } catch (NumberFormatException _) { /* not a number: the default is kept */ } }
+                    case "version" -> { try { version = Integer.parseInt(v); } catch (NumberFormatException _) { /* not a number: the default is kept */ } }
                     case "secure" -> secure = true;
                     case "httponly" -> httpOnly = true;
                     default -> { /* unknown attribute: ignored, like before */ }
@@ -212,7 +218,10 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
             // Parsing RFC 2965 / 6265 : $Version=1; NAME=VALUE; $Path="/"; $Domain=".."
             // §4.3 : preserves the case of name and value (the test
             // checkCreatedHeaderDelegateCookieTest does a round-trip).
-            String name = null, value = null, path = null, domain = null;
+            String name = null;
+            String value = null;
+            String path = null;
+            String domain = null;
             int version = 0;
             for (String pair : s.split(";")) {
                 String p = pair.trim();
@@ -221,7 +230,7 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
                 String k = eq < 0 ? p : p.substring(0, eq).trim();
                 String v = eq < 0 ? "" : stripQuotes(p.substring(eq + 1).trim());
                 if ("$Version".equalsIgnoreCase(k)) {
-                    try { version = Integer.parseInt(v); } catch (Exception ignored) {}
+                    try { version = Integer.parseInt(v); } catch (Exception _) { /* not a number: the default version is kept */ }
                 } else if ("$Path".equalsIgnoreCase(k)) {
                     path = v;
                 } else if ("$Domain".equalsIgnoreCase(k)) {
@@ -287,8 +296,8 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
                     }
                     case "must-revalidate" -> cc.setMustRevalidate(true);
                     case "proxy-revalidate" -> cc.setProxyRevalidate(true);
-                    case "max-age" -> { try { cc.setMaxAge(Integer.parseInt(value)); } catch (NumberFormatException ignored) {} }
-                    case "s-maxage" -> { try { cc.setSMaxAge(Integer.parseInt(value)); } catch (NumberFormatException ignored) {} }
+                    case "max-age" -> { try { cc.setMaxAge(Integer.parseInt(value)); } catch (NumberFormatException _) { /* not a number: the default is kept */ } }
+                    case "s-maxage" -> { try { cc.setSMaxAge(Integer.parseInt(value)); } catch (NumberFormatException _) { /* not a number: the default is kept */ } }
                     // "public" and any unknown directive land in the extension map so
                     // they survive a round-trip (CacheControl does not model them).
                     default -> cc.getCacheExtension().put(name, value);
@@ -344,7 +353,7 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
             return sb.toString();
         }
         private static void append(StringBuilder sb, String v) {
-            if (sb.length() > 0) sb.append(", ");
+            if (!sb.isEmpty()) sb.append(", ");
             sb.append(v);
         }
     }
@@ -390,7 +399,7 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
             try {
                 return java.util.Date.from(java.time.LocalDateTime.parse(s, FMT)
                         .toInstant(java.time.ZoneOffset.UTC));
-            } catch (java.time.format.DateTimeParseException e) { return null; }
+            } catch (java.time.format.DateTimeParseException _) { return null; }
         }
         @Override public String toString(java.util.Date d) {
             return FMT.format(d.toInstant().atOffset(java.time.ZoneOffset.UTC));

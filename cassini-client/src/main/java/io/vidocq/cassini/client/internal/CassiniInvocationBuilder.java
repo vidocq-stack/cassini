@@ -272,10 +272,10 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
             StringBuilder joined = new StringBuilder();
             for (Object v : entry.getValue()) {
                 if (v == null) continue;
-                if (joined.length() > 0) joined.append(", ");
+                if (!joined.isEmpty()) joined.append(", ");
                 joined.append(v);
             }
-            if (joined.length() > 0) builder.header(name, joined.toString());
+            if (!joined.isEmpty()) builder.header(name, joined.toString());
         }
     }
 

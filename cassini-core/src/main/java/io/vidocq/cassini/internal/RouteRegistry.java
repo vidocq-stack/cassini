@@ -113,7 +113,7 @@ public final class RouteRegistry {
             Class<?> providerClass = Class.forName(providerName, false, cls.getClassLoader());
             RouteProvider provider = (RouteProvider) providerClass.getDeclaredConstructor().newInstance();
             return fromProvider(provider, cls);
-        } catch (ClassNotFoundException ignored) {
+        } catch (ClassNotFoundException _) {
             // No pre-generated provider — fall through to scanner
         } catch (Exception e) {
             LOG.log(Level.WARNING, "RouteRegistry: failed to use generated routes for "
@@ -222,7 +222,7 @@ public final class RouteRegistry {
                 // required. Only the reflective-fallback path (methodId == -1) would need it.
                 try {
                     m.setAccessible(true);
-                } catch (RuntimeException ignored) {
+                } catch (RuntimeException _) {
                     // InaccessibleObjectException — encapsulated package; adapter.invoke() covers it.
                 }
                 Set<String> produces = toSet(d.produces());

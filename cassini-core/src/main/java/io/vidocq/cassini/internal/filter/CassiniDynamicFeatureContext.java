@@ -19,7 +19,6 @@
  */
 package io.vidocq.cassini.internal.filter;
 
-import jakarta.ws.rs.core.Configurable;
 import jakarta.ws.rs.core.Configuration;
 import jakarta.ws.rs.core.Feature;
 import jakarta.ws.rs.core.FeatureContext;

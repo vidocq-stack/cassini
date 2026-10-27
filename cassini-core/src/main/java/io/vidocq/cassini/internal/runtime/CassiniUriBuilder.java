@@ -246,9 +246,9 @@ public final class CassiniUriBuilder extends UriBuilder {
         if (segment.isEmpty()) return this;
         // §6: avoid double slashes when joining. Add a separator if
         // needed and deduplicate any leading slash on the segment.
-        boolean endsWithSlash = path.length() > 0 && path.charAt(path.length() - 1) == '/';
+        boolean endsWithSlash = !path.isEmpty() && path.charAt(path.length() - 1) == '/';
         boolean startsWithSlash = segment.startsWith("/");
-        if (path.length() > 0 && !endsWithSlash && !startsWithSlash) {
+        if (!path.isEmpty() && !endsWithSlash && !startsWithSlash) {
             path.append('/');
         } else if (endsWithSlash && startsWithSlash) {
             segment = segment.substring(1);
@@ -461,7 +461,7 @@ public final class CassiniUriBuilder extends UriBuilder {
         StringBuilder q = new StringBuilder();
         for (var e : query.entrySet()) {
             for (String v : e.getValue()) {
-                if (q.length() > 0) q.append('&');
+                if (!q.isEmpty()) q.append('&');
                 q.append(e.getKey());
                 if (v != null) {
                     String subst = substituteLiteralAndTemplates(v, values, valueMap,
@@ -470,7 +470,7 @@ public final class CassiniUriBuilder extends UriBuilder {
                 }
             }
         }
-        String queryOut = q.length() == 0 ? null : q.toString();
+        String queryOut = q.isEmpty() ? null : q.toString();
 
         // Raw assembly (the parts are already encoded).
         StringBuilder sb = new StringBuilder();
@@ -518,7 +518,7 @@ public final class CassiniUriBuilder extends UriBuilder {
                 // §6: when the value is already pre-encoded (buildFromEncoded*),
                 // any '/' it contains must be preserved — it
                 // represents what the caller chose to emit.
-                boolean valEncodeSlash = valuesAlreadyEncoded ? false : encodeSlash;
+                boolean valEncodeSlash = !valuesAlreadyEncoded && encodeSlash;
                 if (resolvedTemplates.containsKey(name)) {
                     val = resolvedTemplates.get(name);
                     valEncoded = resolvedTemplatesEncoded.getOrDefault(name, false);

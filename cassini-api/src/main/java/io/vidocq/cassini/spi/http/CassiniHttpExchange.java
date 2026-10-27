@@ -96,7 +96,7 @@ public interface CassiniHttpExchange {
     default long contentLength() {
         String raw = firstHeader("Content-Length");
         if (raw == null || raw.isEmpty()) return -1L;
-        try { return Long.parseLong(raw.trim()); } catch (NumberFormatException e) { return -1L; }
+        try { return Long.parseLong(raw.trim()); } catch (NumberFormatException _) { return -1L; }
     }
 
     /** Application prefix (e.g. {@code "/api"}). Empty or {@code "/"} if there is no context. */

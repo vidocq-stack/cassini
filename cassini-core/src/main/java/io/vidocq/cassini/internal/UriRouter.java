@@ -22,7 +22,6 @@ package io.vidocq.cassini.internal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 
@@ -47,7 +46,7 @@ public final class UriRouter {
     // In case of tie, direct routes (non-resolved) take precedence over
     // routes from a sub-resource locator (§3.7.2 Step 2c > Step 2d).
     private static final Comparator<ResourceMethod> BY_SPECIFICITY =
-            Comparator.comparingInt((ResourceMethod r) -> r.classPathLiterals()).reversed()
+            Comparator.comparingInt(ResourceMethod::classPathLiterals).reversed()
                     .thenComparing(Comparator.comparingInt((ResourceMethod r) -> r.template().literalChars()).reversed())
                     .thenComparing(Comparator.comparingInt((ResourceMethod r) -> r.template().totalCaptures()).reversed())
                     .thenComparing(Comparator.comparingInt(r -> r.template().defaultCaptures()))

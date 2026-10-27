@@ -161,7 +161,7 @@ public final class AdapterRegistry {
             PRE_GENERATED_HITS.incrementAndGet();
             LOG.fine("Pre-generated adapter used for " + beanClass.getName());
             return Optional.of(existing != null ? existing : adapter);
-        } catch (ClassNotFoundException ignored) {
+        } catch (ClassNotFoundException _) {
             // No pre-generated adapter; fall through to runtime generator.
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Pre-generated adapter found but failed to instantiate for "

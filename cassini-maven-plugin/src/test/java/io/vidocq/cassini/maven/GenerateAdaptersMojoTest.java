@@ -83,7 +83,7 @@ class GenerateAdaptersMojoTest {
     }
 
     @Test
-    void toBytecode_byteIdenticalToGenerate(@TempDir File tmpDir) throws Exception {
+    void toBytecode_byteIdenticalToGenerate() {
         // Bytecode from toBytecode...
         byte[] fromToBytecode = RuntimeAdapterGenerator.toBytecode(HelloResource.class);
 

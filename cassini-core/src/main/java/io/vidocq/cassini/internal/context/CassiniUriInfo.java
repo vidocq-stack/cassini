@@ -29,7 +29,6 @@ import jakarta.ws.rs.core.UriInfo;
 
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -104,7 +103,7 @@ public final class CassiniUriInfo implements UriInfo {
         String out = p.startsWith("/") ? p.substring(1) : p;
         if (decode) {
             try { out = java.net.URLDecoder.decode(out, java.nio.charset.StandardCharsets.UTF_8); }
-            catch (Exception ignored) {}
+            catch (Exception _) { /* not decodable: the raw path is returned */ }
         }
         return out;
     }

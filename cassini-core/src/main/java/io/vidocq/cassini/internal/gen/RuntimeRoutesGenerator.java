@@ -32,7 +32,6 @@ import java.lang.constant.ConstantDescs;
 import java.lang.constant.MethodTypeDesc;
 import java.lang.reflect.Method;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Build-time generator of {@code <ResourceClass>$$CassiniRoutes} bytecode — the {@link RouteProvider}
@@ -103,7 +102,7 @@ public final class RuntimeRoutesGenerator {
             // public List<RouteDescriptor> routes()
             clb.withMethodBody("routes", MethodTypeDesc.of(CD_List),
                     ClassFile.ACC_PUBLIC, cob -> {
-                        // Object[] tmp = new Object[N];
+                        // An Object array of one descriptor per route...
                         cob.loadConstant(routes.size());
                         cob.anewarray(CD_Object);
                         for (int i = 0; i < routes.size(); i++) {
@@ -113,13 +112,13 @@ public final class RuntimeRoutesGenerator {
                             emitRouteDescriptor(cob, rm);
                             cob.aastore();
                         }
-                        // return List.of(tmp);
+                        // ...returned wrapped by List.of
                         cob.invokestatic(CD_List, "of",
                                 MethodTypeDesc.of(CD_List, CD_Object.arrayType()), true);
                         cob.areturn();
                     });
 
-            // public Class<?> resourceClass() { return Resource.class; }
+            // resourceClass() returns the resource class literal:
             // ServiceLoader keying (zero-export Java Modules apps), parity with the APT.
             clb.withMethodBody("resourceClass", MethodTypeDesc.of(CD_Class),
                     ClassFile.ACC_PUBLIC, cob -> {

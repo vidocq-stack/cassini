@@ -128,7 +128,7 @@ public final class CassiniJsonbReaderWriter
                     Jsonb j = r.getContext(type);
                     if (j != null) return j;
                 }
-            } catch (RuntimeException ignored) {}
+            } catch (RuntimeException _) { /* a failing ContextResolver falls back to the default Jsonb */ }
         }
         return DefaultJsonb.INSTANCE;
     }

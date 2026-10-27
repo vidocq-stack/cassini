@@ -583,7 +583,7 @@ class RuntimeAdapterGeneratorTest {
     }
 
     @Test
-    void toBytecodeByteIdenticalToGeneratedBytes() throws Exception {
+    void toBytecodeByteIdenticalToGeneratedBytes() {
         // The bytes returned by toBytecode must match what generate() would also produce
         // (both delegate to the same internal build method)
         byte[] fromToBytecode = RuntimeAdapterGenerator.toBytecode(FieldlessResource.class);
@@ -855,7 +855,7 @@ class RuntimeAdapterGeneratorTest {
         ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
 
         assertThrows(UnsupportedOperationException.class,
-                () -> adapter.newInstance(),
+                adapter::newInstance,
                 "newInstance() must throw UnsupportedOperationException when no no-arg ctor exists");
     }
 

@@ -23,7 +23,6 @@ import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import io.vidocq.cassini.internal.MediaTypes;
 import io.vidocq.cassini.internal.context.CassiniHttpHeaders;
 import io.vidocq.cassini.internal.context.CassiniSecurityContext;
-import io.vidocq.cassini.internal.context.CassiniUriInfo;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.core.Cookie;
 import jakarta.ws.rs.core.MediaType;

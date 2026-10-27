@@ -153,7 +153,7 @@ public final class ResourceScanner {
             try {
                 Method parent = sup.getDeclaredMethod(m.getName(), m.getParameterTypes());
                 if (hasJaxrsAnnotation(parent)) return parent;
-            } catch (NoSuchMethodException ignored) {}
+            } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
             sup = sup.getSuperclass();
         }
         // Walk up interfaces
@@ -176,7 +176,8 @@ public final class ResourceScanner {
     /** Counts literal characters outside {templates} in a path. */
     private static int countLiterals(String path) {
         if (path == null) return 0;
-        int n = 0; int depth = 0;
+        int n = 0;
+        int depth = 0;
         for (int i = 0; i < path.length(); i++) {
             char c = path.charAt(i);
             if (c == '{') depth++;

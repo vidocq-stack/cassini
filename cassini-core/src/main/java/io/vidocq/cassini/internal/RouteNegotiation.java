@@ -55,7 +55,7 @@ final class RouteNegotiation {
         for (MediaType p : produces) {
             String qs = p.getParameters().get("qs");
             double v = 1.0;
-            if (qs != null) try { v = Double.parseDouble(qs); } catch (Exception ignored) {}
+            if (qs != null) try { v = Double.parseDouble(qs); } catch (Exception _) { /* a malformed qs keeps the default 1.0 */ }
             if (v > best) best = v;
         }
         return best;

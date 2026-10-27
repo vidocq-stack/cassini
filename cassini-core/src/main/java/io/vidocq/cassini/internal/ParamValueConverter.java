@@ -100,7 +100,7 @@ public final class ParamValueConverter {
                 if (Modifier.isStatic(fs.getModifiers())) {
                     return invokeOrPropagate(fs, null, raw);
                 }
-            } catch (NoSuchMethodException ignored) {}
+            } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
             try {
                 @SuppressWarnings({"unchecked", "rawtypes"})
                 Enum<?> e = Enum.valueOf((Class<Enum>) type.asSubclass(Enum.class), raw);
@@ -115,13 +115,13 @@ public final class ParamValueConverter {
             if (Modifier.isStatic(valueOf.getModifiers())) {
                 return invokeOrPropagate(valueOf, null, raw);
             }
-        } catch (NoSuchMethodException ignored) {}
+        } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
         try {
             Method fromString = type.getDeclaredMethod("fromString", String.class);
             if (Modifier.isStatic(fromString.getModifiers())) {
                 return invokeOrPropagate(fromString, null, raw);
             }
-        } catch (NoSuchMethodException ignored) {}
+        } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
         try {
             Constructor<?> c = type.getDeclaredConstructor(String.class);
             return newInstanceOrPropagate(c, raw);

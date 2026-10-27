@@ -34,7 +34,6 @@ import java.lang.annotation.Annotation;
 import java.net.URI;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
 import java.util.Date;
 import java.util.Locale;
 import java.util.Map;

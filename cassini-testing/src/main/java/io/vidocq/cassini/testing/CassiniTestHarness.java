@@ -30,7 +30,6 @@ import io.vidocq.cassini.internal.MessageBodyRegistry;
 import io.vidocq.cassini.internal.ResourceMethod;
 import io.vidocq.cassini.internal.ResourceScanner;
 import io.vidocq.cassini.internal.UriRouter;
-import io.vidocq.cassini.internal.ExceptionMapperRegistry;
 import io.vidocq.cassini.internal.filter.FilterRegistry;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.MessageBodyReader;

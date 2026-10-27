@@ -24,7 +24,6 @@ import jakarta.ws.rs.container.TimeoutHandler;
 import jakarta.ws.rs.core.Response;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -212,7 +211,7 @@ public final class CassiniAsyncResponseImpl implements AsyncResponse {
         for (var cb : connectionCallbacks) {
             try {
                 cb.onDisconnect(this);
-            } catch (RuntimeException ignored) { /* same as above */ }
+            } catch (RuntimeException _) { /* same as above */ }
         }
     }
 

@@ -25,7 +25,6 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.StreamingOutput;
-import io.vidocq.cassini.internal.FormDecoder;
 import jakarta.ws.rs.ext.MessageBodyReader;
 import jakarta.ws.rs.ext.MessageBodyWriter;
 
@@ -257,7 +256,7 @@ public final class MessageBodyRegistry {
         try {
             Class.forName(fqcn, false, MessageBodyRegistry.class.getClassLoader());
             return true;
-        } catch (ClassNotFoundException e) {
+        } catch (ClassNotFoundException _) {
             return false;
         }
     }
@@ -598,7 +597,7 @@ public final class MessageBodyRegistry {
                 if (c == java.math.BigInteger.class) return new java.math.BigInteger(s);
                 if (c == Number.class) return new java.math.BigDecimal(s);
                 return s;
-            } catch (NumberFormatException | ArithmeticException e) {
+            } catch (NumberFormatException | ArithmeticException _) {
                 // §4.2.4 : un body inparsable pour un MBR standard → 400.
                 throw new jakarta.ws.rs.BadRequestException(
                         "Invalid body for " + c.getSimpleName() + ": '" + s + "'");
@@ -617,10 +616,10 @@ public final class MessageBodyRegistry {
 
     private static boolean isXmlMediaType(MediaType mt) {
         if (mt == null) return false;
-        String ty = mt.getType(), st = mt.getSubtype();
+        String ty = mt.getType();
+        String st = mt.getSubtype();
         if ("application".equalsIgnoreCase(ty) && ("xml".equalsIgnoreCase(st) || st.toLowerCase().endsWith("+xml"))) return true;
-        if ("text".equalsIgnoreCase(ty) && "xml".equalsIgnoreCase(st)) return true;
-        return false;
+        return "text".equalsIgnoreCase(ty) && "xml".equalsIgnoreCase(st);
     }
 
     /** Builds a MultivaluedMap<String, String> from the headers of an exchange. */

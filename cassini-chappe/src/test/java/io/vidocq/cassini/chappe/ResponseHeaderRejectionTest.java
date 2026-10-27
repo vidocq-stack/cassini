@@ -212,7 +212,7 @@ class ResponseHeaderRejectionTest {
         try {
             Response.builder().status(StatusCode.of(200)).header(name, value).body(Body.empty()).build();
             rejected = false;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException _) {
             rejected = true;
         }
         assumeTrue(rejected, "the installed Chappe accepts this header (pre CHAPPE-008)");

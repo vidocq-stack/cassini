@@ -43,6 +43,9 @@ import java.util.Set;
  * with M2e-2 if the TCK requires them.
  */
 public final class CassiniResponseBuilder extends Response.ResponseBuilder {
+    private static final String CONTENT_LANGUAGE = "Content-Language";
+    private static final String CONTENT_TYPE = "Content-Type";
+    private static final String ALLOW = "Allow";
 
     private int status = 200;
     private boolean statusExplicit = false;
@@ -54,7 +57,10 @@ public final class CassiniResponseBuilder extends Response.ResponseBuilder {
     @Override public Response build() {
         // §3.5: default status = 200 if entity != null, 204 otherwise. If
         // the caller explicitly set a status, honor it.
-        int s = statusExplicit ? status : (entity == null ? 204 : 200);
+        int s = status;
+        if (!statusExplicit) {
+            s = entity == null ? 204 : 200;
+        }
         return new CassiniResponse(s, reason, entity, annotations, copy(headers));
     }
 
@@ -76,14 +82,14 @@ public final class CassiniResponseBuilder extends Response.ResponseBuilder {
     @Override public Response.ResponseBuilder entity(Object e, Annotation[] a) { this.entity = e; this.annotations = a; return this; }
 
     @Override public Response.ResponseBuilder allow(String... methods) {
-        if (methods == null) headers.remove("Allow");
-        else headers.putSingle("Allow", String.join(", ", methods));
+        if (methods == null) headers.remove(ALLOW);
+        else headers.putSingle(ALLOW, String.join(", ", methods));
         return this;
     }
 
     @Override public Response.ResponseBuilder allow(Set<String> methods) {
-        if (methods == null) headers.remove("Allow");
-        else headers.putSingle("Allow", String.join(", ", methods));
+        if (methods == null) headers.remove(ALLOW);
+        else headers.putSingle(ALLOW, String.join(", ", methods));
         return this;
     }
 
@@ -112,26 +118,26 @@ public final class CassiniResponseBuilder extends Response.ResponseBuilder {
     }
 
     @Override public Response.ResponseBuilder language(String lang) {
-        if (lang == null) headers.remove("Content-Language");
-        else headers.putSingle("Content-Language", lang);
+        if (lang == null) headers.remove(CONTENT_LANGUAGE);
+        else headers.putSingle(CONTENT_LANGUAGE, lang);
         return this;
     }
 
     @Override public Response.ResponseBuilder language(Locale lang) {
-        if (lang == null) headers.remove("Content-Language");
-        else headers.putSingle("Content-Language", lang.toLanguageTag());
+        if (lang == null) headers.remove(CONTENT_LANGUAGE);
+        else headers.putSingle(CONTENT_LANGUAGE, lang.toLanguageTag());
         return this;
     }
 
     @Override public Response.ResponseBuilder type(MediaType type) {
-        if (type == null) headers.remove("Content-Type");
-        else headers.putSingle("Content-Type", type);
+        if (type == null) headers.remove(CONTENT_TYPE);
+        else headers.putSingle(CONTENT_TYPE, type);
         return this;
     }
 
     @Override public Response.ResponseBuilder type(String type) {
-        if (type == null) headers.remove("Content-Type");
-        else headers.putSingle("Content-Type", type);
+        if (type == null) headers.remove(CONTENT_TYPE);
+        else headers.putSingle(CONTENT_TYPE, type);
         return this;
     }
 

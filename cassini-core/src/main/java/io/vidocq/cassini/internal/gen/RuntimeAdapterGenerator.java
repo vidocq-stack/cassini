@@ -93,6 +93,10 @@ import java.util.Map;
  * dispatch remains via {@code Method.invoke} until P1b.</p>
  */
 public final class RuntimeAdapterGenerator {
+    private static final String ADD_READS = "addReads";
+    private static final String METHOD_FROM_STRING = "fromString";
+    private static final String METHOD_VALUE_OF = "valueOf";
+    private static final String RUNTIME_EXCEPTION = "java.lang.RuntimeException";
 
     /** Suffix appended to the resource class name to form the adapter class name. */
     public static final String ADAPTER_SUFFIX = "$$CassiniAdapter";
@@ -130,7 +134,6 @@ public final class RuntimeAdapterGenerator {
     private static final ClassDesc CD_Boolean_w   = ClassDesc.of("java.lang.Boolean");
     private static final ClassDesc CD_Short_w     = ClassDesc.of("java.lang.Short");
     private static final ClassDesc CD_Byte_w      = ClassDesc.of("java.lang.Byte");
-    private static final ClassDesc CD_Character_w = ClassDesc.of("java.lang.Character");
 
     private RuntimeAdapterGenerator() {}
 
@@ -240,9 +243,8 @@ public final class RuntimeAdapterGenerator {
         // If the adapter class was already defined (e.g. from a previous call in the same JVM
         // run, or by a concurrent thread), reuse it rather than attempting a duplicate definition.
         try {
-            Class<?> existing = Class.forName(adapterName, false, resourceClass.getClassLoader());
-            return existing;
-        } catch (ClassNotFoundException ignored) {
+            return Class.forName(adapterName, false, resourceClass.getClassLoader());
+        } catch (ClassNotFoundException _) {
             // Not yet defined — proceed with defineClass below.
         }
 
@@ -361,7 +363,7 @@ public final class RuntimeAdapterGenerator {
         Class<?> shim;
         try {
             shim = Class.forName(shimName, false, resourceClass.getClassLoader());
-        } catch (ClassNotFoundException notDefinedYet) {
+        } catch (ClassNotFoundException _) {
             try {
                 shim = resourceLookup.defineClass(readsShimBytecode(shimName));
             } catch (LinkageError alreadyDefinedConcurrently) {
@@ -369,7 +371,7 @@ public final class RuntimeAdapterGenerator {
             }
         }
 
-        var addReads = resourceLookup.findStatic(shim, "addReads",
+        var addReads = resourceLookup.findStatic(shim, ADD_READS,
                 MethodType.methodType(void.class, Module.class));
         for (Module m : missing) {
             try {
@@ -389,14 +391,14 @@ public final class RuntimeAdapterGenerator {
         ClassDesc shimCD = ClassDesc.of(shimName);
         return ClassFile.of().build(shimCD, clb -> {
             clb.withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER | ClassFile.ACC_FINAL);
-            clb.withMethodBody("addReads",
+            clb.withMethodBody(ADD_READS,
                     MethodTypeDesc.of(CD_void, CD_Module),
                     ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC,
                     cob -> {
                         cob.ldc(shimCD);
                         cob.invokevirtual(CD_Class, "getModule", MethodTypeDesc.of(CD_Module));
                         cob.aload(0);
-                        cob.invokevirtual(CD_Module, "addReads", MethodTypeDesc.of(CD_Module, CD_Module));
+                        cob.invokevirtual(CD_Module, ADD_READS, MethodTypeDesc.of(CD_Module, CD_Module));
                         cob.pop();
                         cob.return_();
                     });
@@ -441,7 +443,7 @@ public final class RuntimeAdapterGenerator {
                     Label after = cob.newLabel();
                     cob.goto_(after);
 
-                    // catch(Throwable t) { throw new ExceptionInInitializerError(t); }
+                    // Handler: any Throwable is rethrown wrapped in an ExceptionInInitializerError.
                     cob.labelBinding(tryEnd);
                     cob.labelBinding(handler);
                     cob.astore(1);
@@ -477,7 +479,7 @@ public final class RuntimeAdapterGenerator {
                         Label afterField = cob.newLabel();
 
                         if (!fd.isContext()) {
-                            // if (!injectParams) skip @*Param and @BeanParam
+                            // @*Param and @BeanParam fields are skipped when injectParams is false
                             cob.iload(3);
                             cob.ifeq(afterField);
                         }
@@ -580,8 +582,6 @@ public final class RuntimeAdapterGenerator {
      * </p>
      */
     public static InlineStrategy resolveInlineStrategy(FieldDesc fd) {
-        // DIAGNOSTIC: temporarily disable all inline conversions to verify TCK baseline
-        // return InlineStrategy.FALLBACK;
         Class<?> raw = fd.rawType();
 
         // Collections: delegate to element type strategy
@@ -621,29 +621,29 @@ public final class RuntimeAdapterGenerator {
         // Enum: check for fromString first (mirroring ParamValueConverter order)
         if (type.isEnum()) {
             try {
-                Method fs = type.getDeclaredMethod("fromString", String.class);
+                Method fs = type.getDeclaredMethod(METHOD_FROM_STRING, String.class);
                 if (Modifier.isStatic(fs.getModifiers()) && Modifier.isPublic(fs.getModifiers())) {
                     return InlineStrategy.ENUM_WITH_FROM_STRING;
                 }
-            } catch (NoSuchMethodException ignored) {}
+            } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
             return InlineStrategy.ENUM_PLAIN;
         }
 
         // valueOf(String) — public static
         try {
-            Method valueOf = type.getDeclaredMethod("valueOf", String.class);
+            Method valueOf = type.getDeclaredMethod(METHOD_VALUE_OF, String.class);
             if (Modifier.isStatic(valueOf.getModifiers()) && Modifier.isPublic(valueOf.getModifiers())) {
                 return InlineStrategy.VALUE_OF;
             }
-        } catch (NoSuchMethodException ignored) {}
+        } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
 
         // fromString(String) — public static
         try {
-            Method fromString = type.getDeclaredMethod("fromString", String.class);
+            Method fromString = type.getDeclaredMethod(METHOD_FROM_STRING, String.class);
             if (Modifier.isStatic(fromString.getModifiers()) && Modifier.isPublic(fromString.getModifiers())) {
                 return InlineStrategy.FROM_STRING;
             }
-        } catch (NoSuchMethodException ignored) {}
+        } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
 
         // (String) constructor — public
         try {
@@ -713,7 +713,7 @@ public final class RuntimeAdapterGenerator {
             cob.goto_(notEmpty);
         } else {
             // No default: push primitive zero or null for the field type
-            emitPrimitiveDefaultOrNull(cob, fd.rawType(), strategy);
+            emitPrimitiveDefaultOrNull(cob, fd.rawType());
             cob.goto_(afterEmpty);
         }
 
@@ -729,7 +729,7 @@ public final class RuntimeAdapterGenerator {
      * Pushes {@code defaultForType} onto the stack.
      * Primitives → boxed zero/false. References (wrappers, collections, String) → null.
      */
-    private static void emitPrimitiveDefaultOrNull(CodeBuilder cob, Class<?> rawType, InlineStrategy strategy) {
+    private static void emitPrimitiveDefaultOrNull(CodeBuilder cob, Class<?> rawType) {
         if (rawType == boolean.class) { cob.iconst_0(); emitBox(cob, boolean.class); return; }
         if (rawType == byte.class)    { cob.iconst_0(); emitBox(cob, byte.class);    return; }
         if (rawType == short.class)   { cob.iconst_0(); emitBox(cob, short.class);   return; }
@@ -748,7 +748,7 @@ public final class RuntimeAdapterGenerator {
     private static void emitConvertFromList(CodeBuilder cob, FieldDesc fd,
                                              InlineStrategy strategy, Label afterField) {
         if (strategy == InlineStrategy.COLLECTION_STRING || strategy == InlineStrategy.COLLECTION_INLINE) {
-            emitCollectionConversion(cob, fd, strategy, afterField);
+            emitCollectionConversion(cob, fd);
             return;
         }
 
@@ -776,11 +776,11 @@ public final class RuntimeAdapterGenerator {
         // Emit the conversion code — this may register inner exception handlers (e.g. ENUM_PLAIN IAE).
         // Those inner registrations happen BEFORE the outer ones below, giving them table priority.
         cob.aload(6);
-        emitScalarConversion(cob, fd.elementType(), strategy, typeCD);
+        emitScalarConversion(cob, strategy, typeCD);
 
         // Register outer catches AFTER inner ones so inner handlers take priority.
         cob.exceptionCatch(tryStart, tryEnd, catchWAE, CD_WebAppException);
-        cob.exceptionCatch(tryStart, tryEnd, catchRE, ClassDesc.of("java.lang.RuntimeException"));
+        cob.exceptionCatch(tryStart, tryEnd, catchRE, ClassDesc.of(RUNTIME_EXCEPTION));
 
         cob.goto_(afterTry);
 
@@ -796,7 +796,7 @@ public final class RuntimeAdapterGenerator {
         cob.aload(7);
         cob.invokeinterface(CD_InjectionSupport, "coercionError",
                 MethodTypeDesc.of(CD_WebAppException, CD_ParamKind, CD_String,
-                        ClassDesc.of("java.lang.RuntimeException")));
+                        ClassDesc.of(RUNTIME_EXCEPTION)));
         cob.athrow();
 
         cob.labelBinding(afterTry);
@@ -807,8 +807,7 @@ public final class RuntimeAdapterGenerator {
      * Emits scalar conversion from a String (on stack) to the target type.
      * Stack before: String. Stack after: Object (boxed for primitives).
      */
-    private static void emitScalarConversion(CodeBuilder cob, Class<?> type,
-                                              InlineStrategy strategy, ClassDesc typeCD) {
+    private static void emitScalarConversion(CodeBuilder cob, InlineStrategy strategy, ClassDesc typeCD) {
         switch (strategy) {
             case STRING -> { /* pass-through */ }
             case BOOLEAN -> {
@@ -866,9 +865,8 @@ public final class RuntimeAdapterGenerator {
                         MethodTypeDesc.of(ConstantDescs.CD_char, ConstantDescs.CD_int));
                 emitBox(cob, char.class);
             }
-            case ENUM_WITH_FROM_STRING -> {
-                cob.invokestatic(typeCD, "fromString", MethodTypeDesc.of(typeCD, CD_String));
-            }
+            case ENUM_WITH_FROM_STRING ->
+                cob.invokestatic(typeCD, METHOD_FROM_STRING, MethodTypeDesc.of(typeCD, CD_String));
             case ENUM_PLAIN -> {
                 // Enum.valueOf(Type.class, raw); on IAE → null (matches coerceSingle)
                 // Need: save raw in slot 8, push Class, reload raw for Enum.valueOf(Class, String)
@@ -881,7 +879,7 @@ public final class RuntimeAdapterGenerator {
                 cob.astore(8); // save raw String
                 cob.ldc(typeCD);
                 cob.aload(8);
-                cob.invokestatic(ClassDesc.of("java.lang.Enum"), "valueOf",
+                cob.invokestatic(ClassDesc.of("java.lang.Enum"), METHOD_VALUE_OF,
                         MethodTypeDesc.of(ClassDesc.of("java.lang.Enum"),
                                 ClassDesc.of("java.lang.Class"), CD_String));
                 cob.goto_(iaeAfter);
@@ -891,12 +889,10 @@ public final class RuntimeAdapterGenerator {
                 cob.aconst_null();
                 cob.labelBinding(iaeAfter);
             }
-            case VALUE_OF -> {
-                cob.invokestatic(typeCD, "valueOf", MethodTypeDesc.of(typeCD, CD_String));
-            }
-            case FROM_STRING -> {
-                cob.invokestatic(typeCD, "fromString", MethodTypeDesc.of(typeCD, CD_String));
-            }
+            case VALUE_OF ->
+                cob.invokestatic(typeCD, METHOD_VALUE_OF, MethodTypeDesc.of(typeCD, CD_String));
+            case FROM_STRING ->
+                cob.invokestatic(typeCD, METHOD_FROM_STRING, MethodTypeDesc.of(typeCD, CD_String));
             case STRING_CTOR -> {
                 cob.astore(8);
                 cob.new_(typeCD);
@@ -913,16 +909,20 @@ public final class RuntimeAdapterGenerator {
      * Builds ArrayList/LinkedHashSet/TreeSet, converting each element inline.
      * Stack after: the collection Object.
      */
-    private static void emitCollectionConversion(CodeBuilder cob, FieldDesc fd,
-                                                  InlineStrategy collStrategy, Label afterField) {
+    private static void emitCollectionConversion(CodeBuilder cob, FieldDesc fd) {
         Class<?> raw = fd.rawType();
         Class<?> elem = fd.elementType();
         ClassDesc elemCD = classDescOf(elem);
         InlineStrategy elemStrategy = resolveScalarStrategy(elem);
 
-        ClassDesc collImplCD = raw == java.util.Set.class ? CD_LinkedHashSet
-                : raw == java.util.SortedSet.class ? CD_TreeSet
-                : CD_ArrayList;
+        ClassDesc collImplCD;
+        if (raw == java.util.Set.class) {
+            collImplCD = CD_LinkedHashSet;
+        } else if (raw == java.util.SortedSet.class) {
+            collImplCD = CD_TreeSet;
+        } else {
+            collImplCD = CD_ArrayList;
+        }
 
         // result = new Impl() — slot 7
         cob.new_(collImplCD);
@@ -963,9 +963,9 @@ public final class RuntimeAdapterGenerator {
             // Emit inner conversion FIRST so any inner catches (e.g. ENUM_PLAIN IAE) are
             // registered before the outer RE catch — preserving inner-catch priority.
             cob.aload(10);
-            emitScalarConversion(cob, elem, elemStrategy, elemCD);
+            emitScalarConversion(cob, elemStrategy, elemCD);
             cob.exceptionCatch(eTryStart, eTryEnd, eCatchWAE, CD_WebAppException);
-            cob.exceptionCatch(eTryStart, eTryEnd, eCatchRE, ClassDesc.of("java.lang.RuntimeException"));
+            cob.exceptionCatch(eTryStart, eTryEnd, eCatchRE, ClassDesc.of(RUNTIME_EXCEPTION));
             cob.goto_(eAfterTry);
             cob.labelBinding(eTryEnd);
             cob.labelBinding(eCatchWAE);
@@ -978,7 +978,7 @@ public final class RuntimeAdapterGenerator {
             cob.aload(11);
             cob.invokeinterface(CD_InjectionSupport, "coercionError",
                     MethodTypeDesc.of(CD_WebAppException, CD_ParamKind, CD_String,
-                            ClassDesc.of("java.lang.RuntimeException")));
+                            ClassDesc.of(RUNTIME_EXCEPTION)));
             cob.athrow();
             cob.labelBinding(eAfterTry);
         }
@@ -1108,7 +1108,7 @@ public final class RuntimeAdapterGenerator {
                         Method m = entry.getKey();
                         int mid = entry.getValue();
                         cob.labelBinding(caseLabels[mid]);
-                        emitMethodCase(cob, resourceClass, resourceCD, m);
+                        emitMethodCase(cob, m);
                         // areturn is inside emitMethodCase
                     }
 
@@ -1131,8 +1131,7 @@ public final class RuntimeAdapterGenerator {
      * Emits bytecode for one switch case: cast target, load+cast each arg, call, box return,
      * then {@code areturn}.
      */
-    private static void emitMethodCase(CodeBuilder cob, Class<?> resourceClass,
-                                       ClassDesc resourceCD, Method m) {
+    private static void emitMethodCase(CodeBuilder cob, Method m) {
         // Cast target to the concrete resource class (or the declaring class if interface)
         Class<?> ownerClass = m.getDeclaringClass();
         ClassDesc ownerCD = ClassDesc.of(ownerClass.getName());
@@ -1232,28 +1231,28 @@ public final class RuntimeAdapterGenerator {
      */
     private static void emitBox(CodeBuilder cob, Class<?> primitive) {
         if (primitive == int.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Integer"), "valueOf",
+            cob.invokestatic(ClassDesc.of("java.lang.Integer"), METHOD_VALUE_OF,
                     MethodTypeDesc.of(ClassDesc.of("java.lang.Integer"), ConstantDescs.CD_int));
         } else if (primitive == long.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Long"), "valueOf",
+            cob.invokestatic(ClassDesc.of("java.lang.Long"), METHOD_VALUE_OF,
                     MethodTypeDesc.of(ClassDesc.of("java.lang.Long"), ConstantDescs.CD_long));
         } else if (primitive == double.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Double"), "valueOf",
+            cob.invokestatic(ClassDesc.of("java.lang.Double"), METHOD_VALUE_OF,
                     MethodTypeDesc.of(ClassDesc.of("java.lang.Double"), ConstantDescs.CD_double));
         } else if (primitive == float.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Float"), "valueOf",
+            cob.invokestatic(ClassDesc.of("java.lang.Float"), METHOD_VALUE_OF,
                     MethodTypeDesc.of(ClassDesc.of("java.lang.Float"), ConstantDescs.CD_float));
         } else if (primitive == boolean.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Boolean"), "valueOf",
+            cob.invokestatic(ClassDesc.of("java.lang.Boolean"), METHOD_VALUE_OF,
                     MethodTypeDesc.of(ClassDesc.of("java.lang.Boolean"), ConstantDescs.CD_boolean));
         } else if (primitive == short.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Short"), "valueOf",
+            cob.invokestatic(ClassDesc.of("java.lang.Short"), METHOD_VALUE_OF,
                     MethodTypeDesc.of(ClassDesc.of("java.lang.Short"), ConstantDescs.CD_short));
         } else if (primitive == byte.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Byte"), "valueOf",
+            cob.invokestatic(ClassDesc.of("java.lang.Byte"), METHOD_VALUE_OF,
                     MethodTypeDesc.of(ClassDesc.of("java.lang.Byte"), ConstantDescs.CD_byte));
         } else if (primitive == char.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Character"), "valueOf",
+            cob.invokestatic(ClassDesc.of("java.lang.Character"), METHOD_VALUE_OF,
                     MethodTypeDesc.of(ClassDesc.of("java.lang.Character"), ConstantDescs.CD_char));
         }
     }
@@ -1272,7 +1271,7 @@ public final class RuntimeAdapterGenerator {
             int mods = ctor.getModifiers();
             // private → not accessible from the same-package adapter
             return !java.lang.reflect.Modifier.isPrivate(mods);
-        } catch (NoSuchMethodException e) {
+        } catch (NoSuchMethodException _) {
             return false;
         }
     }

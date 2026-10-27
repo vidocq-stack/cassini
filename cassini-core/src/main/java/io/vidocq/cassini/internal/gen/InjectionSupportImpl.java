@@ -62,9 +62,10 @@ public final class InjectionSupportImpl implements InjectionSupport {
     public Object param(ParamKind kind, String name, boolean encoded,
                         String defaultValue, Class<?> rawType, Class<?> elementType) {
         List<String> values = sourceValues(kind, name, encoded);
-        List<String> effective = values.isEmpty()
-                ? (defaultValue != null ? List.of(defaultValue) : List.of())
-                : values;
+        List<String> effective = values;
+        if (values.isEmpty()) {
+            effective = defaultValue != null ? List.of(defaultValue) : List.of();
+        }
         if (effective.isEmpty()) {
             return ParamValueConverter.defaultForType(rawType);
         }

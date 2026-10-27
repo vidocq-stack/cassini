@@ -40,7 +40,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
-import java.util.logging.Logger;
 
 /**
  * Maven Mojo that pre-generates {@code <Class>$$CassiniAdapter} bytecode at build time.
@@ -90,7 +89,6 @@ import java.util.logging.Logger;
 )
 public class GenerateAdaptersMojo extends AbstractMojo {
 
-    private static final Logger LOG = Logger.getLogger(GenerateAdaptersMojo.class.getName());
     private static final String ADAPTER_SUFFIX = RuntimeAdapterGenerator.ADAPTER_SUFFIX;
 
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
@@ -222,7 +220,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
             try {
                 Class<?> cls = cl.loadClass(className);
                 if (!isResource(cls)) continue;
-                count += writeAdapter(cls, outputDir, null, null);
+                count += writeAdapter(cls, outputDir);
             } catch (ClassNotFoundException | NoClassDefFoundError e) {
                 getLog().warn("Cannot load class " + className + " — skipping: " + e.getMessage());
             }
@@ -271,7 +269,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
     }
 
     int scanJar(File jar, org.apache.maven.artifact.Artifact artifact, URLClassLoader cl)
-            throws MojoExecutionException, MojoFailureException {
+            throws MojoExecutionException {
         boolean isNamedModule = jarHasModuleInfo(jar);
         List<String> resourceClasses = new ArrayList<>();
 
@@ -343,7 +341,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
         for (String className : resourceClasses) {
             try {
                 Class<?> cls = cl.loadClass(className);
-                count += writeAdapter(cls, outputDirectory, null, null);
+                count += writeAdapter(cls, outputDirectory);
             } catch (Exception e) {
                 getLog().warn("Adapter generation failed for " + className + ": " + e.getMessage());
             }
@@ -456,9 +454,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
      * @param jos        JAR output stream (non-null only when jarFile != null)
      * @return 1 if written, 0 if skipped
      */
-    private int writeAdapter(Class<?> cls, File outputDir,
-                             JarFile jarFile, java.util.jar.JarOutputStream jos)
-            throws MojoExecutionException {
+    private int writeAdapter(Class<?> cls, File outputDir) {
         String adapterBinaryName = cls.getName() + ADAPTER_SUFFIX;
         String relPath = adapterBinaryName.replace('.', '/') + ".class";
         File dest = new File(outputDir, relPath);

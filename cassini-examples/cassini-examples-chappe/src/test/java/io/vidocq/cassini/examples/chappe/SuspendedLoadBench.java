@@ -107,7 +107,8 @@ class SuspendedLoadBench {
                         // to EOF would block until the server-side idle timeout.
                         String line = r.readLine();
                         if (line != null && line.contains("200")) ok.incrementAndGet();
-                    } catch (Exception ignored) {
+                    } catch (Exception _) {
+                        // a failed request simply does not count as a success
                     } finally {
                         drained.countDown();
                     }
