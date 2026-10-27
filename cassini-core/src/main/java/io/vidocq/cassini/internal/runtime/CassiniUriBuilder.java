@@ -692,13 +692,16 @@ public final class CassiniUriBuilder extends UriBuilder {
                 out.append(c);
                 i++;
             } else {
-                byte[] bytes = String.valueOf(c).getBytes(StandardCharsets.UTF_8);
+                // A whole code point: a surrogate pair encodes as one 4-byte UTF-8 sequence (CASSINI-010).
+                int cp = s.codePointAt(i);
+                int len = Character.charCount(cp);
+                byte[] bytes = s.substring(i, i + len).getBytes(StandardCharsets.UTF_8);
                 for (byte b : bytes) {
                     out.append('%');
                     out.append(Character.toUpperCase(Character.forDigit((b >> 4) & 0xF, 16)));
                     out.append(Character.toUpperCase(Character.forDigit(b & 0xF, 16)));
                 }
-                i++;
+                i += len;
             }
         }
         return out.toString();

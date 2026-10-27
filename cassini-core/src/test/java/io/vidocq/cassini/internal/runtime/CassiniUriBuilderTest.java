@@ -402,6 +402,17 @@ class CassiniUriBuilderTest {
     }
 
     @Test
+    void characters_outside_the_basic_multilingual_plane_are_encoded_as_utf_8() {
+        // CASSINI-010. U+1F600 is one code point (a surrogate pair in Java); its UTF-8 form is F0 9F 98 80.
+        String smiley = "😀";
+        assertEquals("/%F0%9F%98%80", UriBuilder.fromPath("/" + smiley).build().toString());
+        assertEquals("/p?q=%F0%9F%98%80", UriBuilder.fromPath("/p").queryParam("q", smiley).build().toString());
+        assertEquals("/%F0%9F%98%80", UriBuilder.fromPath(TEMPLATE_PATH).build(smiley).toString());
+        // A lone surrogate is not a character: it is replaced, as the JDK's UTF-8 encoder does.
+        assertEquals("/%3F", UriBuilder.fromPath("/\uD83D").build().toString());
+    }
+
+    @Test
     void clone_is_independent_of_the_original() {
         UriBuilder original = UriBuilder.fromUri("http://h/a?q=1#f").resolveTemplate("t", "v");
         UriBuilder copy = original.clone();
