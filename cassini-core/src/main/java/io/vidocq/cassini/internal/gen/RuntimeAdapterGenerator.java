@@ -244,7 +244,8 @@ public final class RuntimeAdapterGenerator {
         // If the adapter class was already defined (e.g. from a previous call in the same JVM
         // run, or by a concurrent thread), reuse it rather than attempting a duplicate definition.
         try {
-            return Class.forName(adapterName, false, resourceClass.getClassLoader());
+            Class<?> existing = Class.forName(adapterName, false, resourceClass.getClassLoader());
+            return existing;
         } catch (ClassNotFoundException _) {
             // Not yet defined — proceed with defineClass below.
         }
