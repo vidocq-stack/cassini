@@ -59,11 +59,13 @@ public final class CassiniRequestContext implements ContainerRequestContext {
 
     private final CassiniHttpExchange exchange;
     private final CassiniHttpHeaders httpHeaders;
-    private final Map<String, Object> properties = new HashMap<>();
+    /** Built by the first {@link #setProperty}: most requests never set one. */
+    private Map<String, Object> properties;
     /** The mutable copy of the request headers, built the first time a filter asks for it: most
      *  filters never do, and the copy walks every header of the exchange. */
     private MultivaluedMap<String, String> headers;
     private String method;
+    /** Set by {@link #setRequestUri}; until then the URI of the exchange, built when asked for. */
     private URI requestUri;
     /** Set by {@link #setRequestUri(URI, URI)} only; until then {@link #getUriInfo()} reads the
      *  base URI from the {@link UriInfo}, which costs nothing when nobody asks for it. */
@@ -98,7 +100,6 @@ public final class CassiniRequestContext implements ContainerRequestContext {
         this.exchange = exchange;
         this.httpHeaders = new CassiniHttpHeaders(exchange);
         this.method = exchange.method();
-        this.requestUri = exchange.requestUri();
         this.entityStream = exchange.requestBody() == null ? new ByteArrayInputStream(new byte[0])
                 : exchange.requestBody();
         // §6: a @PreMatching filter may have set a SecurityContext (stored on the exchange).
@@ -116,7 +117,7 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     public Response abortedResponse() { return aborted; }
     /** §6.6.1: current method/URI after mutation by pre-matching filters. */
     public String currentMethod() { return method; }
-    public URI currentRequestUri() { return requestUri; }
+    public URI currentRequestUri() { return requestUri != null ? requestUri : exchange.requestUri(); }
 
     private static MultivaluedMap<String, String> buildHeaders(CassiniHttpExchange exchange) {
         MultivaluedMap<String, String> m = new MultivaluedHashMap<>();
@@ -135,15 +136,20 @@ public final class CassiniRequestContext implements ContainerRequestContext {
         return h;
     }
 
-    @Override public Object getProperty(String name) { return properties.get(name); }
-    @Override public Collection<String> getPropertyNames() { return Collections.unmodifiableSet(properties.keySet()); }
-    @Override public void setProperty(String name, Object value) { properties.put(name, value); }
-    @Override public void removeProperty(String name) { properties.remove(name); }
+    @Override public Object getProperty(String name) { return properties == null ? null : properties.get(name); }
+    @Override public Collection<String> getPropertyNames() {
+        return properties == null ? Collections.emptySet() : Collections.unmodifiableSet(properties.keySet());
+    }
+    @Override public void setProperty(String name, Object value) {
+        if (properties == null) properties = new HashMap<>();
+        properties.put(name, value);
+    }
+    @Override public void removeProperty(String name) { if (properties != null) properties.remove(name); }
 
     @Override public UriInfo getUriInfo() {
         // §6.6.1: if setRequestUri was called, UriInfo must reflect the
         // new baseUri/requestUri values without rebuilding the whole chain.
-        return new MutableUriInfoView(uriInfo, baseUri, requestUri);
+        return new MutableUriInfoView(uriInfo, baseUri, currentRequestUri());
     }
     @Override public void setRequestUri(URI requestUri) {
         if (postMatching) throw new IllegalStateException("setRequestUri cannot be called in post-matching filters (§6.6)");

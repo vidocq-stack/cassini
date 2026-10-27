@@ -118,6 +118,16 @@ final class InMemoryExchange implements CassiniHttpExchange {
 
     @Override public String contextPath() { return contextPath; }
 
+    /** As the transports do (Chappe's pathInfo): routing does not ask for the request URI. */
+    @Override public String routingPath() {
+        String path = uri.getRawPath();
+        if (path == null || path.isEmpty()) return "/";
+        if (!contextPath.isEmpty() && !"/".equals(contextPath) && path.startsWith(contextPath)) {
+            path = path.substring(contextPath.length());
+        }
+        return path.isEmpty() ? "/" : path;
+    }
+
     /** The first value of a response header, or null. */
     String responseHeader(String name) {
         for (var e : responseHeaders.entrySet()) {
@@ -136,8 +146,23 @@ final class InMemoryExchange implements CassiniHttpExchange {
     }
 
     @Override public String method() { return method; }
-    @Override public URI requestUri() { return uri; }
-    @Override public String requestUriRaw() { return uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery()); }
+    /** How many times the dispatch asked for the request URI. */
+    int requestUriCalls;
+
+    @Override public URI requestUri() {
+        requestUriCalls++;
+        return uri;
+    }
+    /** The raw request target, when a test sets one; the request URI otherwise. */
+    private String rawTarget;
+
+    /** Gives the raw request target, e.g. an origin-form one ({@code /path}). */
+    InMemoryExchange rawTarget(String target) {
+        this.rawTarget = target;
+        return this;
+    }
+
+    @Override public String requestUriRaw() { return rawTarget != null ? rawTarget : uri.toString(); }
     @Override public Map<String, List<String>> requestHeaders() { return requestHeaders; }
     @Override public InputStream requestBody() {
         if (failingBody) {
@@ -159,6 +184,23 @@ final class InMemoryExchange implements CassiniHttpExchange {
     @Override public void writeResponseBody(byte[] body) throws java.io.IOException {
         wholeBodyWrites++;
         responseBody.write(body);
+    }
+
+    /** The array of the last body handed over with a length, kept to check it was not copied. */
+    byte[] handedOverArray;
+
+    @Override public void writeResponseBody(byte[] body, int offset, int length) throws java.io.IOException {
+        wholeBodyWrites++;
+        handedOverArray = body;
+        responseBody.write(body, offset, length);
+    }
+
+    /** The header map the dispatch handed over, or null when it copied its headers one by one. */
+    Map<String, List<String>> handedOverHeaders;
+
+    @Override public void putResponseHeaders(Map<String, List<String>> headers) {
+        handedOverHeaders = headers;
+        responseHeaders.putAll(headers);
     }
     @Override public SocketAddress remoteAddress() { return null; }
     @Override public boolean isSecure() { return false; }

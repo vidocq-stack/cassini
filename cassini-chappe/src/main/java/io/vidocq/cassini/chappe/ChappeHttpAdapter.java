@@ -216,8 +216,7 @@ public final class ChappeHttpAdapter implements Handler {
         try {
             var b = builders.get().status(StatusCode.of(exchange.collectedStatus()));
             copyHeaders(b, exchange.collectedHeaders());
-            byte[] body = exchange.collectedBody();
-            return b.body(body.length > 0 ? Body.of(body) : Body.empty()).build();
+            return b.body(exchange.collectedChappeBody()).build();
         } catch (RuntimeException e) {
             return failedResponse(exchange, e);
         }

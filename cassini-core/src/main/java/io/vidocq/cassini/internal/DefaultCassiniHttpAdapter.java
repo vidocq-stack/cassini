@@ -217,7 +217,8 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
     private static void applyResponse(CassiniHttpResponse out, CassiniHttpExchange exchange)
             throws IOException {
         exchange.setStatus(out.status());
-        exchange.responseHeaders().putAll(out.headers());
+        // Handed over: the response is not used after this, so a transport may keep the map.
+        exchange.putResponseHeaders(out.headers());
 
         // SSE streaming: if the transport has already sent headers+body in streaming mode,
         // the cassini.streaming_pis attribute is set — do not overwrite the body.
@@ -225,10 +226,10 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
                 (PipedInputStream) exchange.getAttribute("cassini.streaming_pis");
         if (streamingPis != null) return;
 
-        byte[] body = out.body();
-        if (body != null && body.length > 0) {
-            // In one call: the transport may keep the array rather than copy it.
-            exchange.writeResponseBody(body);
+        int length = out.bodyLength();
+        if (length > 0) {
+            // In one call, the entity buffer as it is: the transport may keep it rather than copy it.
+            exchange.writeResponseBody(out.bodyArray(), 0, length);
         }
     }
 }

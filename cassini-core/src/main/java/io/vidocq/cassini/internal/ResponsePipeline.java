@@ -34,7 +34,6 @@ import jakarta.ws.rs.core.NoContentException;
 import jakarta.ws.rs.ext.MessageBodyReader;
 import jakarta.ws.rs.ext.MessageBodyWriter;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -192,13 +191,14 @@ final class ResponsePipeline {
         } catch (IOException _) {
             // The bytes are already in the original stream; a filter stream that fails to close loses nothing.
         }
-        return response(rctx.getStatus(), mt, outHeaders, rctx.originalStream().toByteArray());
+        byte[] body = rctx.originalStream().toByteArray();
+        return response(rctx.getStatus(), mt, outHeaders, body, body.length);
     }
 
     /** A response with the body, its Content-Type, and the other headers of {@code headers}. */
     private static CassiniHttpResponse response(int status, MediaType mt, MultivaluedMap<String, Object> headers,
-                                                byte[] body) {
-        var b = CassiniHttpResponse.builder().status(status).body(body);
+                                                byte[] body, int length) {
+        var b = CassiniHttpResponse.builder().status(status).body(body, length);
         b.header(CONTENT_TYPE, MediaTypes.format(mt));
         for (var e : headers.entrySet()) {
             if (!CONTENT_TYPE.equalsIgnoreCase(e.getKey())) {
@@ -312,7 +312,7 @@ final class ResponsePipeline {
                         "No MessageBodyWriter for " + type.getName() + " / " + MediaTypes.format(mtSelect), 500));
         final MediaType finalMt = producedMediaType(mtSelect, writer);
         host.injectProviderContexts(writer, null);
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        EntityBuffer bos = new EntityBuffer();
         MultivaluedMap<String, Object> outHeaders = MessageBodyRegistry.outHeaders();
         // Populate outHeaders with extraHeaders BEFORE the interceptor chain
         // so WriterInterceptor.aroundWriteTo.getHeaders() sees what the
@@ -332,7 +332,7 @@ final class ResponsePipeline {
                     entity, type, genericType, anns, finalMt, outHeaders, bos).proceed();
         }
 
-        return response(status, finalMt, outHeaders, bos.toByteArray());
+        return response(status, finalMt, outHeaders, bos.array(), bos.size());
     }
 
     /** §4.2.4: when the method did not specify a Content-Type, the first concrete media type the

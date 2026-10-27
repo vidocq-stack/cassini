@@ -141,6 +141,37 @@ public interface CassiniHttpExchange {
         responseBody().write(body);
     }
 
+    /**
+     * Writes a whole response body at once, the {@code length} bytes of {@code body} from
+     * {@code offset}, after anything already written to {@link #responseBody()}. The caller does
+     * not touch {@code body} afterwards, so a transport may keep the array, unused tail included,
+     * instead of copying the bytes. Default: {@link #writeResponseBody(byte[])} when the range is
+     * the whole array, a write to {@link #responseBody()} otherwise.
+     *
+     * @param body   the array holding the response body
+     * @param offset the index of the first byte of the body
+     * @param length the number of bytes of the body
+     * @throws java.io.IOException when the transport cannot take them
+     */
+    default void writeResponseBody(byte[] body, int offset, int length) throws java.io.IOException {
+        if (offset == 0 && length == body.length) {
+            writeResponseBody(body);
+        } else {
+            responseBody().write(body, offset, length);
+        }
+    }
+
+    /**
+     * Adds the response headers of {@code headers} to {@link #responseHeaders()}. The caller does
+     * not touch the map or its lists afterwards, so a transport whose response headers are still
+     * empty may keep the map instead of copying it. Default: {@code responseHeaders().putAll}.
+     *
+     * @param headers the response headers, by name
+     */
+    default void putResponseHeaders(Map<String, List<String>> headers) {
+        responseHeaders().putAll(headers);
+    }
+
     SocketAddress remoteAddress();
 
     boolean isSecure();

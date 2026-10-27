@@ -19,6 +19,7 @@
  */
 package io.vidocq.cassini.chappe;
 
+import io.vidocq.chappe.api.Body;
 import io.vidocq.chappe.api.Request;
 import io.vidocq.chappe.api.Response;
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
@@ -44,13 +45,20 @@ import java.util.Map;
  */
 public final class ChappeHttpExchange implements CassiniHttpExchange {
 
+    private static final String HTTP_PREFIX = "http://";
+    private static final String HTTPS_PREFIX = "https://";
+
     private final Request request;
     private final String contextPath;
     private int responseStatus = 200;
-    private final Map<String, List<String>> responseHeaders = new LinkedHashMap<>();
+    /** Replaced by the map handed over to {@link #putResponseHeaders} while it is still empty. */
+    private Map<String, List<String>> responseHeaders = new LinkedHashMap<>();
     private final ByteArrayOutputStream responseBody = new ByteArrayOutputStream();
-    /** A response body handed over whole and kept as it is ({@link #writeResponseBody}), or null. */
+    /** The array of a response body handed over whole and kept as it is ({@link #writeResponseBody}),
+     *  or null; the body is its {@link #wholeLength} bytes from {@link #wholeOffset}. */
     private byte[] wholeBody;
+    private int wholeOffset;
+    private int wholeLength;
     private final Map<String, Object> attributes = new java.util.HashMap<>();
 
     /** Immutable snapshot taken by {@link #openForStreaming} (M2i) — read by the
@@ -190,11 +198,22 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
 
     public Request chappeRequest() { return request; }
     public int collectedStatus() { return responseStatus; }
-    /** The response body: the array handed over whole when nothing else was written, a copy of
-     *  what was written otherwise. */
+    /** The response body: the array handed over whole when nothing else was written and it holds
+     *  the body only, a copy of the body otherwise. */
     public byte[] collectedBody() {
-        if (wholeBody != null) return wholeBody;
-        return responseBody.toByteArray();
+        if (wholeBody == null) return responseBody.toByteArray();
+        if (wholeOffset == 0 && wholeLength == wholeBody.length) return wholeBody;
+        return java.util.Arrays.copyOfRange(wholeBody, wholeOffset, wholeOffset + wholeLength);
+    }
+
+    /** The response body as a Chappe {@link Body}, over the array handed over without copying it. */
+    public Body collectedChappeBody() {
+        if (wholeBody == null) {
+            return responseBody.size() == 0 ? Body.empty() : Body.of(responseBody.toByteArray());
+        }
+        if (wholeLength == 0) return Body.empty();
+        if (wholeOffset == 0 && wholeLength == wholeBody.length) return Body.of(wholeBody);
+        return new ByteRangeBody(wholeBody, wholeOffset, wholeLength);
     }
     public Map<String, List<String>> collectedHeaders() { return responseHeaders; }
 
@@ -204,9 +223,23 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
 
     @Override public URI requestUri() { return request.uri(); }
 
+    /**
+     * The string of {@link Request#uri()}, built from the raw target without parsing a URI: an
+     * absolute target as it is, an origin-form one behind the scheme and the {@code Host} header
+     * when there is one.
+     */
     @Override public String requestUriRaw() {
-        URI u = request.uri();
-        return u == null ? request.path() : u.toString();
+        String path = request.path();
+        String query = request.query();
+        String target = query == null ? path : path + '?' + query;
+        if (target.regionMatches(true, 0, HTTP_PREFIX, 0, HTTP_PREFIX.length())
+                || target.regionMatches(true, 0, HTTPS_PREFIX, 0, HTTPS_PREFIX.length())) {
+            return target;
+        }
+        String host = request.headers().firstOrNull("Host");
+        if (host == null || host.isEmpty()) return target;
+        if (target.isEmpty() || target.charAt(0) != '/') target = "/" + target;
+        return request.scheme() + "://" + host + target;
     }
 
     /** All the request headers by name, built on the first call that asks for them all: a lookup
@@ -259,6 +292,15 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
 
     @Override public Map<String, List<String>> responseHeaders() { return responseHeaders; }
 
+    /** Keeps the map when no header was set before, the usual case; copies it otherwise. */
+    @Override public void putResponseHeaders(Map<String, List<String>> headers) {
+        if (responseHeaders.isEmpty()) {
+            responseHeaders = headers;
+        } else {
+            responseHeaders.putAll(headers);
+        }
+    }
+
     @Override public OutputStream responseBody() {
         spillWholeBody();
         return responseBody;
@@ -267,18 +309,27 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
     /** Keeps the array, the usual case of a response written at once; appends it to what was
      *  written before otherwise. */
     @Override public void writeResponseBody(byte[] body) {
+        writeResponseBody(body, 0, body.length);
+    }
+
+    /** Keeps the array, the usual case of a response written at once; appends the bytes to what
+     *  was written before otherwise. */
+    @Override public void writeResponseBody(byte[] body, int offset, int length) {
+        java.util.Objects.checkFromIndexSize(offset, length, body.length);
         if (wholeBody == null && responseBody.size() == 0) {
             wholeBody = body;
+            wholeOffset = offset;
+            wholeLength = length;
         } else {
             spillWholeBody();
-            responseBody.writeBytes(body);
+            responseBody.write(body, offset, length);
         }
     }
 
     /** Moves a kept array into the stream, before anything is written after it. */
     private void spillWholeBody() {
         if (wholeBody != null) {
-            responseBody.writeBytes(wholeBody);
+            responseBody.write(wholeBody, wholeOffset, wholeLength);
             wholeBody = null;
         }
     }

@@ -39,7 +39,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -60,6 +59,8 @@ public final class Invoker {
     public static final String ATTR_MATCHED_RESOURCES = "cassini.matched_resources";
 
     private static final String CONTENT_TYPE = "Content-Type";
+    private static final String HTTP_PREFIX = "http://";
+    private static final String HTTPS_PREFIX = "https://";
 
     /** Context exposed during the {@link #resolver} call to let resolvers
      *  (e.g. TCK harnesses) create instances with constructor injection
@@ -194,13 +195,33 @@ public final class Invoker {
      */
     private static void publishBaseUri(CassiniHttpExchange request) {
         try {
-            URI u = request.requestUri();
-            String scheme = u != null && u.getScheme() != null ? u.getScheme() : schemeOf(request);
-            String authority = u != null && u.getAuthority() != null ? u.getAuthority() : authorityOf(request);
+            // From the raw request target: building the request URI parses it, for two fields.
+            String raw = request.requestUriRaw();
+            int authorityStart = authorityStart(raw);
+            String scheme = authorityStart < 0 ? schemeOf(request) : raw.substring(0, authorityStart - 3);
+            String authority = authorityStart < 0 ? null : authorityOf(raw, authorityStart);
+            if (authority == null) authority = authorityOf(request);
             CassiniResponseBuilder.setBaseUri(CassiniUriInfo.baseUri(scheme, authority, request.contextPath()));
         } catch (URISyntaxException | RuntimeException _) {
             // No base URI for this request: nothing to share.
         }
+    }
+
+    /** Where the authority of an absolute {@code http}/{@code https} target starts, -1 for any
+     *  other target (origin-form, or none). */
+    private static int authorityStart(String raw) {
+        if (raw == null) return -1;
+        if (raw.regionMatches(true, 0, HTTP_PREFIX, 0, HTTP_PREFIX.length())) return HTTP_PREFIX.length();
+        if (raw.regionMatches(true, 0, HTTPS_PREFIX, 0, HTTPS_PREFIX.length())) return HTTPS_PREFIX.length();
+        return -1;
+    }
+
+    /** The authority of an absolute target, from {@code start} to its path, query or fragment;
+     *  null when it is empty. */
+    private static String authorityOf(String raw, int start) {
+        int end = start;
+        while (end < raw.length() && "/?#".indexOf(raw.charAt(end)) < 0) end++;
+        return end > start ? raw.substring(start, end) : null;
     }
 
     private static String schemeOf(CassiniHttpExchange request) {
@@ -232,7 +253,7 @@ public final class Invoker {
                 io.vidocq.cassini.internal.context.CassiniRequest.ATTR_PENDING_VARY);
         if (dims == null || dims.isEmpty()) return resp;
         // Rebuild the Response with the additional Vary header.
-        var b = CassiniHttpResponse.builder().status(resp.status()).body(resp.body());
+        var b = CassiniHttpResponse.builder().status(resp.status()).body(resp.bodyArray(), resp.bodyLength());
         boolean hasVary = false;
         for (var e : resp.headers().entrySet()) {
             for (String v : e.getValue()) b.header(e.getKey(), v);

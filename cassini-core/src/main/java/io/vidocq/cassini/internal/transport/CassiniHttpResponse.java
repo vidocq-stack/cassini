@@ -35,10 +35,13 @@ import java.util.Map;
  */
 public final class CassiniHttpResponse {
 
+    private static final byte[] EMPTY = new byte[0];
+
     public static final class Builder {
         private int status = 200;
         private final Map<String, List<String>> headers = new LinkedHashMap<>();
-        private byte[] body = new byte[0];
+        private byte[] body = EMPTY;
+        private int bodyLength;
 
         public Builder status(int s) { this.status = s; return this; }
         public Builder header(String name, String value) {
@@ -46,10 +49,15 @@ public final class CassiniHttpResponse {
             return this;
         }
         public Builder body(byte[] data) {
-            this.body = data == null ? new byte[0] : data;
+            return body(data, data == null ? 0 : data.length);
+        }
+        /** The first {@code length} bytes of {@code data}, which the response keeps without a copy. */
+        public Builder body(byte[] data, int length) {
+            this.body = data == null ? EMPTY : data;
+            this.bodyLength = data == null ? 0 : length;
             return this;
         }
-        public CassiniHttpResponse build() { return new CassiniHttpResponse(status, headers, body); }
+        public CassiniHttpResponse build() { return new CassiniHttpResponse(status, headers, body, bodyLength); }
     }
 
     public static Builder builder() { return new Builder(); }
@@ -60,17 +68,30 @@ public final class CassiniHttpResponse {
 
     private final int status;
     private final Map<String, List<String>> headers;
+    /** May be longer than the body: its first {@link #bodyLength} bytes are. */
     private final byte[] body;
+    private final int bodyLength;
 
-    private CassiniHttpResponse(int status, Map<String, List<String>> headers, byte[] body) {
+    private CassiniHttpResponse(int status, Map<String, List<String>> headers, byte[] body, int bodyLength) {
         this.status = status;
         this.headers = headers;
         this.body = body;
+        this.bodyLength = bodyLength;
     }
 
     public int status() { return status; }
     public Map<String, List<String>> headers() { return headers; }
-    public byte[] body() { return body; }
+
+    /** The body, in an array of its exact size: a copy when the response holds a longer one. */
+    public byte[] body() {
+        return bodyLength == body.length ? body : java.util.Arrays.copyOf(body, bodyLength);
+    }
+
+    /** The array holding the body in its first {@link #bodyLength()} bytes, not copied. */
+    public byte[] bodyArray() { return body; }
+
+    /** The number of bytes of the body. */
+    public int bodyLength() { return bodyLength; }
 
     /**
      * Copies this result to a {@link io.vidocq.cassini.spi.http.CassiniHttpExchange} —
@@ -82,8 +103,8 @@ public final class CassiniHttpResponse {
         for (var e : headers.entrySet()) {
             respHeaders.put(e.getKey(), new java.util.ArrayList<>(e.getValue()));
         }
-        if (body != null && body.length > 0) {
-            exchange.responseBody().write(body);
+        if (bodyLength > 0) {
+            exchange.responseBody().write(body, 0, bodyLength);
         }
     }
 }
