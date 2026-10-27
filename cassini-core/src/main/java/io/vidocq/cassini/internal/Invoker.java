@@ -22,34 +22,31 @@ package io.vidocq.cassini.internal;
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import io.vidocq.cassini.internal.transport.CassiniHttpResponse;
 import io.vidocq.cassini.internal.context.CassiniUriInfo;
-import io.vidocq.cassini.internal.filter.CassiniReaderInterceptorContext;
 import io.vidocq.cassini.internal.filter.CassiniRequestContext;
-import io.vidocq.cassini.internal.filter.CassiniResponseContext;
-import io.vidocq.cassini.internal.filter.CassiniWriterInterceptorContext;
 import io.vidocq.cassini.internal.filter.FilterRegistry;
-import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.Produces;
+import io.vidocq.cassini.internal.runtime.CassiniResponseBuilder;
+import io.vidocq.cassini.internal.sse.CassiniSseEventSink;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.ext.MessageBodyReader;
 import jakarta.ws.rs.ext.MessageBodyWriter;
 
 import io.vidocq.cassini.internal.gen.AdapterRegistry;
 import io.vidocq.cassini.internal.gen.InjectionSupportImpl;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.lang.annotation.Annotation;
+import java.io.UncheckedIOException;
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Parameter;
-import java.lang.reflect.Type;
+import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 
 /**
@@ -61,6 +58,8 @@ public final class Invoker {
 
     /** Exchange attribute key for the matched-instance chain (M2h). */
     public static final String ATTR_MATCHED_RESOURCES = "cassini.matched_resources";
+
+    private static final String CONTENT_TYPE = "Content-Type";
 
     /** Context exposed during the {@link #resolver} call to let resolvers
      *  (e.g. TCK harnesses) create instances with constructor injection
@@ -159,20 +158,7 @@ public final class Invoker {
                 registry, exceptionMappers, filters.contextResolvers()));
         ParamExtractor.setParamConverterProviders(filters.paramConverterProviders());
         try {
-            try {
-                java.net.URI u = request.requestUri();
-                String scheme = u != null && u.getScheme() != null ? u.getScheme()
-                        : (request.isSecure() ? "https" : "http");
-                String authority = u != null && u.getAuthority() != null ? u.getAuthority() : null;
-                if (authority == null) {
-                    String host = request.firstHeader("Host");
-                    if (host != null && !host.isEmpty()) authority = host;
-                }
-                if (authority == null) authority = "127.0.0.1";
-                // Shared with UriInfo.getBaseUri(): one URI per listener and host, not one parse per request.
-                io.vidocq.cassini.internal.runtime.CassiniResponseBuilder.setBaseUri(
-                        CassiniUriInfo.baseUri(scheme, authority, request.contextPath()));
-            } catch (Exception ignored) {}
+            publishBaseUri(request);
             // §3.4.1 dynamic dispatch: the route emitted for a sub-resource locator
             // returning Object is resolved at runtime — invoke the chain,
             // scan the effective class of the returned instance, then delegate.
@@ -189,11 +175,11 @@ public final class Invoker {
             ParamExtractor.clearParamConverterProviders();
             FieldInjector.clearFormCache();
             publishCurrent(null, null);
-            io.vidocq.cassini.internal.runtime.CassiniResponseBuilder.clearBaseUri();
+            CassiniResponseBuilder.clearBaseUri();
             // §8.2: the async request processing is over — fire the registered
-            // CompletionCallbacks. Normal/mapped paths report success (null);
-            // the unmapped-throwable path already fired with the cause (the
-            // once-guard in fireCompletion makes this a no-op then).
+            // CompletionCallbacks, with success on the normal and mapped paths.
+            // The unmapped-throwable path already fired with its cause, and the
+            // once-guard in fireCompletion makes this call a no-op then.
             if (request.getAttribute(CassiniAsyncResponseImpl.ATTR_KEY)
                     instanceof CassiniAsyncResponseImpl ar) {
                 ar.fireCompletion(null);
@@ -201,13 +187,40 @@ public final class Invoker {
         }
     }
 
+    /**
+     * The base URI of the request, shared with {@code UriInfo.getBaseUri()} and the response
+     * builder: one URI per listener and host, not one parse per request. Best effort: a request
+     * that gives none leaves the response builder without a base URI.
+     */
+    private static void publishBaseUri(CassiniHttpExchange request) {
+        try {
+            URI u = request.requestUri();
+            String scheme = u != null && u.getScheme() != null ? u.getScheme() : schemeOf(request);
+            String authority = u != null && u.getAuthority() != null ? u.getAuthority() : authorityOf(request);
+            CassiniResponseBuilder.setBaseUri(CassiniUriInfo.baseUri(scheme, authority, request.contextPath()));
+        } catch (URISyntaxException | RuntimeException _) {
+            // No base URI for this request: nothing to share.
+        }
+    }
+
+    private static String schemeOf(CassiniHttpExchange request) {
+        return request.isSecure() ? "https" : "http";
+    }
+
+    private static String authorityOf(CassiniHttpExchange request) {
+        String host = request.firstHeader("Host");
+        return host != null && !host.isEmpty() ? host : "127.0.0.1";
+    }
+
     /** M2i: best-effort close of a streaming SSE sink on a resource error —
      *  the chunked headers are already committed, EOF is the only signal left. */
-    private static void closeStreamingSinkQuietly(io.vidocq.cassini.internal.sse.CassiniSseEventSink sink) {
+    private static void closeStreamingSinkQuietly(CassiniSseEventSink sink) {
         if (sink != null && sink.isStreaming()) {
             try {
                 sink.close();
-            } catch (Exception ignored) { /* best effort */ }
+            } catch (Exception _) {
+                // Best effort: the client sees the connection end either way.
+            }
         }
     }
 
@@ -241,11 +254,11 @@ public final class Invoker {
     public record PreMatchResult(CassiniHttpResponse response, CassiniRequestContext ctx) {}
 
     /** §6.6.1: executes pre-matching filters before routing. */
-    public PreMatchResult runPreMatching(CassiniHttpExchange request) throws Exception {
+    public PreMatchResult runPreMatching(CassiniHttpExchange request) throws IOException {
         return RequestScope.call(() -> runPreMatchingInScope(request));
     }
 
-    private PreMatchResult runPreMatchingInScope(CassiniHttpExchange request) throws Exception {
+    private PreMatchResult runPreMatchingInScope(CassiniHttpExchange request) throws IOException {
         if (filters.preMatching().isEmpty()) return new PreMatchResult(null, null);
         if (application != null) RequestScope.current().application = application;
         ParamExtractor.setProviders(new io.vidocq.cassini.internal.context.CassiniProviders(
@@ -255,11 +268,14 @@ public final class Invoker {
                     request, request.contextPath(), java.util.Map.of()));
             for (var fe : filters.preMatching()) {
                 try { fe.instance().filter(preCtx); }
-                catch (java.io.IOException | RuntimeException e) {
+                catch (IOException e) {
                     CassiniHttpResponse mapped = mapFilterThrowable(e, null, null, preCtx);
                     if (mapped != null) return new PreMatchResult(mapped, preCtx);
-                    if (e instanceof RuntimeException re) throw re;
-                    throw new RuntimeException(e);
+                    throw new UncheckedIOException(e);
+                } catch (RuntimeException e) {
+                    CassiniHttpResponse mapped = mapFilterThrowable(e, null, null, preCtx);
+                    if (mapped != null) return new PreMatchResult(mapped, preCtx);
+                    throw e;
                 }
                 if (preCtx.isAborted()) {
                     return new PreMatchResult(
@@ -300,315 +316,422 @@ public final class Invoker {
         return scope == null || !scope.preMatchingDone;
     }
 
-    private CassiniHttpResponse invokeInternal(MatchResult match, CassiniHttpExchange request, ResourceMethod route) throws Exception {
+    /**
+     * The state of one resource method invocation, filled phase by phase by
+     * {@link #invokeInternal}: what a phase found and the next ones read.
+     */
+    private static final class Invocation {
+        final MatchResult match;
+        final CassiniHttpExchange request;
+        final ResourceMethod route;
+        final MethodParameters declared;
+        /** The pre-matching context, when this invocation ran the pre-matching filters. */
+        CassiniRequestContext preCtx;
+        String contentTypeHeader;
+        MediaType contentType;
+        MediaType chosen;
+        CassiniAsyncResponseImpl asyncResponse;
+        Object[] args;
+        /** The post-matching context, when there are post-matching or response filters. */
+        CassiniRequestContext rctx;
+        Object target;
+        CassiniSseEventSink sseSink;
+        Object result;
+        /** What {@link #invokeInternal} throws when a phase returned {@link #FAILED}. */
+        Exception failure;
 
-        // 0. Pre-matching request filters §6.6 — executed before any negotiation, unless the
-        //    dispatch already ran them before routing (DefaultCassiniHttpAdapter): §6.6.1, a
-        //    pre-matching filter runs once per request. If they throw, go through ExceptionMapper.
-        CassiniRequestContext preCtx = null;
-        if (preMatchingToRun()) {
-            preCtx = new CassiniRequestContext(request, new CassiniUriInfo(
-                    request, request.contextPath(), match.pathParams()));
-            for (var fe : filters.preMatching()) {
-                try { fe.instance().filter(preCtx); }
-                catch (java.io.IOException e) {
-                    CassiniHttpResponse mapped = mapFilterThrowable(e, route, null, preCtx);
-                    if (mapped != null) return mapped;
-                    throw e;
-                } catch (RuntimeException e) {
-                    CassiniHttpResponse mapped = mapFilterThrowable(e, route, null, preCtx);
-                    if (mapped != null) return mapped;
-                    throw e;
-                }
-                if (preCtx.isAborted()) {
-                    return runResponseFiltersAndWrite(preCtx, preCtx.abortedResponse(), route, null);
-                }
-            }
+        Invocation(MatchResult match, CassiniHttpExchange request, ResourceMethod route) {
+            this.match = match;
+            this.request = request;
+            this.route = route;
+            this.declared = MethodParameters.of(route.javaMethod());
         }
 
-        // 1. Negotiation
-        String ctHeader = request.firstHeader("Content-Type");
-        MediaType contentType = MediaTypes.parse(ctHeader);
+        /** Records a failure no mapper handled: thrown as it is when it is an {@link Exception},
+         *  wrapped otherwise. */
+        CassiniHttpResponse fail(Throwable cause) {
+            failure = cause instanceof Exception ex ? ex : new IllegalStateException(cause);
+            return FAILED;
+        }
+    }
+
+    /** Returned by a phase of {@link #invokeInternal} whose failure is in {@link Invocation#failure};
+     *  never written. */
+    private static final CassiniHttpResponse FAILED = CassiniHttpResponse.builder().status(500).build();
+
+    /**
+     * Runs a matched resource method: the pre-matching filters when the dispatch did not run them,
+     * negotiation, the arguments, the post-matching filters, the target instance, the method, its
+     * asynchronous result, then the response. Each phase returns the response that ends the
+     * request early (an abort, a rendered or mapped failure), or null to go on.
+     */
+    private CassiniHttpResponse invokeInternal(MatchResult match, CassiniHttpExchange request, ResourceMethod route) throws Exception {
+        Invocation inv = new Invocation(match, request, route);
+        CassiniHttpResponse early = runPreMatchingFilters(inv);
+        if (early == null) early = negotiate(inv);
+        if (early == null) {
+            prepareAsyncResponse(inv);
+            early = resolveArguments(inv);
+        }
+        if (early == null) early = runPostMatchingFilters(inv);
+        if (early == null) early = resolveTarget(inv);
+        if (early == null) early = invokeResourceMethod(inv);
+        if (early == null) early = awaitResult(inv);
+        if (early == FAILED) throw inv.failure;
+        if (early != null) return early;
+        return inv.sseSink != null ? finishSse(inv.sseSink) : writeResult(inv);
+    }
+
+    /**
+     * 0. §6.6: the pre-matching request filters, before any negotiation, unless the dispatch
+     * already ran them before routing (DefaultCassiniHttpAdapter): §6.6.1, a pre-matching filter
+     * runs once per request. A filter failure goes through the ExceptionMappers.
+     */
+    private CassiniHttpResponse runPreMatchingFilters(Invocation inv) throws IOException {
+        if (!preMatchingToRun()) return null;
+        inv.preCtx = new CassiniRequestContext(inv.request, new CassiniUriInfo(
+                inv.request, inv.request.contextPath(), inv.match.pathParams()));
+        for (var fe : filters.preMatching()) {
+            CassiniHttpResponse stop = runPreMatchingFilter(fe.instance(), inv);
+            if (stop != null) return stop;
+        }
+        return null;
+    }
+
+    private CassiniHttpResponse runPreMatchingFilter(ContainerRequestFilter filter, Invocation inv) throws IOException {
+        try {
+            filter.filter(inv.preCtx);
+        } catch (IOException | RuntimeException e) {
+            CassiniHttpResponse mapped = mapFilterThrowable(e, inv.route, null, inv.preCtx);
+            if (mapped != null) return mapped;
+            throw e;
+        }
+        return inv.preCtx.isAborted()
+                ? runResponseFiltersAndWrite(inv.preCtx, inv.preCtx.abortedResponse(), inv.route, null)
+                : null;
+    }
+
+    /** 1. §3.7.2: content negotiation; a 415 or a 406 goes through a WebApplicationException so
+     *  that an ExceptionMapper can intercept it. */
+    private CassiniHttpResponse negotiate(Invocation inv) throws IOException {
+        CassiniHttpExchange request = inv.request;
+        ResourceMethod route = inv.route;
+        inv.contentTypeHeader = request.firstHeader(CONTENT_TYPE);
+        inv.contentType = MediaTypes.parse(inv.contentTypeHeader);
         List<MediaType> consumes = MediaTypes.fromSet(route.consumes());
         // §3.7.2: if the request has a Content-Type or a body, filter on @Consumes.
-        boolean checkConsumes = hasRequestBody(request) || ctHeader != null;
-        if (checkConsumes && !consumes.isEmpty() && !MediaTypes.consumesMatches(contentType, consumes)) {
-            // §3.7.2: 415 via WAE so ExceptionMapper can intercept.
+        boolean checkConsumes = hasRequestBody(request) || inv.contentTypeHeader != null;
+        if (checkConsumes && !consumes.isEmpty() && !MediaTypes.consumesMatches(inv.contentType, consumes)) {
             return renderWebAppException(new jakarta.ws.rs.NotSupportedException(), route, null, null);
         }
-
         List<MediaType> accepts = MediaTypes.parseList(request.firstHeader("Accept"));
         List<MediaType> produces = MediaTypes.fromSet(route.produces());
         Optional<MediaType> negotiated = MediaTypes.pickProduced(accepts, produces);
         if (negotiated.isEmpty() && !produces.isEmpty()) {
             return renderWebAppException(new jakarta.ws.rs.NotAcceptableException(), route, null, null);
         }
-        MediaType chosen = negotiated.orElse(MediaType.WILDCARD_TYPE);
+        inv.chosen = negotiated.orElse(MediaType.WILDCARD_TYPE);
+        return null;
+    }
 
-        // §8.2: @Suspended AsyncResponse — create the impl BEFORE parameter extraction
-        // so ParamExtractor can inject it through the exchange attribute.
-        CassiniAsyncResponseImpl asyncResponse = null;
-        MethodParameters declared = MethodParameters.of(route.javaMethod());
-        if (declared.suspended() >= 0) {
-            asyncResponse = new CassiniAsyncResponseImpl();
-            request.setAttribute(CassiniAsyncResponseImpl.ATTR_KEY, asyncResponse);
-            // §8.2: if the transport can watch the connection, release the
-            // suspended response when the client goes away — fire the
-            // registered ConnectionCallbacks, then (if nothing resumed it)
-            // fail the completion so the waiting virtual thread is freed
-            // instead of working until its own timeout for a dead client.
-            final CassiniAsyncResponseImpl ar = asyncResponse;
-            request.onClientDisconnect(() -> {
-                ar.fireDisconnect();
-                ar.completionFuture().completeExceptionally(
-                        new java.io.IOException("Client disconnected"));
-            });
-        }
+    /** §8.2: a @Suspended AsyncResponse is created before the arguments are resolved, so that
+     *  ParamExtractor injects it through the exchange attribute. */
+    private static void prepareAsyncResponse(Invocation inv) {
+        if (inv.declared.suspended() < 0) return;
+        CassiniAsyncResponseImpl asyncResponse = new CassiniAsyncResponseImpl();
+        inv.asyncResponse = asyncResponse;
+        inv.request.setAttribute(CassiniAsyncResponseImpl.ATTR_KEY, asyncResponse);
+        // §8.2: if the transport can watch the connection, release the
+        // suspended response when the client goes away — fire the
+        // registered ConnectionCallbacks, then (if nothing resumed it)
+        // fail the completion so the waiting virtual thread is freed
+        // instead of working until its own timeout for a dead client.
+        inv.request.onClientDisconnect(() -> {
+            asyncResponse.fireDisconnect();
+            asyncResponse.completionFuture().completeExceptionally(new IOException("Client disconnected"));
+        });
+    }
 
-        // 2. Resolve args
-        ParamExtractor.ResolvedArgs resolved;
-        Object[] args;
+    /** 2. The arguments of the resource method, its entity included. A failure goes through the
+     *  ExceptionMappers (§4.4). */
+    private CassiniHttpResponse resolveArguments(Invocation inv) throws IOException {
         try {
-            resolved = ParamExtractor.resolve(route, match, request);
-            args = resolved.args();
-            if (resolved.bodyIndex() >= 0) {
-                MethodParameters.Param p = declared.get(resolved.bodyIndex());
+            ParamExtractor.ResolvedArgs resolved = ParamExtractor.resolve(inv.route, inv.match, inv.request);
+            inv.args = resolved.args();
+            int body = resolved.bodyIndex();
+            if (body >= 0) {
                 // §4.2.4: Standard providers MUST return a non-null object
                 // even for an empty body (String=="", byte[]=new byte[0],
                 // InputStream=empty stream, ...). So we always read through an MBR
-                // when a body parameter is present.
-                // §4.2.4 (continued): for MBR selection, the default when
-                // Content-Type is absent is application/octet-stream.
-                MediaType readMt = (ctHeader == null) ? MediaType.APPLICATION_OCTET_STREAM_TYPE : contentType;
-                args[resolved.bodyIndex()] = readEntity(p, readMt, request, route);
+                // when a body parameter is present. For MBR selection, the default
+                // when Content-Type is absent is application/octet-stream.
+                MediaType readMt = inv.contentTypeHeader == null
+                        ? MediaType.APPLICATION_OCTET_STREAM_TYPE : inv.contentType;
+                inv.args[body] = readEntity(inv.declared.get(body), readMt, inv.request, inv.route);
             }
+            return null;
         } catch (WebApplicationException wae) {
-            return renderWebAppException(wae, route, chosen, null);
+            return renderWebAppException(wae, inv.route, inv.chosen, null);
         } catch (EntityReadException ere) {
             // cassini#39: the reader (or its interceptor chain) failed on the entity.
-            return renderEntityReadFailure(ere.getCause(), route, chosen,
-                    errorContext(preCtx, match, request), request);
-        } catch (RuntimeException | java.io.IOException re) {
-            // §4.4: parameter resolution or body buffering failed
-            // (RuntimeException or IOException) → try ExceptionMapper.
-            CassiniHttpResponse mapped = mapFilterThrowable(re, route, chosen, errorContext(preCtx, match, request));
+            return renderEntityReadFailure(ere.getCause(), inv.route, inv.chosen,
+                    errorContext(inv.preCtx, inv.match, inv.request), inv.request);
+        } catch (IOException e) {
+            // §4.4: buffering the entity failed → try ExceptionMapper.
+            CassiniHttpResponse mapped = mapFilterThrowable(e, inv.route, inv.chosen,
+                    errorContext(inv.preCtx, inv.match, inv.request));
             if (mapped != null) return mapped;
-            if (re instanceof RuntimeException rrt) throw rrt;
-            throw new RuntimeException(re);
+            throw new UncheckedIOException(e);
+        } catch (RuntimeException e) {
+            // §4.4: resolving a parameter failed → try ExceptionMapper.
+            CassiniHttpResponse mapped = mapFilterThrowable(e, inv.route, inv.chosen,
+                    errorContext(inv.preCtx, inv.match, inv.request));
+            if (mapped != null) return mapped;
+            throw e;
         }
+    }
 
-        // 3. Post-matching request filters — mark the context as
-        //    post-matching before execution so protected setters
-        //    (setRequestUri, setMethod, etc.) throw ISE §6.6.
-        CassiniRequestContext rctx = null;
-        if (!filters.postMatching().isEmpty() || !filters.responseFilters().isEmpty()) {
-            rctx = new CassiniRequestContext(request, new CassiniUriInfo(
-                    request, request.contextPath(), match.pathParams()));
-            rctx.markPostMatching();
-            // §9.2: publish match/request in the scope so injectProviderContexts can
-            // populate provider @Context fields (ResourceInfo, UriInfo, etc.).
-            // Note: for singleton filters, in-place writes to shared fields
-            // are not thread-safe — acceptable as long as we have no per-thread proxy.
-            publishCurrent(match, request);
-            for (var fe : filters.postMatching()) {
-                if (!fe.appliesTo(route.javaMethod(), route.beanClass())) continue;
-                // §9.2 : injection @Context dans le provider (filter) singleton.
-                injectProviderContexts(fe.instance(), request);
-                try { fe.instance().filter(rctx); }
-                catch (java.io.IOException e) {
-                    CassiniHttpResponse mapped = mapFilterThrowable(e, route, chosen, rctx);
-                    if (mapped != null) return mapped;
-                    throw new RuntimeException(e);
-                } catch (RuntimeException e) {
-                    CassiniHttpResponse mapped = mapFilterThrowable(e, route, chosen, rctx);
-                    if (mapped != null) return mapped;
-                    throw e;
-                }
-                if (rctx.isAborted()) {
-                    return runResponseFiltersAndWrite(rctx, rctx.abortedResponse(), route, chosen);
-                }
+    /**
+     * 3. The post-matching request filters (§6.6), on a context marked post-matching first, so
+     * that the setters reserved to pre-matching filters (setRequestUri, setMethod) throw.
+     */
+    private CassiniHttpResponse runPostMatchingFilters(Invocation inv) throws IOException {
+        if (filters.postMatching().isEmpty() && filters.responseFilters().isEmpty()) return null;
+        inv.rctx = new CassiniRequestContext(inv.request, new CassiniUriInfo(
+                inv.request, inv.request.contextPath(), inv.match.pathParams()));
+        inv.rctx.markPostMatching();
+        // §9.2: publish match/request in the scope so injectProviderContexts can
+        // populate provider @Context fields (ResourceInfo, UriInfo, etc.).
+        // Note: for singleton filters, in-place writes to shared fields
+        // are not thread-safe — acceptable as long as we have no per-thread proxy.
+        publishCurrent(inv.match, inv.request);
+        for (var fe : filters.postMatching()) {
+            if (fe.appliesTo(inv.route.javaMethod(), inv.route.beanClass())) {
+                // §9.2: @Context injection into the singleton filter.
+                injectProviderContexts(fe.instance(), inv.request);
+                CassiniHttpResponse stop = runPostMatchingFilter(fe.instance(), inv);
+                if (stop != null) return stop;
             }
         }
+        return null;
+    }
 
-        // 4. Invoke
-        Object target;
-        publishCurrent(match, request);
-        java.util.List<Object> matched = new java.util.ArrayList<>();
-        request.setAttribute(ATTR_MATCHED_RESOURCES, matched);
+    private CassiniHttpResponse runPostMatchingFilter(ContainerRequestFilter filter, Invocation inv) throws IOException {
         try {
-            if (route.isLocated()) {
-                // Sub-resource locator §3.4.1: instantiate the root resource,
-                // walk the locator chain, inject fields at each step.
-                Object root = resolver.apply(route.rootBeanClass());
-                injectResourceFields(route.rootBeanClass(), root, match, request);
-                matched.add(0, root);
-                Object intermediate = root;
-                for (java.lang.reflect.Method locStep : route.locatorChain()) {
-                    java.lang.reflect.Parameter[] lps = locStep.getParameters();
-                    Object[] lArgs = lps.length == 0 ? new Object[0]
-                            : ParamExtractor.resolveConstructorArgs(lps, match, request);
-                    locStep.setAccessible(true);
-                    intermediate = locStep.invoke(intermediate, lArgs);
-                    if (intermediate == null) {
-                        return renderWebAppException(
-                                new WebApplicationException("Sub-resource locator returned null", 404),
-                                route, chosen, rctx);
-                    }
-                    // §3.4.2: a locator may return Class<T> — runtime
-                    // instantiates the class through its no-arg constructor.
-                    // M6a: prefer generated adapter newInstance() over reflection
-                    if (intermediate instanceof Class<?> cls) {
-                        Object created = instantiateSubResourceClass(cls, route, chosen, rctx);
-                        if (created instanceof CassiniHttpResponse) return (CassiniHttpResponse) created;
-                        intermediate = created;
-                    }
-                    injectFields(intermediate.getClass(), intermediate, match, request, false);
-                    matched.add(0, intermediate);
-                }
-                target = intermediate;
-            } else {
-                target = resolver.apply(route.beanClass());
-                // §9: inject @Context into the real contextual instance (de-proxied),
-                // but invoke the method on `target` (the CDI proxy delegates to that instance).
-                injectResourceFields(route.beanClass(), target, match, request);
-                matched.add(target);
-            }
+            filter.filter(inv.rctx);
+        } catch (IOException e) {
+            CassiniHttpResponse mapped = mapFilterThrowable(e, inv.route, inv.chosen, inv.rctx);
+            if (mapped != null) return mapped;
+            throw new UncheckedIOException(e);
+        } catch (RuntimeException e) {
+            CassiniHttpResponse mapped = mapFilterThrowable(e, inv.route, inv.chosen, inv.rctx);
+            if (mapped != null) return mapped;
+            throw e;
+        }
+        return inv.rctx.isAborted()
+                ? runResponseFiltersAndWrite(inv.rctx, inv.rctx.abortedResponse(), inv.route, inv.chosen)
+                : null;
+    }
+
+    /** 4. The instance the resource method runs on, with its fields injected (§9.2): the root
+     *  resource, or the last object of its sub-resource locator chain (§3.4.1). */
+    private CassiniHttpResponse resolveTarget(Invocation inv) throws IOException, IllegalAccessException {
+        publishCurrent(inv.match, inv.request);
+        List<Object> matched = new ArrayList<>();
+        inv.request.setAttribute(ATTR_MATCHED_RESOURCES, matched);
+        ResourceMethod route = inv.route;
+        try {
+            if (route.isLocated()) return walkLocators(inv, matched);
+            inv.target = resolver.apply(route.beanClass());
+            // §9: inject @Context into the real contextual instance (de-proxied),
+            // but invoke the method on `target` (the CDI proxy delegates to that instance).
+            injectResourceFields(route.beanClass(), inv.target, inv.match, inv.request);
+            matched.add(inv.target);
+            return null;
         } catch (WebApplicationException wae) {
-            return renderWebAppException(wae, route, chosen, rctx);
+            return renderWebAppException(wae, route, inv.chosen, inv.rctx);
         } catch (InvocationTargetException ite) {
-            Throwable cause = ite.getCause();
-            if (cause instanceof WebApplicationException wae) {
-                return renderWebAppException(wae, route, chosen, rctx);
+            if (ite.getCause() instanceof WebApplicationException wae) {
+                return renderWebAppException(wae, route, inv.chosen, inv.rctx);
             }
-            if (cause instanceof Exception ex) throw ex;
-            throw new RuntimeException(cause);
+            return inv.fail(ite.getCause());
         }
-        Object result;
-        // §11.1: if the method has an SseEventSink parameter, replace
-        // the arg with our instance (CassiniSseEventSink). In streaming mode
-        // (JDK transport), events are written directly to the wire.
-        io.vidocq.cassini.internal.sse.CassiniSseEventSink sseSink = null;
-        int pi = declared.sseSink();
-        if (pi >= 0) {
-            // Try to open chunked streaming (JDK transport).
-            var streamingHeaders = new java.util.LinkedHashMap<String, java.util.List<String>>();
-            streamingHeaders.put("Content-Type",
-                    java.util.List.of("text/event-stream;charset=utf-8"));
-            streamingHeaders.put("Cache-Control", java.util.List.of("no-cache"));
-            var streamingSink = request.openForStreaming(200, streamingHeaders);
-            sseSink = new io.vidocq.cassini.internal.sse.CassiniSseEventSink(registry, streamingSink);
-            args[pi] = sseSink;
-            ParamExtractor.setCurrentSink(sseSink);
-        }
-        // P1b: attempt direct typed dispatch via generated adapter; fall back to reflection.
-        {
-            var adapter = AdapterRegistry.lookup(route.beanClass());
-            int mid = adapter.isPresent()
-                    ? AdapterRegistry.methodId(route.beanClass(), route.javaMethod()) : -1;
-            if (adapter.isPresent() && mid >= 0) {
-                try {
-                    result = adapter.get().invoke(mid, target, args);
-                } catch (Throwable t) {
-                    // M2i: if streaming already started, the headers are committed —
-                    // close the pipe so the client sees EOF instead of hanging.
-                    closeStreamingSinkQuietly(sseSink);
-                    return handleResourceThrowable(t, route, chosen, rctx);
-                }
-            } else {
-                try {
-                    result = route.javaMethod().invoke(target, args);
-                } catch (IllegalArgumentException iae) {
-                    StringBuilder sb = new StringBuilder("Argument mismatch on ")
-                            .append(route.beanClass().getName()).append('.')
-                            .append(route.javaMethod().getName()).append("(): ");
-                    Parameter[] ps = route.javaMethod().getParameters();
-                    for (int i = 0; i < ps.length; i++) {
-                        sb.append("\n  [").append(i).append("] param=").append(ps[i].getType().getSimpleName())
-                                .append(" arg=").append(args[i] == null ? "null" : args[i].getClass().getSimpleName());
-                    }
-                    throw new RuntimeException(sb.toString(), iae);
-                } catch (InvocationTargetException ite) {
-                    closeStreamingSinkQuietly(sseSink);
-                    return handleResourceThrowable(ite.getCause(), route, chosen, rctx);
-                }
-            }
-        }
+    }
 
-        // §8.2: @Suspended AsyncResponse — block the virtual thread until resume().
-        // The virtual thread yields its carrier without starvation (M2h).
-        if (asyncResponse != null) {
+    /** §3.4.1: instantiates the root resource and walks the locator chain, injecting the fields
+     *  of each step; the last object is the target. */
+    private CassiniHttpResponse walkLocators(Invocation inv, List<Object> matched)
+            throws IOException, IllegalAccessException, InvocationTargetException {
+        ResourceMethod route = inv.route;
+        Object root = resolver.apply(route.rootBeanClass());
+        injectResourceFields(route.rootBeanClass(), root, inv.match, inv.request);
+        matched.add(0, root);
+        Object intermediate = root;
+        for (Method locStep : route.locatorChain()) {
+            Object[] lArgs = ParamExtractor.resolveConstructorArgs(locStep.getParameters(), inv.match, inv.request);
+            locStep.setAccessible(true); // NOSONAR java:S3011 - a locator of a non-public resource class (§3.4.1)
+            intermediate = locStep.invoke(intermediate, lArgs);
+            if (intermediate == null) {
+                return renderWebAppException(
+                        new WebApplicationException("Sub-resource locator returned null", 404),
+                        route, inv.chosen, inv.rctx);
+            }
+            // §3.4.2: a locator may return Class<T> — runtime
+            // instantiates the class through its no-arg constructor.
+            // M6a: prefer generated adapter newInstance() over reflection
+            if (intermediate instanceof Class<?> cls) {
+                Object created = instantiateSubResourceClass(cls, route, inv.chosen, inv.rctx);
+                if (created instanceof CassiniHttpResponse failed) return failed;
+                intermediate = created;
+            }
+            injectFields(intermediate.getClass(), intermediate, inv.match, inv.request, false);
+            matched.add(0, intermediate);
+        }
+        inv.target = intermediate;
+        return null;
+    }
+
+    /** 4. Runs the resource method: through its generated adapter when there is one (P1b), by
+     *  reflection otherwise. */
+    private CassiniHttpResponse invokeResourceMethod(Invocation inv) throws Exception {
+        openSseSink(inv);
+        ResourceMethod route = inv.route;
+        var adapter = AdapterRegistry.lookup(route.beanClass());
+        int mid = adapter.isPresent() ? AdapterRegistry.methodId(route.beanClass(), route.javaMethod()) : -1;
+        if (adapter.isPresent() && mid >= 0) {
             try {
-                result = asyncResponse.completionFuture().get();
-            } catch (java.util.concurrent.ExecutionException ee) {
-                Throwable cause = ee.getCause();
-                if (cause instanceof WebApplicationException wae) {
-                    return renderWebAppException(wae, route, chosen, rctx);
-                }
-                var mapped = exceptionMappers.map(cause);
-                if (mapped.isPresent()) return runResponseFiltersAndWrite(rctx, mapped.get(), route, chosen);
-                // §8.2: the processing ends with an UNMAPPED throwable —
-                // CompletionCallback.onComplete receives it (mapped/WAE paths
-                // fire onComplete(null) from invokeInScope's finally).
-                asyncResponse.fireCompletion(cause);
-                if (cause instanceof Exception ex) throw ex;
-                throw new RuntimeException(cause);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Interrupted waiting for AsyncResponse.resume()", ie);
+                inv.result = adapter.get().invoke(mid, inv.target, inv.args);
+                return null;
+            } catch (Throwable t) {
+                // M2i: if streaming already started, the headers are committed —
+                // close the pipe so the client sees EOF instead of hanging.
+                closeStreamingSinkQuietly(inv.sseSink);
+                return handleResourceThrowable(t, route, inv.chosen, inv.rctx);
             }
         }
-
-        // §9.2: CompletionStage<T> returned by a resource method.
-        // We block the virtual thread (M2h) — releasing the carrier without starvation.
-        if (result instanceof java.util.concurrent.CompletionStage<?> cs) {
-            try {
-                result = cs.toCompletableFuture().get();
-            } catch (java.util.concurrent.ExecutionException ee) {
-                Throwable cause = ee.getCause();
-                if (cause instanceof WebApplicationException wae) {
-                    return renderWebAppException(wae, route, chosen, rctx);
-                }
-                var mapped = exceptionMappers.map(cause);
-                if (mapped.isPresent()) return runResponseFiltersAndWrite(rctx, mapped.get(), route, chosen);
-                if (cause instanceof Exception ex) throw ex;
-                throw new RuntimeException(cause);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Interrupted while awaiting CompletionStage", ie);
-            }
-        }
-
-        // §11.1: SSE method.
-        if (sseSink != null) {
-            ParamExtractor.clearCurrentSink();
-            if (sseSink.isStreaming()) {
-                // M2i: the method returned normally — force the lazy transport
-                // commit so a sink registered for later events (broadcaster
-                // pattern) keeps its connection open even with zero events sent.
-                sseSink.commitStreaming();
-                // Streaming mode: the response is (being) sent on the wire.
-                return CassiniHttpResponse.builder().status(200).body(new byte[0]).build();
-            }
-            // Buffered mode: wait for sink.close() then send the whole buffer at once.
-            sseSink.awaitClose();
-            byte[] body = sseSink.toByteArray();
-            return CassiniHttpResponse.builder()
-                    .status(200)
-                    .header("Content-Type", "text/event-stream")
-                    .body(body)
-                    .build();
-        }
-        // 5. Marshal + response filters — WriterInterceptors can
-        //    throw exceptions: routed via ExceptionMapper.
         try {
-            if (rctx != null && !filters.responseFilters().isEmpty()) {
-                return runResponseFiltersForResult(rctx, result, route, chosen);
+            inv.result = route.javaMethod().invoke(inv.target, inv.args);
+            return null;
+        } catch (IllegalArgumentException iae) {
+            throw new IllegalArgumentException(argumentMismatch(route, inv.args), iae);
+        } catch (InvocationTargetException ite) {
+            closeStreamingSinkQuietly(inv.sseSink);
+            return handleResourceThrowable(ite.getCause(), route, inv.chosen, inv.rctx);
+        }
+    }
+
+    /** §11.1: an SseEventSink parameter gets our sink. When the transport can stream (chunked),
+     *  the events go directly to the wire. */
+    private void openSseSink(Invocation inv) {
+        int index = inv.declared.sseSink();
+        if (index < 0) return;
+        var streamingHeaders = new LinkedHashMap<String, List<String>>();
+        streamingHeaders.put(CONTENT_TYPE, List.of("text/event-stream;charset=utf-8"));
+        streamingHeaders.put("Cache-Control", List.of("no-cache"));
+        var streamingSink = inv.request.openForStreaming(200, streamingHeaders);
+        inv.sseSink = new CassiniSseEventSink(registry, streamingSink);
+        inv.args[index] = inv.sseSink;
+        ParamExtractor.setCurrentSink(inv.sseSink);
+    }
+
+    private static String argumentMismatch(ResourceMethod route, Object[] args) {
+        StringBuilder sb = new StringBuilder("Argument mismatch on ")
+                .append(route.beanClass().getName()).append('.')
+                .append(route.javaMethod().getName()).append("(): ");
+        Class<?>[] types = route.javaMethod().getParameterTypes();
+        for (int i = 0; i < types.length; i++) {
+            sb.append("\n  [").append(i).append("] param=").append(types[i].getSimpleName())
+                    .append(" arg=").append(args[i] == null ? "null" : args[i].getClass().getSimpleName());
+        }
+        return sb.toString();
+    }
+
+    /** §8.2 and §9.2: the result of a suspended response, then of a CompletionStage the method
+     *  returned. The virtual thread waits for it without holding its carrier (M2h). */
+    private CassiniHttpResponse awaitResult(Invocation inv) throws IOException {
+        if (inv.asyncResponse != null) {
+            CassiniHttpResponse failed = awaitAsyncResponse(inv);
+            if (failed != null) return failed;
+        }
+        if (inv.result instanceof CompletionStage<?> stage) return awaitCompletionStage(inv, stage);
+        return null;
+    }
+
+    private CassiniHttpResponse awaitAsyncResponse(Invocation inv) throws IOException {
+        try {
+            inv.result = inv.asyncResponse.completionFuture().get();
+            return null;
+        } catch (ExecutionException ee) {
+            Throwable cause = ee.getCause();
+            CassiniHttpResponse handled = renderOrMap(inv, cause);
+            if (handled != null) return handled;
+            // §8.2: the processing ends with an UNMAPPED throwable, and
+            // CompletionCallback.onComplete receives it. The rendered and mapped paths
+            // fire onComplete(null) from the finally block of invokeInScope.
+            inv.asyncResponse.fireCompletion(cause);
+            return inv.fail(cause);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted waiting for AsyncResponse.resume()", ie);
+        }
+    }
+
+    private CassiniHttpResponse awaitCompletionStage(Invocation inv, CompletionStage<?> stage) throws IOException {
+        try {
+            inv.result = stage.toCompletableFuture().get();
+            return null;
+        } catch (ExecutionException ee) {
+            Throwable cause = ee.getCause();
+            CassiniHttpResponse handled = renderOrMap(inv, cause);
+            return handled != null ? handled : inv.fail(cause);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while awaiting CompletionStage", ie);
+        }
+    }
+
+    /** The failure of an asynchronous result: rendered when it is a WebApplicationException,
+     *  mapped by an ExceptionMapper otherwise; null when no mapper handles it. */
+    private CassiniHttpResponse renderOrMap(Invocation inv, Throwable cause) throws IOException {
+        if (cause instanceof WebApplicationException wae) {
+            return renderWebAppException(wae, inv.route, inv.chosen, inv.rctx);
+        }
+        var mapped = exceptionMappers.map(cause);
+        return mapped.isPresent() ? runResponseFiltersAndWrite(inv.rctx, mapped.get(), inv.route, inv.chosen) : null;
+    }
+
+    /** §11.1: the response of an SSE resource method once it returned. */
+    private static CassiniHttpResponse finishSse(CassiniSseEventSink sseSink) {
+        ParamExtractor.clearCurrentSink();
+        if (sseSink.isStreaming()) {
+            // M2i: the method returned normally — force the lazy transport
+            // commit so a sink registered for later events (broadcaster
+            // pattern) keeps its connection open even with zero events sent.
+            sseSink.commitStreaming();
+            // Streaming mode: the response is (being) sent on the wire.
+            return CassiniHttpResponse.builder().status(200).body(new byte[0]).build();
+        }
+        // Buffered mode: wait for sink.close() then send the whole buffer at once.
+        sseSink.awaitClose();
+        return CassiniHttpResponse.builder()
+                .status(200)
+                .header(CONTENT_TYPE, "text/event-stream")
+                .body(sseSink.toByteArray())
+                .build();
+    }
+
+    /** 5. Marshals the result and runs the response filters; a WriterInterceptor failure goes
+     *  through the ExceptionMappers. */
+    private CassiniHttpResponse writeResult(Invocation inv) throws IOException {
+        try {
+            if (inv.rctx != null && !filters.responseFilters().isEmpty()) {
+                return runResponseFiltersForResult(inv.rctx, inv.result, inv.route, inv.chosen);
             }
-            return marshal(result, route, chosen);
+            return marshal(inv.result, inv.route, inv.chosen);
         } catch (WebApplicationException wae) {
-            return renderWebAppException(wae, route, chosen, rctx);
+            return renderWebAppException(wae, inv.route, inv.chosen, inv.rctx);
         } catch (RuntimeException re) {
-            CassiniHttpResponse mapped = mapFilterThrowable(re, route, chosen, rctx);
+            CassiniHttpResponse mapped = mapFilterThrowable(re, inv.route, inv.chosen, inv.rctx);
             if (mapped != null) return mapped;
             throw re;
         }
@@ -665,7 +788,9 @@ public final class Invoker {
             } else {
                 FieldInjector.inject(provider, match, req);
             }
-        } catch (RuntimeException ignored) {}
+        } catch (RuntimeException _) {
+            // A provider whose fields cannot be injected keeps them as they are.
+        }
     }
 
     /**
@@ -721,7 +846,7 @@ public final class Invoker {
      *   <li>WAE → {@link #renderWebAppException}</li>
      *   <li>ExceptionMapper present → {@link #runResponseFiltersAndWrite} (response filters run)</li>
      *   <li>Exception subtype → rethrow as-is</li>
-     *   <li>Throwable → wrap in RuntimeException and rethrow</li>
+     *   <li>Throwable → wrap in IllegalStateException and rethrow</li>
      * </ol>
      *
      * @param cause  the raw throwable (getCause() already extracted for ITE callers)
@@ -748,7 +873,7 @@ public final class Invoker {
             return fromJaxRs(mapped.get(), route, chosen);
         }
         if (cause instanceof Exception ex) throw ex;
-        throw new RuntimeException(cause);
+        throw new IllegalStateException(cause);
     }
 
     /** §3.7.2 / §4.4: renders a response for an exception outside the scope of
@@ -756,10 +881,10 @@ public final class Invoker {
      *  Checks application ExceptionMappers first; otherwise returns the
      *  Response carried by the WAE, or a default 500. */
     public CassiniHttpResponse renderThrowable(Throwable t, CassiniHttpExchange request) throws IOException {
-        return RequestScope.call(() -> renderThrowableInScope(t, request));
+        return RequestScope.call(() -> renderThrowableInScope(t));
     }
 
-    private CassiniHttpResponse renderThrowableInScope(Throwable t, CassiniHttpExchange request) throws IOException {
+    private CassiniHttpResponse renderThrowableInScope(Throwable t) throws IOException {
         if (application != null) RequestScope.current().application = application;
         ParamExtractor.setProviders(new io.vidocq.cassini.internal.context.CassiniProviders(
                 registry, exceptionMappers, filters.contextResolvers()));
@@ -776,7 +901,7 @@ public final class Invoker {
                     ? wae2.getResponse().getStatus() : 500;
             return CassiniHttpResponse.builder()
                     .status(status)
-                    .header("Content-Type", "text/plain;charset=utf-8")
+                    .header(CONTENT_TYPE, "text/plain;charset=utf-8")
                     .body(msg.getBytes(java.nio.charset.StandardCharsets.UTF_8)).build();
         } finally {
             ParamExtractor.clearProviders();
@@ -837,7 +962,7 @@ public final class Invoker {
             // access): its own fault, not the client's — the transport answers 500 and
             // logs it at ERROR, as before cassini#39.
             if (failure instanceof RuntimeException re) throw re;
-            throw new RuntimeException(failure);
+            throw new IllegalStateException(failure);
         }
         EntityReadFailures.logRejected(request, failure);
         return renderWebAppException(new jakarta.ws.rs.BadRequestException(failure), route, chosen, rctx);
@@ -868,7 +993,7 @@ public final class Invoker {
         String msg = wae.getMessage() == null ? "" : wae.getMessage();
         return CassiniHttpResponse.builder()
                 .status(500)
-                .header("Content-Type", "text/plain;charset=utf-8")
+                .header(CONTENT_TYPE, "text/plain;charset=utf-8")
                 .body(msg.getBytes(java.nio.charset.StandardCharsets.UTF_8))
                 .build();
     }
@@ -887,7 +1012,7 @@ public final class Invoker {
         if (adapter.isPresent()) {
             try {
                 return adapter.get().newInstance();
-            } catch (UnsupportedOperationException ignored) {
+            } catch (UnsupportedOperationException _) {
                 // no no-arg ctor — fall through to reflective path
             }
         }

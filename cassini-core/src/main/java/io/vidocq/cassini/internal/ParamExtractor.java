@@ -21,7 +21,6 @@ package io.vidocq.cassini.internal;
 
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import io.vidocq.cassini.internal.context.CassiniHttpHeaders;
-import io.vidocq.cassini.internal.context.CassiniProviders;
 import io.vidocq.cassini.internal.context.CassiniRequest;
 import io.vidocq.cassini.internal.context.CassiniSecurityContext;
 import io.vidocq.cassini.internal.context.CassiniUriInfo;
@@ -61,7 +60,23 @@ import java.util.Map;
  */
 public final class ParamExtractor {
 
-    public record ResolvedArgs(Object[] args, int bodyIndex) {}
+    public record ResolvedArgs(Object[] args, int bodyIndex) {
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof ResolvedArgs other && bodyIndex == other.bodyIndex
+                    && java.util.Arrays.equals(args, other.args);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * java.util.Arrays.hashCode(args) + bodyIndex;
+        }
+
+        @Override
+        public String toString() {
+            return "ResolvedArgs[args=" + java.util.Arrays.toString(args) + ", bodyIndex=" + bodyIndex + "]";
+        }
+    }
 
     // M2h: all per-request slots live in the RequestScope binding (one per
     // dispatch, virtual-thread-safe). The static accessors below keep their
@@ -247,8 +262,11 @@ public final class ParamExtractor {
             if (app != null) {
                 // §9.2: @Context fields on the Application subclass must
                 // expose the current context (per-request proxy injection).
-                try { io.vidocq.cassini.internal.FieldInjector.inject(app, match, request); }
-                catch (RuntimeException ignored) {}
+                try {
+                    io.vidocq.cassini.internal.FieldInjector.inject(app, match, request);
+                } catch (RuntimeException _) {
+                    // An Application whose fields cannot be injected is still the application.
+                }
                 return app;
             }
             return new jakarta.ws.rs.core.Application();
@@ -265,7 +283,7 @@ public final class ParamExtractor {
                         T r = resourceClass.getDeclaredConstructor().newInstance();
                         io.vidocq.cassini.internal.FieldInjector.inject(r, match, request);
                         return r;
-                    } catch (ReflectiveOperationException e) { return null; }
+                    } catch (ReflectiveOperationException _) { return null; }
                 }
                 @Override public <T> T initResource(T resource) {
                     io.vidocq.cassini.internal.FieldInjector.inject(resource, match, request);
@@ -389,7 +407,7 @@ public final class ParamExtractor {
     private static String decodePath(String s) {
         if (s == null || s.indexOf('%') < 0) return s;
         try { return URLDecoder.decode(s.replace("+", "%2B"), StandardCharsets.UTF_8); }
-        catch (Exception e) { return s; }
+        catch (IllegalArgumentException _) { return s; }
     }
 
     /** {@code raws} decoded with {@link #decodePath}: the same list when none needs it. */
@@ -433,31 +451,29 @@ public final class ParamExtractor {
         return null;
     }
 
+    /** The values of the matrix parameter {@code name} in every segment of the request path (§3.2). */
     private static List<String> matrix(CassiniHttpExchange request, String name, boolean encoded) {
         List<String> out = new ArrayList<>();
         String path = request.requestUri() == null ? null : request.requestUri().getRawPath();
         if (path == null) return out;
         for (String seg : path.split("/")) {
             int semi = seg.indexOf(';');
-            if (semi < 0) continue;
-            for (String pair : seg.substring(semi + 1).split(";")) {
-                int eq = pair.indexOf('=');
-                String n = eq < 0 ? pair : pair.substring(0, eq);
-                if (URLDecoder.decode(n, StandardCharsets.UTF_8).equals(name)) {
-                    if (eq < 0) out.add("");
-                    else {
-                        String v = pair.substring(eq + 1);
-                        out.add(encoded ? v : URLDecoder.decode(v, StandardCharsets.UTF_8));
-                    }
-                }
-            }
+            if (semi >= 0) addMatrixValues(seg.substring(semi + 1), name, encoded, out);
         }
         return out;
     }
 
-    private static Map<String, List<String>> readForm(CassiniHttpExchange request) {
-        return readForm(request, false);
+    /** Adds the values of {@code name} found in the {@code ;}-separated parameters of one segment. */
+    private static void addMatrixValues(String parameters, String name, boolean encoded, List<String> out) {
+        for (String pair : parameters.split(";")) {
+            int eq = pair.indexOf('=');
+            String n = eq < 0 ? pair : pair.substring(0, eq);
+            if (!URLDecoder.decode(n, StandardCharsets.UTF_8).equals(name)) continue;
+            String v = eq < 0 ? "" : pair.substring(eq + 1);
+            out.add(encoded || eq < 0 ? v : URLDecoder.decode(v, StandardCharsets.UTF_8));
+        }
     }
+
     @SuppressWarnings("unchecked")
     private static Map<String, List<String>> readForm(CassiniHttpExchange request, boolean encoded) {
         // We have two distinct caches depending on the mode (decoded vs @Encoded) — stored as exchange attributes (M2h).
