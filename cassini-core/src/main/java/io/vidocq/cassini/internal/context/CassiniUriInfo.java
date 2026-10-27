@@ -41,9 +41,9 @@ public final class CassiniUriInfo implements UriInfo {
 
     /**
      * Base URIs by {@code scheme://authority/base}: in practice one per listener and host, and
-     * the same for every request of a listener. Bounded, so that a client sending a new
-     * {@code Host} header on each request cannot grow it; past the bound the URI is built and
-     * not kept.
+     * the same for every request of a listener. Bounded: at the bound the cache is emptied and
+     * starts over, so that a client sending a new {@code Host} header on each request neither
+     * grows it nor keeps the listener's own hosts out of it.
      */
     private static final java.util.concurrent.ConcurrentHashMap<String, URI> BASE_URIS =
             new java.util.concurrent.ConcurrentHashMap<>();
@@ -63,11 +63,9 @@ public final class CassiniUriInfo implements UriInfo {
         URI cached = BASE_URIS.get(key);
         if (cached != null) return cached;
         URI built = new URI(scheme, authority, base, null, null);
-        if (BASE_URIS.size() < MAX_CACHED_BASE_URIS) {
-            URI first = BASE_URIS.putIfAbsent(key, built);
-            if (first != null) return first;
-        }
-        return built;
+        if (BASE_URIS.size() >= MAX_CACHED_BASE_URIS) BASE_URIS.clear();
+        URI first = BASE_URIS.putIfAbsent(key, built);
+        return first != null ? first : built;
     }
 
     /** The number of base URIs kept, for the tests of the bound. */

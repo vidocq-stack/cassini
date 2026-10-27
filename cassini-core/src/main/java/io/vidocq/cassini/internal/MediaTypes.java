@@ -37,11 +37,44 @@ public final class MediaTypes {
 
     public static final MediaType WILDCARD = MediaType.WILDCARD_TYPE;
 
+    /**
+     * Parsed media types by their raw string, parsed lists by their raw header, and the lists
+     * declared by {@code @Produces} / {@code @Consumes} by their declared strings. The few strings
+     * of a deployment come back on every request, and a parsed {@link MediaType} is immutable
+     * (its parameter map is unmodifiable), so it can be shared. Bounded: at the bound the cache is
+     * emptied and starts over, so that a client flooding new headers neither grows it nor keeps
+     * the deployment's own strings out of it.
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<String, MediaType> PARSED =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ConcurrentHashMap<String, List<MediaType>> PARSED_LISTS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ConcurrentHashMap<List<String>, List<MediaType>> DECLARED =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final int MAX_CACHED = 1024;
+
     private MediaTypes() {}
 
     /** Parse "type/subtype;p1=v1;q=0.8" en {@link MediaType}. Défaut wildcard. */
     public static MediaType parse(String raw) {
         if (raw == null || raw.isBlank()) return WILDCARD;
+        MediaType cached = PARSED.get(raw);
+        if (cached != null) return cached;
+        return remember(PARSED, raw, parseUncached(raw));
+    }
+
+    /** The number of parsed media types kept, for the tests of the bound. */
+    public static int cachedParses() {
+        return PARSED.size();
+    }
+
+    private static <K, V> V remember(java.util.concurrent.ConcurrentHashMap<K, V> cache, K key, V value) {
+        if (cache.size() >= MAX_CACHED) cache.clear();
+        V first = cache.putIfAbsent(key, value);
+        return first != null ? first : value;
+    }
+
+    private static MediaType parseUncached(String raw) {
         String[] parts = raw.split(";");
         String[] ts = parts[0].trim().split("/", 2);
         if (ts.length < 2) {
@@ -77,13 +110,16 @@ public final class MediaTypes {
         return true;
     }
 
+    /** Parses a comma-separated header ({@code Accept}) into a read-only list. */
     public static List<MediaType> parseList(String raw) {
         if (raw == null || raw.isBlank()) return List.of(WILDCARD);
+        List<MediaType> cached = PARSED_LISTS.get(raw);
+        if (cached != null) return cached;
         List<MediaType> out = new ArrayList<>();
         for (String tok : raw.split(",")) {
             if (!tok.isBlank()) out.add(parse(tok));
         }
-        return out;
+        return remember(PARSED_LISTS, raw, List.copyOf(out));
     }
 
     /** True if {@code a} and {@code b} are compatible (wildcard included). */
@@ -158,19 +194,26 @@ public final class MediaTypes {
         return s;
     }
 
+    /** The media types declared by {@code @Produces} / {@code @Consumes}, as a read-only list in
+     *  declaration order. */
     public static List<MediaType> fromSet(java.util.Set<String> raws) {
         if (raws == null || raws.isEmpty()) return List.of();
+        // Keyed by the declared strings in their order: equal sets in another order keep their own
+        // list, so that the ties of the negotiation break as declared.
+        List<String> key = List.copyOf(raws);
+        List<MediaType> cached = DECLARED.get(key);
+        if (cached != null) return cached;
         List<MediaType> out = new ArrayList<>(raws.size());
-         for (String r : raws) {
-             // Jersey/RestEasy allow @Consumes/@Produces("a,b") — a single
-             // String containing multiple media-types separated by comma.
-             if (r != null && r.indexOf(',') >= 0 && r.indexOf(';') < 0) {
+        for (String r : key) {
+            // Jersey/RestEasy allow @Consumes/@Produces("a,b") — a single
+            // String containing multiple media-types separated by comma.
+            if (r != null && r.indexOf(',') >= 0 && r.indexOf(';') < 0) {
                 for (String tok : r.split(",")) if (!tok.isBlank()) out.add(parse(tok));
             } else {
                 out.add(parse(r));
             }
         }
-        return List.copyOf(out);
+        return remember(DECLARED, key, List.copyOf(out));
     }
 
     /**

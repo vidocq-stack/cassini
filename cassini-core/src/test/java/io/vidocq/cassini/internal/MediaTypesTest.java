@@ -27,6 +27,8 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MediaTypesTest {
@@ -81,5 +83,42 @@ class MediaTypesTest {
     void formatRoundtrip() {
         MediaType mt = new MediaType("application", "json", java.util.Map.of("charset", "UTF-8"));
         assertTrue(MediaTypes.format(mt).startsWith("application/json;charset=UTF-8"));
+    }
+
+    // The same few header strings and declared types come back on every request: parsing them
+    // again each time (two splits, a HashMap, a MediaType with its TreeMap) was 8 to 12 parses
+    // per request on the Todo benchmark. A parsed MediaType is immutable, so it can be shared.
+
+    @Test
+    void parseReturnsTheSameMediaTypeForTheSameString() {
+        assertSame(MediaTypes.parse("application/json"), MediaTypes.parse("application/json"));
+        assertSame(MediaTypes.parse("text/plain;charset=UTF-8"), MediaTypes.parse("text/plain;charset=UTF-8"));
+    }
+
+    @Test
+    void aSharedMediaTypeCannotBeMutated() {
+        MediaType mt = MediaTypes.parse("text/plain;charset=UTF-8");
+        assertThrows(UnsupportedOperationException.class, () -> mt.getParameters().put("q", "0.1"));
+    }
+
+    @Test
+    void theParseCacheIsBounded() {
+        for (int i = 0; i < 5_000; i++) MediaTypes.parse("application/x-" + i);
+        assertTrue(MediaTypes.cachedParses() <= 1_024, "cached parses: " + MediaTypes.cachedParses());
+    }
+
+    @Test
+    void parseListReturnsTheSameListForTheSameHeader() {
+        String accept = "text/html,application/json;q=0.9,*/*;q=0.1";
+        assertSame(MediaTypes.parseList(accept), MediaTypes.parseList(accept));
+        assertEquals(3, MediaTypes.parseList(accept).size());
+    }
+
+    @Test
+    void fromSetReturnsTheSameListForTheSameDeclaredTypes() {
+        java.util.Set<String> produces = new java.util.LinkedHashSet<>(List.of("application/json", "text/plain"));
+        assertSame(MediaTypes.fromSet(produces), MediaTypes.fromSet(produces));
+        assertEquals(List.of("application/json", "text/plain"),
+                MediaTypes.fromSet(produces).stream().map(MediaTypes::format).toList());
     }
 }
