@@ -65,7 +65,8 @@ public final class CassiniResponse extends Response {
 
     @Override public StatusType getStatusInfo() {
         StatusType s = StatusCodes.of(status);
-        if (s != null) return s;
+        // A reason phrase given to status(int, String) wins over the standard one (CASSINI-013).
+        if (s != null && (reason == null || reason.equals(s.getReasonPhrase()))) return s;
         final String r = reason == null ? "" : reason;
         return new StatusType() {
             @Override public int getStatusCode() { return status; }

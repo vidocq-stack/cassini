@@ -91,6 +91,18 @@ class CassiniResponseTest {
         assertEquals("", Response.status(599).build().getStatusInfo().getReasonPhrase());
     }
 
+    @Test
+    void a_custom_reason_phrase_wins_over_the_standard_one() {
+        // CASSINI-013. Response.ResponseBuilder#status(int, String): the reason phrase is part of the status
+        // the built response reports.
+        Response.StatusType created = Response.status(201, "Made").build().getStatusInfo();
+        assertEquals(201, created.getStatusCode());
+        assertEquals("Made", created.getReasonPhrase());
+        assertEquals(Response.Status.Family.SUCCESSFUL, created.getFamily());
+        assertSame(Response.Status.CREATED, Response.status(201, "Made").status(201).build().getStatusInfo());
+        assertSame(Response.Status.CREATED, Response.status(201, "Created").build().getStatusInfo());
+    }
+
     // ── Entity ──────────────────────────────────────────────────────────────
 
     @Test

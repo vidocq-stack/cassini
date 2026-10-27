@@ -178,3 +178,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `UriBuilder.fromPath("/p").matrixParam("m", "{a}").toTemplate()` → `/p;m=%7Ba%7D`, expected `/p;m={a}`.
 - **Cause**: `queryParam`, `replaceQueryParam`, `matrixParam` and `replaceMatrixParam` percent-encoded the whole name and value, braces included, while their Javadoc says both "may contain URI template parameters"; and `build*()` appended query parameter names as they were, never substituting them.
 - **Fix**: those methods encode around `{name}` templates (`encodeKeepingTemplates`), and `build*()` substitutes the query parameter names before their values. Regression test: `CassiniUriBuilderTest.query_and_matrix_parameters_may_hold_templates`.
+
+## CASSINI-013 — `Response.getStatusInfo()` drops the reason phrase of `status(int, String)` for a standard code
+- **Date**: 2026-10-27 — **Status**: FIXED (found while covering `CassiniResponse` with unit tests)
+- **Severity**: low. Only the response object is affected (the transports write the status code); an application or a filter reading the reason phrase back got the standard one.
+- **Symptom**: `Response.status(201, "Made").build().getStatusInfo().getReasonPhrase()` returned `"Created"`.
+- **Minimal repro**: as above; a non-standard code (`299`) already kept its phrase.
+- **Cause**: `CassiniResponse.getStatusInfo` returned `Status.fromStatusCode(status)` whenever the code was standard, ignoring the reason given to the builder.
+- **Fix**: the standard `Status` is returned only when no reason phrase, or the standard one, was given; otherwise a `StatusType` carrying the given phrase. Regression test: `CassiniResponseTest.a_custom_reason_phrase_wins_over_the_standard_one`.
