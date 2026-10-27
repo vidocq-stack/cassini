@@ -44,6 +44,9 @@ class CassiniUriBuilderTest {
     private static final String HOST_URI = "http://h";
     private static final String FULL_URI = "http://u:p@h:8080/a/b?x=1&y#f";
     private static final String TEMPLATE_PATH = "/{a}";
+    private static final String MAILTO = "mailto:joe@example.org";
+    private static final String HOST_X = "http://h/x";
+    private static final String TEMPLATE_AB = "/{a}/{b}";
 
     @BeforeAll
     static void installDelegate() {
@@ -81,7 +84,7 @@ class CassiniUriBuilderTest {
 
     @Test
     void fromUri_keeps_an_opaque_uri() {
-        assertEquals("mailto:joe@example.org", UriBuilder.fromUri("mailto:joe@example.org").build().toString());
+        assertEquals(MAILTO, UriBuilder.fromUri(MAILTO).build().toString());
     }
 
     @Test
@@ -98,8 +101,8 @@ class CassiniUriBuilderTest {
 
     @Test
     void uri_switching_from_opaque_to_hierarchical_drops_the_scheme_specific_part() {
-        UriBuilder b = UriBuilder.fromUri("mailto:joe@example.org").uri(URI.create("http://h/x"));
-        assertEquals("http://h/x", b.build().toString());
+        UriBuilder b = UriBuilder.fromUri(MAILTO).uri(URI.create(HOST_X));
+        assertEquals(HOST_X, b.build().toString());
     }
 
     @Test
@@ -183,14 +186,14 @@ class CassiniUriBuilderTest {
         UriBuilder b = UriBuilder.newInstance();
         assertThrows(IllegalArgumentException.class, () -> b.host(""));
         assertThrows(IllegalArgumentException.class, () -> b.host("a b"));
-        assertEquals("/x", UriBuilder.fromUri("http://h/x").scheme(null).host(null).build().toString());
+        assertEquals("/x", UriBuilder.fromUri(HOST_X).scheme(null).host(null).build().toString());
     }
 
     @Test
     void port_rejects_values_below_minus_one() {
         UriBuilder b = UriBuilder.newInstance();
         assertThrows(IllegalArgumentException.class, () -> b.port(-2));
-        assertEquals("http://h/x", UriBuilder.fromUri("http://h:81/x").port(-1).build().toString());
+        assertEquals(HOST_X, UriBuilder.fromUri("http://h:81/x").port(-1).build().toString());
     }
 
     @Test
@@ -320,9 +323,9 @@ class CassiniUriBuilderTest {
     @Test
     void buildFromMap_uses_values_by_name() {
         Map<String, Object> values = Map.of("a", "x/y", "b", "%41");
-        assertEquals("/x%2Fy/%2541", UriBuilder.fromPath("/{a}/{b}").buildFromMap(values).toString());
-        assertEquals("/x/y/%2541", UriBuilder.fromPath("/{a}/{b}").buildFromMap(values, false).toString());
-        assertEquals("/x/y/%41", UriBuilder.fromPath("/{a}/{b}").buildFromEncodedMap(values).toString());
+        assertEquals("/x%2Fy/%2541", UriBuilder.fromPath(TEMPLATE_AB).buildFromMap(values).toString());
+        assertEquals("/x/y/%2541", UriBuilder.fromPath(TEMPLATE_AB).buildFromMap(values, false).toString());
+        assertEquals("/x/y/%41", UriBuilder.fromPath(TEMPLATE_AB).buildFromEncodedMap(values).toString());
     }
 
     @Test
@@ -340,13 +343,13 @@ class CassiniUriBuilderTest {
 
     @Test
     void resolveTemplate_fixes_a_value_before_build() {
-        UriBuilder b = UriBuilder.fromPath("/{a}/{b}").resolveTemplate("a", "x/y");
+        UriBuilder b = UriBuilder.fromPath(TEMPLATE_AB).resolveTemplate("a", "x/y");
         assertEquals("/x%2Fy/{b}", b.toTemplate());
         assertEquals("/x%2Fy/2", b.build("2").toString());
         assertEquals("/x/y/2",
-                UriBuilder.fromPath("/{a}/{b}").resolveTemplate("a", "x/y", false).build("2").toString());
+                UriBuilder.fromPath(TEMPLATE_AB).resolveTemplate("a", "x/y", false).build("2").toString());
         assertEquals("/%41/2",
-                UriBuilder.fromPath("/{a}/{b}").resolveTemplateFromEncoded("a", "%41").build("2").toString());
+                UriBuilder.fromPath(TEMPLATE_AB).resolveTemplateFromEncoded("a", "%41").build("2").toString());
     }
 
     @Test
@@ -354,11 +357,11 @@ class CassiniUriBuilderTest {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("a", "1/2");
         values.put("b", "%41");
-        assertEquals("/1%2F2/%2541", UriBuilder.fromPath("/{a}/{b}").resolveTemplates(values).build().toString());
+        assertEquals("/1%2F2/%2541", UriBuilder.fromPath(TEMPLATE_AB).resolveTemplates(values).build().toString());
         assertEquals("/1/2/%2541",
-                UriBuilder.fromPath("/{a}/{b}").resolveTemplates(values, false).build().toString());
+                UriBuilder.fromPath(TEMPLATE_AB).resolveTemplates(values, false).build().toString());
         assertEquals("/1/2/%41",
-                UriBuilder.fromPath("/{a}/{b}").resolveTemplatesFromEncoded(values).build().toString());
+                UriBuilder.fromPath(TEMPLATE_AB).resolveTemplatesFromEncoded(values).build().toString());
     }
 
     @Test

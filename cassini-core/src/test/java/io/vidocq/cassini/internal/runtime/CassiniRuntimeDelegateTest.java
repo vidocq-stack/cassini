@@ -145,7 +145,7 @@ class CassiniRuntimeDelegateTest {
         assertEquals("session", c.getName());
         assertEquals("abc", c.getValue());
         assertEquals("/app", c.getPath());
-        assertEquals("example.org", c.getDomain());
+        assertEquals(EXAMPLE_ORG, c.getDomain());
         assertEquals(30, c.getMaxAge());
         assertTrue(c.isSecure());
         assertTrue(c.isHttpOnly());
@@ -228,6 +228,9 @@ class CassiniRuntimeDelegateTest {
 
     private static final String E_ORG_A = "http://e.org/a";
     private static final String VALUE_IS_NULL = "a null value is rejected";
+    private static final String EXAMPLE_ORG = "example.org";
+    private static final String TEXT_PLAIN = "text/plain";
+    private static final String BRACKETED_A = "<http://e.org/a>";
 
     public static class App extends Application { }
 
@@ -272,14 +275,14 @@ class CassiniRuntimeDelegateTest {
         SeBootstrap.Configuration c = delegate.createConfigurationBuilder()
                 .property("custom", "v")
                 .from((name, type) -> switch (name) {
-                    case SeBootstrap.Configuration.HOST -> Optional.of(type.cast("example.org"));
+                    case SeBootstrap.Configuration.HOST -> Optional.of(type.cast(EXAMPLE_ORG));
                     case SeBootstrap.Configuration.PORT -> Optional.of(type.cast(8080));
                     case SeBootstrap.Configuration.ROOT_PATH -> throw new IllegalStateException("source down");
                     default -> Optional.empty();
                 })
                 .build();
         assertEquals("v", c.property("custom"));
-        assertEquals("example.org", c.host());
+        assertEquals(EXAMPLE_ORG, c.host());
         assertEquals(8080, c.port());
         assertEquals("/", c.rootPath());
     }
@@ -305,7 +308,7 @@ class CassiniRuntimeDelegateTest {
     @Test
     void mediaType_and_toString_delegates_round_trip() {
         HeaderDelegate<MediaType> mt = headerDelegate(MediaType.class);
-        assertEquals(MediaType.TEXT_PLAIN_TYPE, mt.fromString("text/plain"));
+        assertEquals(MediaType.TEXT_PLAIN_TYPE, mt.fromString(TEXT_PLAIN));
         assertEquals("text/plain;charset=UTF-8", mt.toString(MediaType.TEXT_PLAIN_TYPE.withCharset("UTF-8")));
         HeaderDelegate<Integer> other = headerDelegate(Integer.class);
         assertEquals("12", other.toString(12));
@@ -379,9 +382,9 @@ class CassiniRuntimeDelegateTest {
     void link_header_without_brackets_or_params() {
         HeaderDelegate<Link> hd = headerDelegate(Link.class);
         assertEquals(URI.create(E_ORG_A), hd.fromString(E_ORG_A).getUri());
-        Link bare = hd.fromString("<http://e.org/a>");
+        Link bare = hd.fromString(BRACKETED_A);
         assertTrue(bare.getParams().isEmpty());
-        assertEquals("<http://e.org/a>", hd.toString(bare));
+        assertEquals(BRACKETED_A, hd.toString(bare));
         assertEquals(Map.of("rel", "x"), hd.fromString("<http://e.org/a>; novalue; rel=x").getParams());
     }
 
@@ -417,11 +420,11 @@ class CassiniRuntimeDelegateTest {
 
     @Test
     void linkBuilder_copies_an_existing_link() {
-        Link original = Link.fromUri(E_ORG_A).rel("self").type("text/plain").build();
+        Link original = Link.fromUri(E_ORG_A).rel("self").type(TEXT_PLAIN).build();
         Link copy = delegate.createLinkBuilder().link(original).build();
         assertEquals(original, copy);
         assertEquals(original.hashCode(), copy.hashCode());
-        assertEquals("text/plain", copy.getType());
+        assertEquals(TEXT_PLAIN, copy.getType());
     }
 
     @Test
@@ -430,7 +433,7 @@ class CassiniRuntimeDelegateTest {
         assertEquals(URI.create(E_ORG_A), l.getUri());
         assertEquals(List.of("a", "b"), l.getRels());
         assertEquals("t", l.getTitle());
-        assertEquals(URI.create(E_ORG_A), delegate.createLinkBuilder().link("<http://e.org/a>").build().getUri());
+        assertEquals(URI.create(E_ORG_A), delegate.createLinkBuilder().link(BRACKETED_A).build().getUri());
         assertEquals(URI.create(E_ORG_A), delegate.createLinkBuilder().link(E_ORG_A).build().getUri());
         assertEquals(List.of(), delegate.createLinkBuilder().link(E_ORG_A).build().getRels());
     }
@@ -487,6 +490,5 @@ class CassiniRuntimeDelegateTest {
         assertNotEquals(l, delegate.createLinkBuilder().uri(E_ORG_A).rel("x").build());
         assertNotEquals(l, delegate.createLinkBuilder().uri("http://e.org/z").build());
         assertNotEquals(null, l);
-        assertEquals(l, l);
     }
 }

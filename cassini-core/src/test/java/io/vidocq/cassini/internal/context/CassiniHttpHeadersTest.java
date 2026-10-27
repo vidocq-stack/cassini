@@ -74,7 +74,7 @@ class CassiniHttpHeadersTest {
         assertTrue(h.containsHeaderString("x-l", "b;c"::equals));
         assertTrue(h.containsHeaderString("X-L", ";", "c"::equals));
         assertFalse(h.containsHeaderString("X-L", "z"::equals));
-        assertFalse(h.containsHeaderString("X-None", s -> true));
+        assertFalse(h.containsHeaderString("X-None", _ -> true));
     }
 
     @Test

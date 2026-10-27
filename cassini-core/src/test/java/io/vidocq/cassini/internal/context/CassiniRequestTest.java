@@ -53,6 +53,8 @@ class CassiniRequestTest {
     private static final String GET = "GET";
     private static final String PUT = "PUT";
     private static final String TAG_A = "\"a\"";
+    private static final String TAG_B = "\"b\"";
+    private static final String ACCEPT = "Accept";
     private static final String ACCEPT_LANGUAGE = "Accept-Language";
     private static final String ACCEPT_ENCODING = "Accept-Encoding";
     private static final String GZIP = "gzip";
@@ -99,7 +101,8 @@ class CassiniRequestTest {
         assertThrows(IllegalArgumentException.class, () -> r.evaluatePreconditions((EntityTag) null));
         assertThrows(IllegalArgumentException.class, () -> r.evaluatePreconditions((Date) null));
         assertThrows(IllegalArgumentException.class, () -> r.selectVariant(null));
-        assertThrows(IllegalArgumentException.class, () -> r.selectVariant(List.of()));
+        List<Variant> noVariant = List.of();
+        assertThrows(IllegalArgumentException.class, () -> r.selectVariant(noVariant));
     }
 
     // ── Entity tags ─────────────────────────────────────────────────────────
@@ -113,7 +116,7 @@ class CassiniRequestTest {
 
     @Test
     void if_match_fails_with_412_and_the_current_tag() {
-        Response r = request(PUT, IF_MATCH, "\"b\"").evaluatePreconditions(A).build();
+        Response r = request(PUT, IF_MATCH, TAG_B).evaluatePreconditions(A).build();
         assertEquals(412, r.getStatus());
         assertEquals(A, r.getEntityTag());
     }
@@ -124,7 +127,7 @@ class CassiniRequestTest {
         assertEquals(304, status(request(GET, IF_NONE_MATCH, TAG_A).evaluatePreconditions(A)));
         assertEquals(304, status(request("HEAD", IF_NONE_MATCH, "W/\"a\"").evaluatePreconditions(A)));
         assertEquals(412, status(request(PUT, IF_NONE_MATCH, "*").evaluatePreconditions(A)));
-        assertNull(request(GET, IF_NONE_MATCH, "\"b\"").evaluatePreconditions(A));
+        assertNull(request(GET, IF_NONE_MATCH, TAG_B).evaluatePreconditions(A));
     }
 
     // ── Dates ───────────────────────────────────────────────────────────────
@@ -155,7 +158,7 @@ class CassiniRequestTest {
 
     @Test
     void the_tag_is_checked_before_the_date() {
-        assertEquals(412, status(request(PUT, IF_MATCH, "\"b\"").evaluatePreconditions(RFC_DATE, A)));
+        assertEquals(412, status(request(PUT, IF_MATCH, TAG_B).evaluatePreconditions(RFC_DATE, A)));
         assertEquals(304, status(request(GET, IF_MODIFIED_SINCE, RFC_DATE_TEXT).evaluatePreconditions(RFC_DATE, A)));
         assertNull(request(GET, null, null).evaluatePreconditions(RFC_DATE, A));
     }
@@ -178,9 +181,9 @@ class CassiniRequestTest {
 
     @Test
     void the_first_acceptable_media_type_wins() {
-        assertEquals(HTML, request(GET, "Accept", "text/html").selectVariant(List.of(JSON, HTML)));
+        assertEquals(HTML, request(GET, ACCEPT, "text/html").selectVariant(List.of(JSON, HTML)));
         assertEquals(JSON, request(GET, null, null).selectVariant(List.of(JSON, HTML)));
-        assertNull(request(GET, "Accept", "image/png").selectVariant(List.of(JSON, HTML)));
+        assertNull(request(GET, ACCEPT, "image/png").selectVariant(List.of(JSON, HTML)));
     }
 
     @Test
@@ -205,9 +208,9 @@ class CassiniRequestTest {
         CassiniRequest r = new CassiniRequest(ex);
         r.selectVariant(List.of(JSON));
         Object first = ex.getAttribute(CassiniRequest.ATTR_PENDING_VARY);
-        assertEquals(Set.of("Accept"), first);
+        assertEquals(Set.of(ACCEPT), first);
         r.selectVariant(List.of(ENGLISH, GZIPPED));
         assertSame(first, ex.getAttribute(CassiniRequest.ATTR_PENDING_VARY));
-        assertEquals(Set.of("Accept", ACCEPT_LANGUAGE, ACCEPT_ENCODING), first);
+        assertEquals(Set.of(ACCEPT, ACCEPT_LANGUAGE, ACCEPT_ENCODING), first);
     }
 }

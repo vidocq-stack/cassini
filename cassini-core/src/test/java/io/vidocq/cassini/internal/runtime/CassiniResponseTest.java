@@ -63,6 +63,10 @@ class CassiniResponseTest {
     private static final String TEXT_PLAIN = "text/plain";
     private static final String NEXT = "next";
     private static final String HTTP_H_X = "http://h/x";
+    private static final String CONTENT_TYPE_LOWER = "content-type";
+    private static final String RFC_DATE_TEXT = "Sun, 06 Nov 1994 08:49:37 GMT";
+    private static final String CONTENT_LOCATION = "Content-Location";
+    private static final String X_OLD = "X-Old";
     /** 1994-11-06T08:49:37Z, the RFC 9110 §5.6.7 example date. */
     private static final Date RFC_DATE = new Date(784111777000L);
 
@@ -155,7 +159,7 @@ class CassiniResponseTest {
         assertNull(Response.ok().build().getMediaType());
         assertEquals(MediaType.TEXT_PLAIN_TYPE, Response.ok().type(MediaType.TEXT_PLAIN_TYPE).build().getMediaType());
         assertEquals(MediaType.TEXT_PLAIN_TYPE, Response.ok().type(TEXT_PLAIN).build().getMediaType());
-        assertEquals(MediaType.TEXT_PLAIN_TYPE, withHeader("content-type", TEXT_PLAIN).getMediaType());
+        assertEquals(MediaType.TEXT_PLAIN_TYPE, withHeader(CONTENT_TYPE_LOWER, TEXT_PLAIN).getMediaType());
     }
 
     @Test
@@ -196,7 +200,7 @@ class CassiniResponseTest {
     @Test
     void the_dates_accept_the_three_http_date_formats() {
         // RFC 9110 §5.6.7: IMF-fixdate, obsolete RFC 850 and asctime formats.
-        assertEquals(RFC_DATE, withHeader("Date", "Sun, 06 Nov 1994 08:49:37 GMT").getDate());
+        assertEquals(RFC_DATE, withHeader("Date", RFC_DATE_TEXT).getDate());
         assertEquals(RFC_DATE, withHeader("Date", "Sunday, 06-Nov-94 08:49:37 GMT").getDate());
         assertEquals(RFC_DATE, Response.ok().lastModified(RFC_DATE).build().getLastModified());
         assertNull(withHeader("Date", "yesterday").getDate());
@@ -222,7 +226,7 @@ class CassiniResponseTest {
         CassiniResponseBuilder.clearBaseUri();
         String unresolved = RequestScope.call(() -> {
             CassiniResponseBuilder.clearBaseUri();
-            return Response.ok().contentLocation(URI.create("y")).build().getHeaderString("Content-Location");
+            return Response.ok().contentLocation(URI.create("y")).build().getHeaderString(CONTENT_LOCATION);
         });
         assertEquals("y", unresolved);
     }
@@ -230,9 +234,9 @@ class CassiniResponseTest {
     @Test
     void contentLocation_is_set_and_removed() {
         assertEquals(HTTP_H_X, Response.ok().contentLocation(URI.create(HTTP_H_X)).build()
-                .getHeaderString("Content-Location"));
+                .getHeaderString(CONTENT_LOCATION));
         assertNull(Response.ok().contentLocation(URI.create(HTTP_H_X)).contentLocation(null).build()
-                .getHeaderString("Content-Location"));
+                .getHeaderString(CONTENT_LOCATION));
     }
 
     // ── Links ───────────────────────────────────────────────────────────────
@@ -272,9 +276,9 @@ class CassiniResponseTest {
     void getHeaders_is_a_case_insensitive_live_view() {
         Response r = Response.ok().type(TEXT_PLAIN).build();
         MultivaluedMap<String, Object> h = r.getHeaders();
-        assertSame(r.getMetadata().getFirst(CONTENT_TYPE), h.getFirst("content-type"));
+        assertSame(r.getMetadata().getFirst(CONTENT_TYPE), h.getFirst(CONTENT_TYPE_LOWER));
         assertEquals(List.of(TEXT_PLAIN), h.get("CONTENT-TYPE"));
-        assertTrue(h.containsKey("content-type"));
+        assertTrue(h.containsKey(CONTENT_TYPE_LOWER));
         assertTrue(h.containsKey(CONTENT_TYPE));
         assertFalse(h.containsKey("x-none"));
         assertFalse(h.containsKey(null));
@@ -311,8 +315,8 @@ class CassiniResponseTest {
         Response r = Response.ok().type(MediaType.APPLICATION_JSON_TYPE).lastModified(RFC_DATE)
                 .header("X-N", 7).build();
         MultivaluedMap<String, String> h = r.getStringHeaders();
-        assertEquals("application/json", h.getFirst("content-type"));
-        assertEquals("Sun, 06 Nov 1994 08:49:37 GMT", h.getFirst("Last-Modified"));
+        assertEquals("application/json", h.getFirst(CONTENT_TYPE_LOWER));
+        assertEquals(RFC_DATE_TEXT, h.getFirst("Last-Modified"));
         assertEquals(List.of("7"), h.get("x-n"));
         assertTrue(h.containsKey("x-n"));
         assertTrue(h.containsKey("X-N"));
@@ -376,7 +380,7 @@ class CassiniResponseTest {
                 .tag(new EntityTag("e")).build();
         assertEquals("no-transform, max-age=5", r.getHeaderString("Cache-Control"));
         assertEquals("gzip", r.getHeaderString("Content-Encoding"));
-        assertEquals("Sun, 06 Nov 1994 08:49:37 GMT", r.getHeaderString("Expires"));
+        assertEquals(RFC_DATE_TEXT, r.getHeaderString("Expires"));
         assertEquals("\"e\"", r.getHeaderString("ETag"));
 
         Response cleared = Response.ok().cacheControl(cc).cacheControl(null).encoding("gzip").encoding(null)
@@ -392,10 +396,10 @@ class CassiniResponseTest {
     void replaceAll_replaces_or_clears_every_header() {
         MultivaluedMap<String, Object> fresh = new MultivaluedHashMap<>();
         fresh.add("X-New", "n");
-        Response r = Response.ok().header("X-Old", "o").replaceAll(fresh).build();
-        assertNull(r.getHeaderString("X-Old"));
+        Response r = Response.ok().header(X_OLD, "o").replaceAll(fresh).build();
+        assertNull(r.getHeaderString(X_OLD));
         assertEquals("n", r.getHeaderString("X-New"));
-        assertTrue(Response.ok().header("X-Old", "o").replaceAll(null).build().getHeaders().isEmpty());
+        assertTrue(Response.ok().header(X_OLD, "o").replaceAll(null).build().getHeaders().isEmpty());
     }
 
     @Test

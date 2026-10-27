@@ -212,8 +212,10 @@ class MessageBodyRegistryBuiltinsTest {
     void an_unparsable_primitive_body_is_a_bad_request() {
         // §4.2.4: a standard provider that cannot map the body to the Java type raises a 400.
         MediaType text = MediaType.TEXT_PLAIN_TYPE;
-        assertThrows(BadRequestException.class, () -> read(Integer.class, text, utf8("x")));
-        assertThrows(BadRequestException.class, () -> read(Boolean.class, text, utf8("yes")));
+        byte[] notANumber = utf8("x");
+        byte[] notABoolean = utf8("yes");
+        assertThrows(BadRequestException.class, () -> read(Integer.class, text, notANumber));
+        assertThrows(BadRequestException.class, () -> read(Boolean.class, text, notABoolean));
         assertThrows(BadRequestException.class, () -> read(char.class, text, new byte[0]));
     }
 

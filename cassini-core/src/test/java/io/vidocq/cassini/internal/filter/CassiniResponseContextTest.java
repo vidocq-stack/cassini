@@ -52,6 +52,7 @@ class CassiniResponseContextTest {
 
     private static final String LINK = "Link";
     private static final String NEXT = "next";
+    private static final String EXPIRES = "Expires";
     private static final String DATE_TEXT = "Sun, 06 Nov 1994 08:49:37 GMT";
     private static final Date RFC_DATE = new Date(784111777000L);
 
@@ -96,9 +97,9 @@ class CassiniResponseContextTest {
     void header_strings_go_through_the_header_delegates() {
         // CASSINI-014. ContainerResponseContext#getHeaderString / #getStringHeaders: each value is converted
         // "using a RuntimeDelegate.HeaderDelegate if one is available".
-        ContainerResponseContext c = context("Expires", RFC_DATE);
-        assertEquals(DATE_TEXT, c.getHeaderString("Expires"));
-        assertEquals(DATE_TEXT, c.getStringHeaders().getFirst("Expires"));
+        ContainerResponseContext c = context(EXPIRES, RFC_DATE);
+        assertEquals(DATE_TEXT, c.getHeaderString(EXPIRES));
+        assertEquals(DATE_TEXT, c.getStringHeaders().getFirst(EXPIRES));
     }
 
     @Test
@@ -152,7 +153,7 @@ class CassiniResponseContextTest {
         assertTrue(c.containsHeaderString("X-L", "b;c"::equals));
         assertTrue(c.containsHeaderString("x-l", ";", "c"::equals));
         assertFalse(c.containsHeaderString("x-l", "z"::equals));
-        assertFalse(c.containsHeaderString("X-None", s -> true));
+        assertFalse(c.containsHeaderString("X-None", _ -> true));
     }
 
     @Test
