@@ -39,9 +39,41 @@ import java.util.Map;
  */
 public final class CassiniUriInfo implements UriInfo {
 
+    /**
+     * Base URIs by {@code scheme://authority/base}: in practice one per listener and host, and
+     * the same for every request of a listener. Bounded, so that a client sending a new
+     * {@code Host} header on each request cannot grow it; past the bound the URI is built and
+     * not kept.
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<String, URI> BASE_URIS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final int MAX_CACHED_BASE_URIS = 256;
+
     private final CassiniHttpExchange exchange;
     private final String contextPath;
     private final Map<String, List<String>> pathParams;
+
+    /**
+     * The base URI {@code scheme://authority/<contextPath>/} of a request, shared by every
+     * request with the same scheme, authority and context path.
+     */
+    public static URI baseUri(String scheme, String authority, String contextPath) throws java.net.URISyntaxException {
+        String base = contextPath == null || contextPath.isEmpty() || "/".equals(contextPath) ? "/" : contextPath + "/";
+        String key = scheme + "://" + authority + base;
+        URI cached = BASE_URIS.get(key);
+        if (cached != null) return cached;
+        URI built = new URI(scheme, authority, base, null, null);
+        if (BASE_URIS.size() < MAX_CACHED_BASE_URIS) {
+            URI first = BASE_URIS.putIfAbsent(key, built);
+            if (first != null) return first;
+        }
+        return built;
+    }
+
+    /** The number of base URIs kept, for the tests of the bound. */
+    public static int cachedBaseUris() {
+        return BASE_URIS.size();
+    }
 
     public CassiniUriInfo(CassiniHttpExchange exchange, String contextPath, Map<String, List<String>> pathParams) {
         this(exchange, contextPath, pathParams, null);
@@ -125,8 +157,7 @@ public final class CassiniUriInfo implements UriInfo {
     @Override public URI getBaseUri() {
         URI req = getRequestUri();
         try {
-            String base = contextPath.isEmpty() || "/".equals(contextPath) ? "/" : contextPath + "/";
-            return new URI(req.getScheme(), req.getAuthority(), base, null, null);
+            return baseUri(req.getScheme(), req.getAuthority(), contextPath);
         } catch (Exception e) { return req; }
     }
 

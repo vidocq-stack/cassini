@@ -51,8 +51,12 @@ final class InMemoryExchange implements CassiniHttpExchange {
     private int status = -1;
 
     private InMemoryExchange(String method, String path, String contentType, byte[] body) {
+        this(method, "127.0.0.1", path, contentType, body);
+    }
+
+    private InMemoryExchange(String method, String authority, String path, String contentType, byte[] body) {
         this.method = method;
-        this.uri = URI.create("http://127.0.0.1" + path);
+        this.uri = URI.create("http://" + authority + path);
         this.body = body;
         if (contentType != null) requestHeaders.put("Content-Type", List.of(contentType));
         requestHeaders.put("Content-Length", List.of(String.valueOf(body == null ? 0 : body.length)));
@@ -66,6 +70,11 @@ final class InMemoryExchange implements CassiniHttpExchange {
     /** A {@code GET} with no body. */
     static InMemoryExchange get(String path) {
         return new InMemoryExchange("GET", path, null, null);
+    }
+
+    /** A {@code GET} with no body, addressed to {@code authority} ({@code host[:port]}). */
+    static InMemoryExchange get(String authority, String path) {
+        return new InMemoryExchange("GET", authority, path, null, null);
     }
 
     int status() { return status; }

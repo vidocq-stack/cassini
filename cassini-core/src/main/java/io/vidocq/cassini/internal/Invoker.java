@@ -169,11 +169,9 @@ public final class Invoker {
                     if (host != null && !host.isEmpty()) authority = host;
                 }
                 if (authority == null) authority = "127.0.0.1";
-                String ctx = request.contextPath();
-                if (ctx == null) ctx = "";
-                String basePath = ctx.isEmpty() ? "/" : ctx + "/";
-                java.net.URI base = new java.net.URI(scheme + "://" + authority + basePath);
-                io.vidocq.cassini.internal.runtime.CassiniResponseBuilder.setBaseUri(base);
+                // Shared with UriInfo.getBaseUri(): one URI per listener and host, not one parse per request.
+                io.vidocq.cassini.internal.runtime.CassiniResponseBuilder.setBaseUri(
+                        CassiniUriInfo.baseUri(scheme, authority, request.contextPath()));
             } catch (Exception ignored) {}
             // §3.4.1 dynamic dispatch: the route emitted for a sub-resource locator
             // returning Object is resolved at runtime — invoke the chain,
