@@ -79,37 +79,33 @@ public final class ParamValueConverter {
         if (raw == null) return defaultForType(type);
         if (type == String.class || type == CharSequence.class) return raw;
         if (PathSegment.class.isAssignableFrom(type)) return parsePathSegment(raw);
+        return coerceIntegralOrBoolean(type, raw);
+    }
 
+    /** Boolean and integral types; any other type goes on to {@link #coerceFloatingOrChar}. */
+    private static Object coerceIntegralOrBoolean(Class<?> type, String raw) {
         if (type == boolean.class || type == Boolean.class) return Boolean.parseBoolean(raw);
         if (type == byte.class    || type == Byte.class)    return Byte.parseByte(raw);
         if (type == short.class   || type == Short.class)   return Short.parseShort(raw);
         if (type == int.class     || type == Integer.class) return Integer.parseInt(raw);
         if (type == long.class    || type == Long.class)    return Long.parseLong(raw);
+        return coerceFloatingOrChar(type, raw);
+    }
+
+    /** Floating-point and char types; any other type goes on to {@link #coerceByFactory}. */
+    private static Object coerceFloatingOrChar(Class<?> type, String raw) {
         if (type == float.class   || type == Float.class)   return Float.parseFloat(raw);
         if (type == double.class  || type == Double.class)  return Double.parseDouble(raw);
         if (type == char.class    || type == Character.class) {
             if (raw.isEmpty()) throw badRequest("Empty value for char");
             return raw.charAt(0);
         }
+        return coerceByFactory(type, raw);
+    }
 
-        if (type.isEnum()) {
-            // §3.2 : for an enum with fromString(String), it has priority
-            // over Enum.valueOf (otherwise a built-in enum valueOf always wins).
-            try {
-                Method fs = type.getDeclaredMethod("fromString", String.class);
-                if (Modifier.isStatic(fs.getModifiers())) {
-                    return invokeOrPropagate(fs, null, raw);
-                }
-            } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
-            try {
-                @SuppressWarnings({"unchecked", "rawtypes"})
-                Enum<?> e = Enum.valueOf((Class<Enum>) type.asSubclass(Enum.class), raw);
-                return e;
-            } catch (IllegalArgumentException iae) {
-                return null;
-            }
-        }
-
+    /** §3.2: an enum, then a static valueOf(String), a static fromString(String) or a String constructor. */
+    private static Object coerceByFactory(Class<?> type, String raw) {
+        if (type.isEnum()) return coerceEnum(type, raw);
         try {
             Method valueOf = type.getDeclaredMethod("valueOf", String.class);
             if (Modifier.isStatic(valueOf.getModifiers())) {
@@ -125,8 +121,28 @@ public final class ParamValueConverter {
         try {
             Constructor<?> c = type.getDeclaredConstructor(String.class);
             return newInstanceOrPropagate(c, raw);
-        } catch (NoSuchMethodException ignored) {}
+        } catch (NoSuchMethodException _) { /* no String constructor either: no converter */ }
         throw badRequest("No converter for type " + type.getName());
+    }
+
+    /**
+     * §3.2: for an enum with fromString(String), it has priority over Enum.valueOf (otherwise a
+     * built-in enum valueOf always wins); an unknown constant gives null.
+     */
+    private static Object coerceEnum(Class<?> type, String raw) {
+        try {
+            Method fs = type.getDeclaredMethod("fromString", String.class);
+            if (Modifier.isStatic(fs.getModifiers())) {
+                return invokeOrPropagate(fs, null, raw);
+            }
+        } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
+        try {
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            Enum<?> e = Enum.valueOf((Class<Enum>) type.asSubclass(Enum.class), raw);
+            return e;
+        } catch (IllegalArgumentException _) {
+            return null;
+        }
     }
 
     public static Object defaultForType(Class<?> type) {

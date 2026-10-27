@@ -174,7 +174,7 @@ public final class ChappeRuntimeDelegate extends CassiniRuntimeDelegate {
             return CompletableFuture.supplyAsync(() -> {
                 Server running = server.get();
                 if (running != null) {
-                    try { running.stop(); } catch (RuntimeException ignored) {}
+                    try { running.stop(); } catch (RuntimeException _) { /* stopping is best effort: the instance is discarded anyway */ }
                 }
                 return new SeBootstrap.Instance.StopResult() {
                     @Override public <T> T unwrap(Class<T> nativeClass) {

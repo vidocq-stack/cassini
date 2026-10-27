@@ -59,8 +59,8 @@ class RouteDescriptorTest {
         String[] produces = {"text/plain"};
         String[] consumes = {"application/json"};
         assertEquals(base, base);
-        assertNotEquals(base, null);
-        assertNotEquals(base, "a string");
+        assertNotEquals(null, base);
+        assertNotEquals("a string", base);
         assertNotEquals(base, new RouteDescriptor(String.class, "get", params, "GET", "/items/{id}", produces, consumes, 6));
         assertNotEquals(base, new RouteDescriptor(RouteDescriptorTest.class, "put", params, "GET", "/items/{id}", produces, consumes, 6));
         assertNotEquals(base, new RouteDescriptor(RouteDescriptorTest.class, "get", new String[0], "GET", "/items/{id}", produces, consumes, 6));

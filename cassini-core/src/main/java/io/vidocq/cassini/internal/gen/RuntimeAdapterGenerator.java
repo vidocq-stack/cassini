@@ -134,6 +134,7 @@ public final class RuntimeAdapterGenerator {
     private static final ClassDesc CD_Boolean_w   = ClassDesc.of("java.lang.Boolean");
     private static final ClassDesc CD_Short_w     = ClassDesc.of("java.lang.Short");
     private static final ClassDesc CD_Byte_w      = ClassDesc.of("java.lang.Byte");
+    private static final ClassDesc CD_Character_w = ClassDesc.of("java.lang.Character");
 
     private RuntimeAdapterGenerator() {}
 
@@ -605,7 +606,18 @@ public final class RuntimeAdapterGenerator {
         // PathSegment: fall back (complex)
         if (jakarta.ws.rs.core.PathSegment.class.isAssignableFrom(type)) return InlineStrategy.FALLBACK;
 
-        // Primitives and wrappers
+        InlineStrategy primitive = primitiveStrategy(type);
+        if (primitive != null) return primitive;
+
+        // The type must be public for us to emit a direct invokestatic / invokespecial
+        if (!Modifier.isPublic(type.getModifiers())) return InlineStrategy.FALLBACK;
+
+        if (type.isEnum()) return enumStrategy(type);
+        return factoryStrategy(type);
+    }
+
+    /** The strategy of a primitive or wrapper type, or null for any other type. */
+    private static InlineStrategy primitiveStrategy(Class<?> type) {
         if (type == boolean.class || type == Boolean.class)   return InlineStrategy.BOOLEAN;
         if (type == byte.class    || type == Byte.class)      return InlineStrategy.BYTE;
         if (type == short.class   || type == Short.class)     return InlineStrategy.SHORT;
@@ -614,22 +626,22 @@ public final class RuntimeAdapterGenerator {
         if (type == float.class   || type == Float.class)     return InlineStrategy.FLOAT;
         if (type == double.class  || type == Double.class)    return InlineStrategy.DOUBLE;
         if (type == char.class    || type == Character.class) return InlineStrategy.CHAR;
+        return null;
+    }
 
-        // The type must be public for us to emit a direct invokestatic / invokespecial
-        if (!Modifier.isPublic(type.getModifiers())) return InlineStrategy.FALLBACK;
+    /** Enum: a public static fromString first (mirroring ParamValueConverter order), else valueOf. */
+    private static InlineStrategy enumStrategy(Class<?> type) {
+        try {
+            Method fs = type.getDeclaredMethod(METHOD_FROM_STRING, String.class);
+            if (Modifier.isStatic(fs.getModifiers()) && Modifier.isPublic(fs.getModifiers())) {
+                return InlineStrategy.ENUM_WITH_FROM_STRING;
+            }
+        } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
+        return InlineStrategy.ENUM_PLAIN;
+    }
 
-        // Enum: check for fromString first (mirroring ParamValueConverter order)
-        if (type.isEnum()) {
-            try {
-                Method fs = type.getDeclaredMethod(METHOD_FROM_STRING, String.class);
-                if (Modifier.isStatic(fs.getModifiers()) && Modifier.isPublic(fs.getModifiers())) {
-                    return InlineStrategy.ENUM_WITH_FROM_STRING;
-                }
-            } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
-            return InlineStrategy.ENUM_PLAIN;
-        }
-
-        // valueOf(String) — public static
+    /** A public static valueOf(String), a public static fromString(String), then a public (String) constructor. */
+    private static InlineStrategy factoryStrategy(Class<?> type) {
         try {
             Method valueOf = type.getDeclaredMethod(METHOD_VALUE_OF, String.class);
             if (Modifier.isStatic(valueOf.getModifiers()) && Modifier.isPublic(valueOf.getModifiers())) {
@@ -637,7 +649,6 @@ public final class RuntimeAdapterGenerator {
             }
         } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
 
-        // fromString(String) — public static
         try {
             Method fromString = type.getDeclaredMethod(METHOD_FROM_STRING, String.class);
             if (Modifier.isStatic(fromString.getModifiers()) && Modifier.isPublic(fromString.getModifiers())) {
@@ -645,13 +656,12 @@ public final class RuntimeAdapterGenerator {
             }
         } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
 
-        // (String) constructor — public
         try {
             Constructor<?> c = type.getDeclaredConstructor(String.class);
             if (Modifier.isPublic(c.getModifiers())) {
                 return InlineStrategy.STRING_CTOR;
             }
-        } catch (NoSuchMethodException ignored) {}
+        } catch (NoSuchMethodException _) { /* no String constructor either */ }
 
         // Can't safely inline
         return InlineStrategy.FALLBACK;
@@ -1191,36 +1201,36 @@ public final class RuntimeAdapterGenerator {
      */
     private static void emitUnbox(CodeBuilder cob, Class<?> primitive) {
         if (primitive == int.class) {
-            cob.checkcast(ClassDesc.of("java.lang.Integer"));
-            cob.invokevirtual(ClassDesc.of("java.lang.Integer"), "intValue",
+            cob.checkcast(CD_Integer);
+            cob.invokevirtual(CD_Integer, "intValue",
                     MethodTypeDesc.of(ConstantDescs.CD_int));
         } else if (primitive == long.class) {
-            cob.checkcast(ClassDesc.of("java.lang.Long"));
-            cob.invokevirtual(ClassDesc.of("java.lang.Long"), "longValue",
+            cob.checkcast(CD_Long_w);
+            cob.invokevirtual(CD_Long_w, "longValue",
                     MethodTypeDesc.of(ConstantDescs.CD_long));
         } else if (primitive == double.class) {
-            cob.checkcast(ClassDesc.of("java.lang.Double"));
-            cob.invokevirtual(ClassDesc.of("java.lang.Double"), "doubleValue",
+            cob.checkcast(CD_Double_w);
+            cob.invokevirtual(CD_Double_w, "doubleValue",
                     MethodTypeDesc.of(ConstantDescs.CD_double));
         } else if (primitive == float.class) {
-            cob.checkcast(ClassDesc.of("java.lang.Float"));
-            cob.invokevirtual(ClassDesc.of("java.lang.Float"), "floatValue",
+            cob.checkcast(CD_Float_w);
+            cob.invokevirtual(CD_Float_w, "floatValue",
                     MethodTypeDesc.of(ConstantDescs.CD_float));
         } else if (primitive == boolean.class) {
-            cob.checkcast(ClassDesc.of("java.lang.Boolean"));
-            cob.invokevirtual(ClassDesc.of("java.lang.Boolean"), "booleanValue",
+            cob.checkcast(CD_Boolean_w);
+            cob.invokevirtual(CD_Boolean_w, "booleanValue",
                     MethodTypeDesc.of(ConstantDescs.CD_boolean));
         } else if (primitive == short.class) {
-            cob.checkcast(ClassDesc.of("java.lang.Short"));
-            cob.invokevirtual(ClassDesc.of("java.lang.Short"), "shortValue",
+            cob.checkcast(CD_Short_w);
+            cob.invokevirtual(CD_Short_w, "shortValue",
                     MethodTypeDesc.of(ConstantDescs.CD_short));
         } else if (primitive == byte.class) {
-            cob.checkcast(ClassDesc.of("java.lang.Byte"));
-            cob.invokevirtual(ClassDesc.of("java.lang.Byte"), "byteValue",
+            cob.checkcast(CD_Byte_w);
+            cob.invokevirtual(CD_Byte_w, "byteValue",
                     MethodTypeDesc.of(ConstantDescs.CD_byte));
         } else if (primitive == char.class) {
-            cob.checkcast(ClassDesc.of("java.lang.Character"));
-            cob.invokevirtual(ClassDesc.of("java.lang.Character"), "charValue",
+            cob.checkcast(CD_Character_w);
+            cob.invokevirtual(CD_Character_w, "charValue",
                     MethodTypeDesc.of(ConstantDescs.CD_char));
         }
     }
@@ -1231,29 +1241,29 @@ public final class RuntimeAdapterGenerator {
      */
     private static void emitBox(CodeBuilder cob, Class<?> primitive) {
         if (primitive == int.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Integer"), METHOD_VALUE_OF,
-                    MethodTypeDesc.of(ClassDesc.of("java.lang.Integer"), ConstantDescs.CD_int));
+            cob.invokestatic(CD_Integer, METHOD_VALUE_OF,
+                    MethodTypeDesc.of(CD_Integer, ConstantDescs.CD_int));
         } else if (primitive == long.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Long"), METHOD_VALUE_OF,
-                    MethodTypeDesc.of(ClassDesc.of("java.lang.Long"), ConstantDescs.CD_long));
+            cob.invokestatic(CD_Long_w, METHOD_VALUE_OF,
+                    MethodTypeDesc.of(CD_Long_w, ConstantDescs.CD_long));
         } else if (primitive == double.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Double"), METHOD_VALUE_OF,
-                    MethodTypeDesc.of(ClassDesc.of("java.lang.Double"), ConstantDescs.CD_double));
+            cob.invokestatic(CD_Double_w, METHOD_VALUE_OF,
+                    MethodTypeDesc.of(CD_Double_w, ConstantDescs.CD_double));
         } else if (primitive == float.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Float"), METHOD_VALUE_OF,
-                    MethodTypeDesc.of(ClassDesc.of("java.lang.Float"), ConstantDescs.CD_float));
+            cob.invokestatic(CD_Float_w, METHOD_VALUE_OF,
+                    MethodTypeDesc.of(CD_Float_w, ConstantDescs.CD_float));
         } else if (primitive == boolean.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Boolean"), METHOD_VALUE_OF,
-                    MethodTypeDesc.of(ClassDesc.of("java.lang.Boolean"), ConstantDescs.CD_boolean));
+            cob.invokestatic(CD_Boolean_w, METHOD_VALUE_OF,
+                    MethodTypeDesc.of(CD_Boolean_w, ConstantDescs.CD_boolean));
         } else if (primitive == short.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Short"), METHOD_VALUE_OF,
-                    MethodTypeDesc.of(ClassDesc.of("java.lang.Short"), ConstantDescs.CD_short));
+            cob.invokestatic(CD_Short_w, METHOD_VALUE_OF,
+                    MethodTypeDesc.of(CD_Short_w, ConstantDescs.CD_short));
         } else if (primitive == byte.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Byte"), METHOD_VALUE_OF,
-                    MethodTypeDesc.of(ClassDesc.of("java.lang.Byte"), ConstantDescs.CD_byte));
+            cob.invokestatic(CD_Byte_w, METHOD_VALUE_OF,
+                    MethodTypeDesc.of(CD_Byte_w, ConstantDescs.CD_byte));
         } else if (primitive == char.class) {
-            cob.invokestatic(ClassDesc.of("java.lang.Character"), METHOD_VALUE_OF,
-                    MethodTypeDesc.of(ClassDesc.of("java.lang.Character"), ConstantDescs.CD_char));
+            cob.invokestatic(CD_Character_w, METHOD_VALUE_OF,
+                    MethodTypeDesc.of(CD_Character_w, ConstantDescs.CD_char));
         }
     }
 

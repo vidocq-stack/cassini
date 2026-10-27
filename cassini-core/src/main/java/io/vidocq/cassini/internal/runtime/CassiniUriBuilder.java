@@ -460,6 +460,13 @@ public final class CassiniUriBuilder extends UriBuilder {
                 seen, posIdx, Comp.PATH, encodeSlash, valuesAlreadyEncoded);
         String fragmentOut = substituteLiteralAndTemplates(fragment, values, valueMap,
                 seen, posIdx, Comp.FRAGMENT, true, valuesAlreadyEncoded);
+        String queryOut = buildQuery(values, valueMap, seen, posIdx, valuesAlreadyEncoded);
+        return assemble(pathOut, queryOut, fragmentOut);
+    }
+
+    /** The query with its templates substituted, or null when there is none. */
+    private String buildQuery(Object[] values, Map<String, ?> valueMap, Map<String, Object> seen, int[] posIdx,
+                              boolean valuesAlreadyEncoded) {
         StringBuilder q = new StringBuilder();
         for (var e : query.entrySet()) {
             for (String v : e.getValue()) {
@@ -472,27 +479,32 @@ public final class CassiniUriBuilder extends UriBuilder {
                 }
             }
         }
-        String queryOut = q.isEmpty() ? null : q.toString();
+        return q.isEmpty() ? null : q.toString();
+    }
 
-        // Raw assembly (the parts are already encoded).
+    /** Raw assembly of the URI (the parts are already encoded). */
+    private URI assemble(String pathOut, String queryOut, String fragmentOut) {
         StringBuilder sb = new StringBuilder();
         if (scheme != null) sb.append(scheme).append(':');
         if (ssp != null && !ssp.isEmpty() && host == null) {
             sb.append(ssp);
         } else {
-            boolean hasAuthority = host != null && !host.isEmpty();
-            if (hasAuthority) {
-                sb.append("//");
-                if (userInfo != null) sb.append(userInfo).append('@');
-                sb.append(host);
-                if (port >= 0) sb.append(':').append(port);
-            }
+            appendAuthority(sb);
             if (pathOut != null) sb.append(pathOut);
             if (queryOut != null) sb.append('?').append(queryOut);
         }
         if (fragmentOut != null) sb.append('#').append(fragmentOut);
         try { return new URI(sb.toString()); }
         catch (URISyntaxException e) { throw new jakarta.ws.rs.core.UriBuilderException(e); }
+    }
+
+    /** {@code //userInfo@host:port} when there is a host. */
+    private void appendAuthority(StringBuilder sb) {
+        if (host == null || host.isEmpty()) return;
+        sb.append("//");
+        if (userInfo != null) sb.append(userInfo).append('@');
+        sb.append(host);
+        if (port >= 0) sb.append(':').append(port);
     }
 
     /** Walks the template: literal segments encoded while preserving
@@ -510,41 +522,62 @@ public final class CassiniUriBuilder extends UriBuilder {
             if (c == '{') {
                 int end = tpl.indexOf('}', i);
                 if (end < 0) break;
-                // Flush literal
-                if (i > litStart) out.append(encode(tpl.substring(litStart, i), comp, true, false));
-                String inside = tpl.substring(i + 1, end).trim();
-                int colon = inside.indexOf(':');
-                String name = colon < 0 ? inside : inside.substring(0, colon).trim();
-                Object val;
-                boolean valEncoded = valuesAlreadyEncoded;
-                // §6: when the value is already pre-encoded (buildFromEncoded*),
-                // any '/' it contains must be preserved — it
-                // represents what the caller chose to emit.
-                boolean valEncodeSlash = !valuesAlreadyEncoded && encodeSlash;
+                appendLiteral(out, tpl, litStart, i, comp);
+                String name = templateName(tpl, i, end);
                 if (resolvedTemplates.containsKey(name)) {
-                    val = resolvedTemplates.get(name);
-                    valEncoded = resolvedTemplatesEncoded.getOrDefault(name, false);
-                    valEncodeSlash = resolvedTemplatesEncodeSlash.getOrDefault(name, encodeSlash);
-                } else if (valueMap != null && valueMap.containsKey(name)) {
-                    val = valueMap.get(name);
-                } else if (seen.containsKey(name)) {
-                    val = seen.get(name);
-                } else if (values != null && posIdx[0] < values.length) {
-                    val = values[posIdx[0]++];
-                    seen.put(name, val);
+                    out.append(encodeResolved(name, comp, encodeSlash));
                 } else {
-                    throw new IllegalArgumentException(
-                            "No value supplied for template parameter " + name);
+                    Object val = suppliedValue(name, values, valueMap, seen, posIdx);
+                    // §6: when the value is already pre-encoded (buildFromEncoded*),
+                    // any '/' it contains must be preserved — it
+                    // represents what the caller chose to emit.
+                    out.append(encodeValue(name, val, comp, valuesAlreadyEncoded,
+                            !valuesAlreadyEncoded && encodeSlash));
                 }
-                if (val == null) throw new IllegalArgumentException(
-                        "Null value supplied for template parameter " + name);
-                out.append(encode(String.valueOf(val), comp, valEncoded, valEncodeSlash));
                 i = end + 1;
                 litStart = i;
             } else { i++; }
         }
-        if (litStart < tpl.length()) out.append(encode(tpl.substring(litStart), comp, true, false));
+        appendLiteral(out, tpl, litStart, tpl.length(), comp);
         return out.toString();
+    }
+
+    /** Appends the encoded literal {@code tpl[from, to)}, if not empty. */
+    private static void appendLiteral(StringBuilder out, String tpl, int from, int to, Comp comp) {
+        if (to > from) out.append(encode(tpl.substring(from, to), comp, true, false));
+    }
+
+    /** The name of the template between the braces at {@code open} and {@code close}, without its regex. */
+    private static String templateName(String tpl, int open, int close) {
+        String inside = tpl.substring(open + 1, close).trim();
+        int colon = inside.indexOf(':');
+        return colon < 0 ? inside : inside.substring(0, colon).trim();
+    }
+
+    /** A template resolved on the builder, encoded as it was resolved. */
+    private String encodeResolved(String name, Comp comp, boolean encodeSlash) {
+        return encodeValue(name, resolvedTemplates.get(name), comp,
+                resolvedTemplatesEncoded.getOrDefault(name, false),
+                resolvedTemplatesEncodeSlash.getOrDefault(name, encodeSlash));
+    }
+
+    /** The value supplied for a template: by name, then the value already used for it, then the next positional one. */
+    private static Object suppliedValue(String name, Object[] values, Map<String, ?> valueMap,
+                                        Map<String, Object> seen, int[] posIdx) {
+        if (valueMap != null && valueMap.containsKey(name)) return valueMap.get(name);
+        if (seen.containsKey(name)) return seen.get(name);
+        if (values != null && posIdx[0] < values.length) {
+            Object val = values[posIdx[0]++];
+            seen.put(name, val);
+            return val;
+        }
+        throw new IllegalArgumentException("No value supplied for template parameter " + name);
+    }
+
+    private static String encodeValue(String name, Object val, Comp comp, boolean encoded, boolean encodeSlash) {
+        if (val == null) throw new IllegalArgumentException(
+                "Null value supplied for template parameter " + name);
+        return encode(String.valueOf(val), comp, encoded, encodeSlash);
     }
 
     @Override public String toTemplate() {

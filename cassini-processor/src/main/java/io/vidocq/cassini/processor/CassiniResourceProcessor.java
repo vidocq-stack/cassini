@@ -158,51 +158,59 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             return false;
         }
 
+        for (TypeElement resourceType : collectResourceTypes(annotations, roundEnv)) {
+            generateForResource(resourceType);
+        }
+
+        return false;
+    }
+
+    /**
+     * The classes annotated with the processed annotations, in round order. An
+     * {@code @ApplicationPath} class is not a resource: its descriptor is generated on the spot.
+     */
+    private Set<TypeElement> collectResourceTypes(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
         Set<TypeElement> toProcess = new LinkedHashSet<>();
         for (TypeElement annotation : annotations) {
-            if (annotation.getQualifiedName().contentEquals(APPLICATION_PATH)) {
-                for (Element element : roundEnv.getElementsAnnotatedWith(annotation)) {
-                    if (element.getKind() == ElementKind.CLASS) {
-                        processApplication((TypeElement) element);
-                    }
-                }
-                continue;
-            }
+            boolean application = annotation.getQualifiedName().contentEquals(APPLICATION_PATH);
             for (Element element : roundEnv.getElementsAnnotatedWith(annotation)) {
-                if (element.getKind() == ElementKind.CLASS) {
+                if (element.getKind() != ElementKind.CLASS) continue;
+                if (application) {
+                    processApplication((TypeElement) element);
+                } else {
                     toProcess.add((TypeElement) element);
                 }
             }
         }
+        return toProcess;
+    }
 
-        for (TypeElement resourceType : toProcess) {
-            String binaryName = elements.getBinaryName(resourceType).toString();
-            if (processed.contains(binaryName)) continue;
-            processed.add(binaryName);
+    /** Generates the adapter, and for a {@code @Path} class the route table, of a resource once. */
+    private void generateForResource(TypeElement resourceType) {
+        String binaryName = elements.getBinaryName(resourceType).toString();
+        if (processed.contains(binaryName)) return;
+        processed.add(binaryName);
+        try {
+            generateAdapter(resourceType);
+            generatedAdapters.add(binaryName + ADAPTER_SUFFIX);
+        } catch (Exception e) {
+            messager.printMessage(Diagnostic.Kind.ERROR,
+                    "cassini-processor: failed to generate adapter for "
+                            + binaryName + ": " + e.getMessage(),
+                    resourceType);
+        }
+        // Only generate $$CassiniRoutes for @Path classes (not @Provider-only classes)
+        if (hasAnnotation(resourceType, JAKARTA_PATH)) {
             try {
-                generateAdapter(resourceType);
-                generatedAdapters.add(binaryName + ADAPTER_SUFFIX);
+                generateRoutes(resourceType);
+                generatedRoutes.add(binaryName + ROUTES_SUFFIX);
             } catch (Exception e) {
-                messager.printMessage(Diagnostic.Kind.ERROR,
-                        "cassini-processor: failed to generate adapter for "
+                messager.printMessage(Diagnostic.Kind.WARNING,
+                        "cassini-processor: failed to generate routes for "
                                 + binaryName + ": " + e.getMessage(),
                         resourceType);
             }
-            // Only generate $$CassiniRoutes for @Path classes (not @Provider-only classes)
-            if (hasAnnotation(resourceType, JAKARTA_PATH)) {
-                try {
-                    generateRoutes(resourceType);
-                    generatedRoutes.add(binaryName + ROUTES_SUFFIX);
-                } catch (Exception e) {
-                    messager.printMessage(Diagnostic.Kind.WARNING,
-                            "cassini-processor: failed to generate routes for "
-                                    + binaryName + ": " + e.getMessage(),
-                            resourceType);
-                }
-            }
         }
-
-        return false;
     }
 
     // -------------------------------------------------------------------------
@@ -227,17 +235,27 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             generatedApplications.remove(binaryName + APPLICATION_SUFFIX);
             return;
         }
+        writeApplicationDescriptor(type, binaryName + APPLICATION_SUFFIX, applicationPath(type));
+    }
+
+    /** The value of the {@code @ApplicationPath} of {@code type}, or null when it has none. */
+    private static String applicationPath(TypeElement type) {
         String path = null;
         for (var mirror : type.getAnnotationMirrors()) {
-            if (((TypeElement) mirror.getAnnotationType().asElement()).getQualifiedName().contentEquals(APPLICATION_PATH)) {
-                for (var entry : mirror.getElementValues().entrySet()) {
-                    if (entry.getKey().getSimpleName().contentEquals(VALUE)) {
-                        path = (String) entry.getValue().getValue();
-                    }
+            if (!((TypeElement) mirror.getAnnotationType().asElement()).getQualifiedName().contentEquals(APPLICATION_PATH)) {
+                continue;
+            }
+            for (var entry : mirror.getElementValues().entrySet()) {
+                if (entry.getKey().getSimpleName().contentEquals(VALUE)) {
+                    path = (String) entry.getValue().getValue();
                 }
             }
         }
-        String name = binaryName + APPLICATION_SUFFIX;
+        return path;
+    }
+
+    /** Writes the {@code $$CassiniApplication} source {@code name} of {@code type}. */
+    private void writeApplicationDescriptor(TypeElement type, String name, String path) {
         int lastDot = name.lastIndexOf('.');
         String pkg = lastDot > 0 ? name.substring(0, lastDot) : "";
         String simple = lastDot > 0 ? name.substring(lastDot + 1) : name;
@@ -317,44 +335,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             w.println(OVERRIDE);
             w.println("    public List<RouteDescriptor> routes() { return List.of(); }");
         } else {
-            w.println(OVERRIDE);
-            w.println("    public List<RouteDescriptor> routes() {");
-            if (routes.methods.isEmpty()) {
-                w.println("        return List.of();");
-            } else {
-                w.println("        return List.of(");
-                for (int i = 0; i < routes.methods.size(); i++) {
-                    RouteMethodModel rm = routes.methods.get(i);
-                    boolean last = (i == routes.methods.size() - 1);
-                    w.println("            new RouteDescriptor(");
-                    w.println(INDENT_16 + rm.beanClassLiteral + ",");
-                    w.println(INDENT_16_QUOTE + escapeString(rm.methodName) + "\",");
-                    // paramTypeNames
-                    if (rm.paramTypeNames.isEmpty()) {
-                        w.println("                new String[0],");
-                    } else {
-                        w.print("                new String[]{");
-                        for (int j = 0; j < rm.paramTypeNames.size(); j++) {
-                            if (j > 0) w.print(", ");
-                            w.print("\"" + escapeString(rm.paramTypeNames.get(j)) + "\"");
-                        }
-                        w.println("},");
-                    }
-                    w.println(INDENT_16_QUOTE + escapeString(rm.httpMethod) + "\",");
-                    w.println(INDENT_16_QUOTE + escapeString(rm.pathTemplate) + "\",");
-                    // produces
-                    emitStringArray(w, rm.produces, INDENT_16);
-                    w.println(",");
-                    // consumes
-                    emitStringArray(w, rm.consumes, INDENT_16);
-                    w.println(",");
-                    w.print(INDENT_16 + rm.classPathLiterals + ")");
-                    if (!last) w.println(",");
-                    else w.println();
-                }
-                w.println("        );");
-            }
-            w.println(CLOSE_METHOD);
+            emitRoutesMethod(w, routes.methods);
         }
 
         w.println();
@@ -362,6 +343,51 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         emitResourceClass(w, resourceBinaryName);
 
         w.println("}");
+    }
+
+    /** Emits {@code routes()} returning one {@code RouteDescriptor} per direct resource method. */
+    private void emitRoutesMethod(PrintWriter w, List<RouteMethodModel> methods) {
+        w.println(OVERRIDE);
+        w.println("    public List<RouteDescriptor> routes() {");
+        if (methods.isEmpty()) {
+            w.println("        return List.of();");
+        } else {
+            w.println("        return List.of(");
+            for (int i = 0; i < methods.size(); i++) {
+                emitRouteDescriptor(w, methods.get(i), i == methods.size() - 1);
+            }
+            w.println("        );");
+        }
+        w.println(CLOSE_METHOD);
+    }
+
+    /** Emits the {@code new RouteDescriptor(...)} of one method, followed by a comma unless last. */
+    private void emitRouteDescriptor(PrintWriter w, RouteMethodModel rm, boolean last) {
+        w.println("            new RouteDescriptor(");
+        w.println(INDENT_16 + rm.beanClassLiteral + ",");
+        w.println(INDENT_16_QUOTE + escapeString(rm.methodName) + "\",");
+        // paramTypeNames
+        if (rm.paramTypeNames.isEmpty()) {
+            w.println("                new String[0],");
+        } else {
+            w.print("                new String[]{");
+            for (int j = 0; j < rm.paramTypeNames.size(); j++) {
+                if (j > 0) w.print(", ");
+                w.print("\"" + escapeString(rm.paramTypeNames.get(j)) + "\"");
+            }
+            w.println("},");
+        }
+        w.println(INDENT_16_QUOTE + escapeString(rm.httpMethod) + "\",");
+        w.println(INDENT_16_QUOTE + escapeString(rm.pathTemplate) + "\",");
+        // produces
+        emitStringArray(w, rm.produces, INDENT_16);
+        w.println(",");
+        // consumes
+        emitStringArray(w, rm.consumes, INDENT_16);
+        w.println(",");
+        w.print(INDENT_16 + rm.classPathLiterals + ")");
+        if (!last) w.println(",");
+        else w.println();
     }
 
     private void emitStringArray(PrintWriter w, List<String> values, String indent) {
@@ -470,23 +496,26 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                 result.add(ee);
             }
         }
-        // superclass
+        for (TypeElement parent : supertypes(type)) {
+            collectMethodsRecursive(parent, seen, result);
+        }
+    }
+
+    /** The superclass of {@code type} (if any), then its declared interfaces (for default methods). */
+    private static List<TypeElement> supertypes(TypeElement type) {
+        List<TypeElement> out = new ArrayList<>();
         TypeMirror superMirror = type.getSuperclass();
-        if (superMirror != null && superMirror.getKind() != TypeKind.NONE) {
-            Element superElem = ((DeclaredType) superMirror).asElement();
-            if (superElem instanceof TypeElement superType) {
-                collectMethodsRecursive(superType, seen, result);
-            }
+        if (superMirror != null && superMirror.getKind() != TypeKind.NONE
+                && ((DeclaredType) superMirror).asElement() instanceof TypeElement superType) {
+            out.add(superType);
         }
-        // interfaces (for default methods)
         for (TypeMirror iface : type.getInterfaces()) {
-            if (iface.getKind() == TypeKind.DECLARED) {
-                Element ifaceElem = ((DeclaredType) iface).asElement();
-                if (ifaceElem instanceof TypeElement ifaceType) {
-                    collectMethodsRecursive(ifaceType, seen, result);
-                }
+            if (iface.getKind() == TypeKind.DECLARED
+                    && ((DeclaredType) iface).asElement() instanceof TypeElement ifaceType) {
+                out.add(ifaceType);
             }
         }
+        return out;
     }
 
     /**
@@ -1068,33 +1097,10 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             elementTypeLiteral = genericElementTypeLiteral(fType);
         }
 
-        String paramKind = null;
-        String paramAnnotationValue = null;
-
-        String path = annotationValue(ve, "jakarta.ws.rs.PathParam", VALUE);
-        if (path != null) { paramKind = "PATH"; paramAnnotationValue = path; }
-        if (paramKind == null) {
-            String query = annotationValue(ve, "jakarta.ws.rs.QueryParam", VALUE);
-            if (query != null) { paramKind = "QUERY"; paramAnnotationValue = query; }
-        }
-        if (paramKind == null) {
-            String header = annotationValue(ve, "jakarta.ws.rs.HeaderParam", VALUE);
-            if (header != null) { paramKind = "HEADER"; paramAnnotationValue = header; }
-        }
-        if (paramKind == null) {
-            String cookie = annotationValue(ve, "jakarta.ws.rs.CookieParam", VALUE);
-            if (cookie != null) { paramKind = "COOKIE"; paramAnnotationValue = cookie; }
-        }
-        if (paramKind == null) {
-            String matrix = annotationValue(ve, "jakarta.ws.rs.MatrixParam", VALUE);
-            if (matrix != null) { paramKind = "MATRIX"; paramAnnotationValue = matrix; }
-        }
-        if (paramKind == null) {
-            String form = annotationValue(ve, "jakarta.ws.rs.FormParam", VALUE);
-            if (form != null) { paramKind = "FORM"; paramAnnotationValue = form; }
-        }
-
-        if (paramKind == null) return null; // not injectable
+        ParamBinding binding = paramBinding(ve);
+        if (binding == null) return null; // not injectable
+        String paramKind = binding.kind();
+        String paramAnnotationValue = binding.value();
 
         // M6c: resolve the inline coercion strategy for this @*Param field.
         InlineStrategy inlineStrategy = resolveInlineStrategy(fType);
@@ -1109,6 +1115,30 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                 false, false, paramKind, paramAnnotationValue, encoded, defaultValue,
                 rawTypeLiteral, elementTypeLiteral,
                 inlineStrategy, elementStrategy, rawJavaTypeName, elementJavaTypeName, rawIsPrimitive);
+    }
+
+    /** The {@code @*Param} annotations a field can be injected through, in lookup order, with their kind. */
+    private static final String[][] PARAM_ANNOTATIONS = {
+            {"jakarta.ws.rs.PathParam", "PATH"},
+            {"jakarta.ws.rs.QueryParam", "QUERY"},
+            {"jakarta.ws.rs.HeaderParam", "HEADER"},
+            {"jakarta.ws.rs.CookieParam", "COOKIE"},
+            {"jakarta.ws.rs.MatrixParam", "MATRIX"},
+            {"jakarta.ws.rs.FormParam", "FORM"},
+    };
+
+    /** The kind ({@code PATH}, {@code QUERY}, ...) and annotation value of a {@code @*Param} field. */
+    private record ParamBinding(String kind, String value) {}
+
+    /** The binding of the first {@code @*Param} on {@code ve}, or null when the field carries none. */
+    private ParamBinding paramBinding(VariableElement ve) {
+        for (String[] candidate : PARAM_ANNOTATIONS) {
+            String value = annotationValue(ve, candidate[0], VALUE);
+            if (value != null) {
+                return new ParamBinding(candidate[1], value);
+            }
+        }
+        return null;
     }
 
     // -------------------------------------------------------------------------
@@ -1158,22 +1188,9 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             result.add(mm);
         }
 
-        // Recurse into superclass
-        TypeMirror superMirror = type.getSuperclass();
-        if (superMirror != null && superMirror.getKind() != TypeKind.NONE) {
-            Element superElem = ((DeclaredType) superMirror).asElement();
-            if (superElem instanceof TypeElement superType) {
-                collectPublicMethods(superType, seen, result);
-            }
-        }
-        // Also recurse into interfaces (for default methods)
-        for (TypeMirror iface : type.getInterfaces()) {
-            if (iface.getKind() == TypeKind.DECLARED) {
-                Element ifaceElem = ((DeclaredType) iface).asElement();
-                if (ifaceElem instanceof TypeElement ifaceType) {
-                    collectPublicMethods(ifaceType, seen, result);
-                }
-            }
+        // Recurse into the superclass, then the interfaces (for default methods)
+        for (TypeElement parent : supertypes(type)) {
+            collectPublicMethods(parent, seen, result);
         }
     }
 

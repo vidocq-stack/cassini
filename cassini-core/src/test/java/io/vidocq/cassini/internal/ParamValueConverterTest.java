@@ -36,6 +36,47 @@ class ParamValueConverterTest {
 
     enum Kind { SMALL, LARGE }
 
+    /** An enum whose fromString wins over valueOf (§3.2). */
+    public enum Size {
+        S, M;
+
+        public static Size fromString(String raw) {
+            return "small".equals(raw) ? S : M;
+        }
+    }
+
+    /** A type built through its String constructor. */
+    public static final class Label {
+        final String text;
+
+        public Label(String text) {
+            this.text = text;
+        }
+    }
+
+    @Test
+    void floatingPointCharactersEnumsAndFactories() {
+        assertEquals(1.5f, ParamValueConverter.coerceSingle(Float.class, "1.5"));
+        assertEquals(2.5d, ParamValueConverter.coerceSingle(double.class, "2.5"));
+        assertEquals('c', ParamValueConverter.coerceSingle(char.class, "cat"));
+        assertEquals((byte) 3, ParamValueConverter.coerceSingle(Byte.class, "3"));
+        assertEquals((short) 4, ParamValueConverter.coerceSingle(short.class, "4"));
+        assertEquals(Kind.LARGE, ParamValueConverter.coerceSingle(Kind.class, "LARGE"));
+        assertNull(ParamValueConverter.coerceSingle(Kind.class, "HUGE"));
+        assertEquals(Size.S, ParamValueConverter.coerceSingle(Size.class, "small"));
+        assertEquals("tag", ((Label) ParamValueConverter.coerceSingle(Label.class, "tag")).text);
+        assertEquals(UUID.fromString("123e4567-e89b-12d3-a456-426614174000"),
+                ParamValueConverter.coerceSingle(UUID.class, "123e4567-e89b-12d3-a456-426614174000"));
+    }
+
+    @Test
+    void anEmptyCharOrATypeWithoutConverterIsABadRequest() {
+        org.junit.jupiter.api.Assertions.assertThrows(jakarta.ws.rs.WebApplicationException.class,
+                () -> ParamValueConverter.coerceSingle(char.class, ""));
+        org.junit.jupiter.api.Assertions.assertThrows(jakarta.ws.rs.WebApplicationException.class,
+                () -> ParamValueConverter.coerceSingle(Object.class, "x"));
+    }
+
     @Test
     void primitivesAndWrappers() {
         assertEquals(42, ParamValueConverter.coerceSingle(int.class, "42"));

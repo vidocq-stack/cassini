@@ -60,7 +60,7 @@ class XmlExternalEntityTest {
         try {
             new MessageBodyRegistry.SourceWriter().writeTo(source, StreamSource.class, StreamSource.class,
                     new Annotation[0], MediaType.APPLICATION_XML_TYPE, null, out);
-        } catch (IOException refused) {
+        } catch (IOException _) {
             // Refusing the document is fine: what matters is that the file never reaches the output.
         }
         assertFalse(out.toString(StandardCharsets.UTF_8).contains(SECRET), out.toString(StandardCharsets.UTF_8));
@@ -77,7 +77,7 @@ class XmlExternalEntityTest {
                     text.append(reader.getText());
                 }
             }
-        } catch (XMLStreamException refused) {
+        } catch (XMLStreamException _) {
             // Refusing the document is fine: what matters is that the file is never read.
         }
         assertFalse(text.toString().contains(SECRET), text.toString());

@@ -60,15 +60,17 @@ public record RouteDescriptor(
     /** Value equality: the arrays are compared by content, not by identity. */
     @Override
     public boolean equals(Object o) {
-        return o instanceof RouteDescriptor that
-                && classPathLiterals == that.classPathLiterals
-                && java.util.Objects.equals(beanClass, that.beanClass)
-                && java.util.Objects.equals(methodName, that.methodName)
-                && java.util.Arrays.equals(paramTypeNames, that.paramTypeNames)
-                && java.util.Objects.equals(httpMethod, that.httpMethod)
-                && java.util.Objects.equals(pathTemplate, that.pathTemplate)
-                && java.util.Arrays.equals(produces, that.produces)
-                && java.util.Arrays.equals(consumes, that.consumes);
+        return o instanceof RouteDescriptor(Class<?> otherBean, String otherMethod, String[] otherParams,
+                String otherVerb, String otherTemplate, String[] otherProduces, String[] otherConsumes,
+                int otherLiterals)
+                && classPathLiterals == otherLiterals
+                && java.util.Objects.equals(beanClass, otherBean)
+                && java.util.Objects.equals(methodName, otherMethod)
+                && java.util.Arrays.equals(paramTypeNames, otherParams)
+                && java.util.Objects.equals(httpMethod, otherVerb)
+                && java.util.Objects.equals(pathTemplate, otherTemplate)
+                && java.util.Arrays.equals(produces, otherProduces)
+                && java.util.Arrays.equals(consumes, otherConsumes);
     }
 
     @Override

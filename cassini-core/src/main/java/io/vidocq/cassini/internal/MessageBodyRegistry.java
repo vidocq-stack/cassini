@@ -571,37 +571,41 @@ public final class MessageBodyRegistry {
         @Override public Object readFrom(Class<Object> t, Type gt, Annotation[] a, MediaType mt,
                                          MultivaluedMap<String, String> h, InputStream in) throws IOException {
             String s = new String(in.readAllBytes(), charset(mt));
-            Class<?> c = t;
             try {
-                if (c == Boolean.class || c == boolean.class) {
-                    // Boolean.valueOf is permissive — reject non "true/false" to
-                    // be compliant with §4.2.3 (empty/invalid body → 400).
-                    if (!("true".equalsIgnoreCase(s) || "false".equalsIgnoreCase(s))) {
-                        throw new jakarta.ws.rs.BadRequestException(
-                                "Invalid Boolean body: '" + s + "'");
-                    }
-                    return Boolean.valueOf(s);
-                }
-                if (c == Character.class || c == char.class) {
-                    if (s.isEmpty()) throw new jakarta.ws.rs.BadRequestException(
-                            "Empty Character body");
-                    return Character.valueOf(s.charAt(0));
-                }
-                if (c == Byte.class || c == byte.class) return Byte.valueOf(s);
-                if (c == Short.class || c == short.class) return Short.valueOf(s);
-                if (c == Integer.class || c == int.class) return Integer.valueOf(s);
-                if (c == Long.class || c == long.class) return Long.valueOf(s);
-                if (c == Float.class || c == float.class) return Float.valueOf(s);
-                if (c == Double.class || c == double.class) return Double.valueOf(s);
-                if (c == java.math.BigDecimal.class) return new java.math.BigDecimal(s);
-                if (c == java.math.BigInteger.class) return new java.math.BigInteger(s);
-                if (c == Number.class) return new java.math.BigDecimal(s);
-                return s;
+                return parsePrimitive(t, s);
             } catch (NumberFormatException | ArithmeticException _) {
-                // §4.2.4 : un body inparsable pour un MBR standard → 400.
+                // §4.2.4: an unparsable body for a standard MBR → 400.
                 throw new jakarta.ws.rs.BadRequestException(
-                        "Invalid body for " + c.getSimpleName() + ": '" + s + "'");
+                        "Invalid body for " + t.getSimpleName() + ": '" + s + "'");
             }
+        }
+
+        private static Object parsePrimitive(Class<?> c, String s) {
+            if (c == Boolean.class || c == boolean.class) return parseBoolean(s);
+            if (c == Character.class || c == char.class) return parseCharacter(s);
+            if (c == Byte.class || c == byte.class) return Byte.valueOf(s);
+            if (c == Short.class || c == short.class) return Short.valueOf(s);
+            if (c == Integer.class || c == int.class) return Integer.valueOf(s);
+            if (c == Long.class || c == long.class) return Long.valueOf(s);
+            if (c == Float.class || c == float.class) return Float.valueOf(s);
+            if (c == Double.class || c == double.class) return Double.valueOf(s);
+            if (c == java.math.BigDecimal.class || c == Number.class) return new java.math.BigDecimal(s);
+            if (c == java.math.BigInteger.class) return new java.math.BigInteger(s);
+            return s;
+        }
+
+        private static Boolean parseBoolean(String s) {
+            // Boolean.valueOf is permissive — reject non "true/false" to
+            // be compliant with §4.2.3 (empty/invalid body → 400).
+            if (!("true".equalsIgnoreCase(s) || "false".equalsIgnoreCase(s))) {
+                throw new jakarta.ws.rs.BadRequestException("Invalid Boolean body: '" + s + "'");
+            }
+            return Boolean.valueOf(s);
+        }
+
+        private static Character parseCharacter(String s) {
+            if (s.isEmpty()) throw new jakarta.ws.rs.BadRequestException("Empty Character body");
+            return s.charAt(0);
         }
     }
 

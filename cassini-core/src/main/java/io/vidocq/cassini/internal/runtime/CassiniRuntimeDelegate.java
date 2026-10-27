@@ -179,15 +179,15 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
             for (int i = 0; i < parts.length; i++) {
                 String p = parts[i].trim();
                 int eq = p.indexOf('=');
-                String k = eq < 0 ? p : p.substring(0, eq).trim();
-                String v = eq < 0 ? "" : stripQuotes(p.substring(eq + 1).trim());
+                String k = attributeName(p, eq);
+                String v = attributeValue(p, eq);
                 if (i == 0) { name = k; value = v; continue; }
                 switch (k.toLowerCase(java.util.Locale.ROOT)) {
                     case "path" -> path = v;
                     case "domain" -> domain = v;
                     case "comment" -> comment = v;
-                    case "max-age" -> { try { maxAge = Integer.parseInt(v); } catch (NumberFormatException _) { /* not a number: the default is kept */ } }
-                    case "version" -> { try { version = Integer.parseInt(v); } catch (NumberFormatException _) { /* not a number: the default is kept */ } }
+                    case "max-age" -> maxAge = parseIntOr(v, maxAge);
+                    case "version" -> version = parseIntOr(v, version);
                     case "secure" -> secure = true;
                     case "httponly" -> httpOnly = true;
                     default -> { /* unknown attribute: ignored, like before */ }
@@ -227,10 +227,10 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
                 String p = pair.trim();
                 if (p.isEmpty()) continue;
                 int eq = p.indexOf('=');
-                String k = eq < 0 ? p : p.substring(0, eq).trim();
-                String v = eq < 0 ? "" : stripQuotes(p.substring(eq + 1).trim());
+                String k = attributeName(p, eq);
+                String v = attributeValue(p, eq);
                 if ("$Version".equalsIgnoreCase(k)) {
-                    try { version = Integer.parseInt(v); } catch (Exception _) { /* not a number: the default version is kept */ }
+                    version = parseIntOr(v, version);
                 } else if ("$Path".equalsIgnoreCase(k)) {
                     path = v;
                 } else if ("$Domain".equalsIgnoreCase(k)) {
@@ -281,8 +281,8 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
                 String t = tok.trim();
                 if (t.isEmpty()) continue;
                 int eq = t.indexOf('=');
-                String name = eq < 0 ? t : t.substring(0, eq).trim();
-                String value = eq < 0 ? "" : stripQuotes(t.substring(eq + 1).trim());
+                String name = attributeName(t, eq);
+                String value = attributeValue(t, eq);
                 switch (name.toLowerCase(java.util.Locale.ROOT)) {
                     case "no-cache" -> {
                         cc.setNoCache(true);
@@ -296,8 +296,8 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
                     }
                     case "must-revalidate" -> cc.setMustRevalidate(true);
                     case "proxy-revalidate" -> cc.setProxyRevalidate(true);
-                    case "max-age" -> { try { cc.setMaxAge(Integer.parseInt(value)); } catch (NumberFormatException _) { /* not a number: the default is kept */ } }
-                    case "s-maxage" -> { try { cc.setSMaxAge(Integer.parseInt(value)); } catch (NumberFormatException _) { /* not a number: the default is kept */ } }
+                    case "max-age" -> cc.setMaxAge(parseIntOr(value, cc.getMaxAge()));
+                    case "s-maxage" -> cc.setSMaxAge(parseIntOr(value, cc.getSMaxAge()));
                     // "public" and any unknown directive land in the extension map so
                     // they survive a round-trip (CacheControl does not model them).
                     default -> cc.getCacheExtension().put(name, value);
@@ -403,6 +403,25 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
         }
         @Override public String toString(java.util.Date d) {
             return FMT.format(d.toInstant().atOffset(java.time.ZoneOffset.UTC));
+        }
+    }
+
+    /** The name of a {@code name=value} attribute, or the whole trimmed attribute when it has no '='. */
+    private static String attributeName(String attribute, int eq) {
+        return eq < 0 ? attribute : attribute.substring(0, eq).trim();
+    }
+
+    /** The unquoted value of a {@code name=value} attribute, or "" when it has no '='. */
+    private static String attributeValue(String attribute, int eq) {
+        return eq < 0 ? "" : stripQuotes(attribute.substring(eq + 1).trim());
+    }
+
+    /** {@code v} as an int, or {@code fallback} when it is not a number. */
+    private static int parseIntOr(String v, int fallback) {
+        try {
+            return Integer.parseInt(v);
+        } catch (NumberFormatException _) {
+            return fallback;
         }
     }
 
@@ -583,6 +602,13 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
             return new StubLink(rel, l.getParams());
         }
 
+        /** The name of the template between the braces at {@code open} and {@code close}, without its regex. */
+        private static String templateName(String tpl, int open, int close) {
+            String name = tpl.substring(open + 1, close).trim();
+            int colon = name.indexOf(':');
+            return colon < 0 ? name : name.substring(0, colon).trim();
+        }
+
         private static String substituteTemplates(String tpl, Object[] values) {
             if (tpl.indexOf('{') < 0) return tpl;
             StringBuilder out = new StringBuilder();
@@ -593,9 +619,7 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
                 if (c == '{') {
                     int end = tpl.indexOf('}', i);
                     if (end < 0) { out.append(tpl, i, tpl.length()); break; }
-                    String name = tpl.substring(i + 1, end).trim();
-                    int colon = name.indexOf(':');
-                    if (colon >= 0) name = name.substring(0, colon).trim();
+                    String name = templateName(tpl, i, end);
                     Object val;
                     if (seen.containsKey(name)) val = seen.get(name);
                     else if (pos < values.length) { val = values[pos++]; seen.put(name, val); }

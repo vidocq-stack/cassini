@@ -150,6 +150,18 @@ class RuntimeAdapterGeneratorTest {
     // ---- P1b invoke fixtures ----
 
     /** Resource with a simple method: takes a @QueryParam int + @Context String-like arg. */
+    /** One identity method per primitive type: the adapter unboxes each argument and boxes each result. */
+    public static class PrimitiveEchoResource {
+        public boolean z(boolean v) { return v; }
+        public byte b(byte v) { return v; }
+        public short s(short v) { return v; }
+        public char c(char v) { return v; }
+        public int i(int v) { return v; }
+        public long l(long v) { return v; }
+        public float f(float v) { return v; }
+        public double d(double v) { return v; }
+    }
+
     static class InvokeResource {
         /** Returns arg0 + arg1. */
         public int add(int a, int b) { return a + b; }
@@ -454,6 +466,22 @@ class RuntimeAdapterGeneratorTest {
         InvokeResource target = new InvokeResource();
         Object result = adapter.invoke(mid, target, new Object[]{3, 4});
         assertEquals(7, result, "direct invoke of add(3,4) must return 7");
+    }
+
+    @Test
+    void invokeUnboxesAndBoxesEveryPrimitiveType() throws Throwable {
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(PrimitiveEchoResource.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+        var methodIds = RuntimeAdapterGenerator.collectMethods(PrimitiveEchoResource.class);
+        var target = new PrimitiveEchoResource();
+        Object[][] cases = {
+                {"z", boolean.class, true}, {"b", byte.class, (byte) 1}, {"s", short.class, (short) 2},
+                {"c", char.class, 'c'}, {"i", int.class, 3}, {"l", long.class, 4L},
+                {"f", float.class, 5.5f}, {"d", double.class, 6.5d}};
+        for (Object[] c : cases) {
+            java.lang.reflect.Method m = PrimitiveEchoResource.class.getMethod((String) c[0], (Class<?>) c[1]);
+            assertEquals(c[2], adapter.invoke(methodIds.get(m), target, new Object[]{c[2]}), "echo of " + c[1]);
+        }
     }
 
     @Test

@@ -37,9 +37,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class RouteNegotiationTest {
 
     static class Handlers {
-        public void anyType() {}
-        public void anySubtype() {}
-        public void exact() {}
+        public void anyType() { /* routing fixture: never invoked */ }
+        public void anySubtype() { /* routing fixture: never invoked */ }
+        public void exact() { /* routing fixture: never invoked */ }
     }
 
     @BeforeAll
