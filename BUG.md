@@ -266,3 +266,18 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `PropertiesTest`.
 - **Cause**: `CassiniClientConfiguration.putProperty` always `put`; `CassiniInvocationBuilder.property` delegated to it, and the request context started with an empty property map.
 - **Fix**: `putProperty` removes on `null`; the invocation builder keeps its own properties and copies them into the request context of each invocation.
+
+## CASSINI-024 — Client API gaps left open after the coverage pass
+- **Date**: 2026-10-27 — **Status**: OPEN (found while covering `cassini-client` with unit tests; each item is larger than a test-first fix of this pass, so the tests leave them out instead of asserting the current behaviour)
+- **Severity**: low to medium, by item. None of them fails the official TCK run (2670 run, 0 failures, 131 skipped).
+- **Items**:
+  1. `Invocation.Builder.rx()` and `rx(Class)` throw `UnsupportedOperationException`; `rx()` is mandatory (a `CompletionStageRxInvoker`).
+  2. `ClientBuilder.executorService(...)` only backs the `HttpClient`: the async invoker always runs on its own virtual-thread executor. `scheduledExecutorService`, `keyStore`, `trustStore` are ignored, and the `hostnameVerifier` is stored but never applied.
+  3. `WebTarget.register(...)` / `property(...)` change the parent `Client`'s configuration; a target must get its own copy.
+  4. A registered `Feature` is never configured, and `Configuration.isEnabled(...)` is always `false`.
+  5. Closing a `Client` only blocks new `target(...)` calls: existing targets and builders keep sending requests, `register`/`property` keep working.
+  6. `register(Class, int priority)` / `register(Object, int)` take the contracts from `getInterfaces()` of the class itself: a provider that inherits its interface from a superclass gets no contract.
+  7. `ClientRequestContext.getEntityStream()` / `setEntityStream()` throw `UnsupportedOperationException`; `getCookies()`, `getDate()`, `getLanguage()` ignore the headers; the request header names are case-sensitive. `ClientResponseContext` and the client `Response` ignore `Set-Cookie`, `Date`, `Link`, `ETag`, `Allow` and `Last-Modified`.
+  8. Several cookies are joined into one `Cookie` header with `", "`; RFC 6265 §5.4 uses `"; "`.
+  9. An `InputStream` entity with a JSON media type is sent through its `toString()`.
+- **Minimal repro**: per item, through `ClientBuilder.newClient()` against `RecordingServer` (cassini-client tests).
