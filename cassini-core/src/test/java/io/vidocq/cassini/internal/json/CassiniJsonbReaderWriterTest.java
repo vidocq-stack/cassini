@@ -57,6 +57,22 @@ class CassiniJsonbReaderWriterTest {
         assertEquals(7, read(Integer.class, "7"));
     }
 
+    record Todo(long id, String title) {}
+
+    /**
+     * {@code isWriteable} and {@code isReadable} run on every JSON request. They probed the module
+     * path for {@code jakarta.activation.DataSource} with {@code Class.forName} on every call, which
+     * on a deployment without Jakarta Activation built and swallowed a {@code ClassNotFoundException}:
+     * about 1.9 KB and a stack trace per call. The answer is looked up once.
+     */
+    @Test
+    void checkingAJsonTypeLooksNothingUp() {
+        long perCall = io.vidocq.cassini.internal.Allocations.bytesPerCall(
+                () -> assertTrue(reader.isWriteable(Todo.class, Todo.class, new Annotation[0], MediaType.APPLICATION_JSON_TYPE)),
+                1_000, 10_000);
+        assertTrue(perCall < 64, "isWriteable allocates " + perCall + " bytes per call");
+    }
+
     /** §4.2.3: a DataSource has its own provider; the JSON one must leave it alone. */
     @Test
     void aDataSourceIsLeftToItsDedicatedProvider() {

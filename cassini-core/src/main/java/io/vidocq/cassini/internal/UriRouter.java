@@ -74,25 +74,30 @@ public final class UriRouter {
         String p = stripMatrixParams(normalized); // path without matrix params for matching
         // rawParams: values with matrix params, for PathSegment injection §3.2 — a second match
         // of the winner, only when the path carries any.
-        boolean matrix = p != normalized;
+        boolean matrix = normalized.indexOf(';') >= 0;
         List<MatchResult> out = new ArrayList<>(2);
         for (ResourceMethod r : routes) {
             // The verb first: the template regex of a route for another verb never runs.
-            if (!(r.httpMethod().equals("*") || r.httpMethod().equalsIgnoreCase(httpMethod))) continue;
-            Optional<java.util.Map<String, java.util.List<String>>> params = r.template().match(p);
-            if (params.isEmpty()) continue;
-            out.add(new MatchResult(r, params.get(), rawParams(r, normalized, params.get(), matrix)));
+            if (r.httpMethod().equals("*") || r.httpMethod().equalsIgnoreCase(httpMethod)) {
+                addIfMatches(out, r, p, normalized, matrix);
+            }
         }
         // §3.3.5: HEAD → GET fallback (body discard on Bridge side)
         if (out.isEmpty() && "HEAD".equalsIgnoreCase(httpMethod)) {
             for (ResourceMethod r : routes) {
-                if (!"GET".equalsIgnoreCase(r.httpMethod())) continue;
-                Optional<java.util.Map<String, java.util.List<String>>> params = r.template().match(p);
-                if (params.isEmpty()) continue;
-                out.add(new MatchResult(r, params.get(), rawParams(r, normalized, params.get(), matrix)));
+                if ("GET".equalsIgnoreCase(r.httpMethod())) addIfMatches(out, r, p, normalized, matrix);
             }
         }
         return out;
+    }
+
+    /** Adds {@code r} to {@code out} when its template matches {@code p}. */
+    private static void addIfMatches(List<MatchResult> out, ResourceMethod r, String p, String normalized,
+                                     boolean matrix) {
+        Optional<java.util.Map<String, java.util.List<String>>> params = r.template().match(p);
+        if (params.isPresent()) {
+            out.add(new MatchResult(r, params.get(), rawParams(r, normalized, params.get(), matrix)));
+        }
     }
 
     private static java.util.Map<String, java.util.List<String>> rawParams(

@@ -175,10 +175,10 @@ public final class CassiniRequestContext implements ContainerRequestContext {
 
     @Override public boolean containsHeaderString(String n, String sep, java.util.function.Predicate<String> p) {
         // §6.7.4 : recherche case-insensitive (RFC 7230).
-        MultivaluedMap<String, String> headers = headers();
-        List<String> vs = headers.get(n);
+        MultivaluedMap<String, String> all = headers();
+        List<String> vs = all.get(n);
         if (vs == null) {
-            for (var e : headers.entrySet()) {
+            for (var e : all.entrySet()) {
                 if (e.getKey().equalsIgnoreCase(n)) { vs = e.getValue(); break; }
             }
         }

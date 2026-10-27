@@ -48,7 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The entity of a request is buffered before the MessageBodyReader runs. It was read with
  * {@code readAllBytes}, which asks the transport for 16 KB chunks and allocates them, for bodies
  * of a few dozen bytes whose size the {@code Content-Length} header gave: a tenth of the
- * allocation of the Todo benchmark.
+ * allocation of the REST benchmark (VidocqTools/vidocq-benchmarks).
  */
 class EntityReadSizingTest {
 

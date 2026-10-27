@@ -58,17 +58,31 @@ import java.util.Optional;
  */
 public final class MessageBodyRegistry {
 
+    /** What a provider that declares no media type accepts or produces (§4.2.4: {@code *}{@code /*}). */
+    private static final MediaType[] ANY = {MediaType.WILDCARD_TYPE};
+
     /**
      * A registered provider with what its selection needs to know, resolved once at
      * registration: the entity type it declares as its type parameter (§4.2.1) and its declared
      * media types, {@code @Consumes} for a reader and {@code @Produces} for a writer (§4.2.4),
-     * parsed. {@code declared} is {@code null} when the provider declares nothing, which means
-     * the wildcard; it is empty when every declared value was invalid.
+     * parsed. {@code declared} is {@link #ANY} when the provider declares nothing; it is empty
+     * when every declared value was invalid, and then nothing matches it.
      */
-    private record Registered<P>(P instance, Class<?> entityType, MediaType[] declared) {
-        static <P> Registered<P> of(P instance, Class<?> providerInterface, String[] declaredValues) {
-            return new Registered<>(instance, resolveProviderType(instance.getClass(), providerInterface),
-                    parseDeclared(declaredValues));
+    private static final class Registered<P> {
+        final P instance;
+        final Class<?> entityType;
+        final MediaType[] declared;
+
+        Registered(P instance, Class<?> providerInterface, String[] declaredValues) {
+            this.instance = instance;
+            this.entityType = resolveProviderType(instance.getClass(), providerInterface);
+            this.declared = parseDeclared(declaredValues);
+        }
+
+        /** §4.2.1 then §4.2.4 step 1: the provider takes {@code boxed} and the requested media type. */
+        boolean applies(Class<?> boxed, MediaType requested) {
+            boolean typeApplies = entityType == null || entityType == Object.class || entityType.isAssignableFrom(boxed);
+            return typeApplies && declaredCompatible(declared, requested);
         }
     }
 
@@ -92,22 +106,27 @@ public final class MessageBodyRegistry {
 
     private static Registered<MessageBodyReader<?>> registeredReader(MessageBodyReader<?> r) {
         Consumes consumes = r.getClass().getAnnotation(Consumes.class);
-        return Registered.of(r, MessageBodyReader.class, consumes == null ? null : consumes.value());
+        return new Registered<>(r, MessageBodyReader.class, consumes == null ? null : consumes.value());
     }
 
     private static Registered<MessageBodyWriter<?>> registeredWriter(MessageBodyWriter<?> w) {
         Produces produces = w.getClass().getAnnotation(Produces.class);
-        return Registered.of(w, MessageBodyWriter.class, produces == null ? null : produces.value());
+        return new Registered<>(w, MessageBodyWriter.class, produces == null ? null : produces.value());
     }
 
-    /** Parses the declared values once; an invalid one is skipped, as it was on every call. */
+    /**
+     * Parses the declared values once. No value declared means {@link #ANY}; an invalid value is
+     * skipped, as it was when the values were parsed on every call.
+     */
     private static MediaType[] parseDeclared(String[] values) {
-        if (values == null || values.length == 0) return null;
+        if (values == null || values.length == 0) return ANY;
         List<MediaType> parsed = new ArrayList<>(values.length);
         for (String s : values) {
             try {
                 parsed.add(MediaTypes.parse(s));
-            } catch (RuntimeException ignored) {}
+            } catch (RuntimeException _) {
+                // An invalid declared value matches no media type.
+            }
         }
         return parsed.toArray(MediaType[]::new);
     }
@@ -118,23 +137,19 @@ public final class MessageBodyRegistry {
         Class<?> boxed = box(type);
         List<Registered<MessageBodyReader<?>>> candidates = new ArrayList<>();
         for (Registered<MessageBodyReader<?>> reg : readers) {
-            // §4.2.1 : pre-filter by generic type T of the MBR.
-            Class<?> rType = reg.entityType();
-            if (rType != null && rType != Object.class && !rType.isAssignableFrom(boxed)) continue;
-            // §4.2.4 step 1 : pre-filter by compatibility @Consumes ↔ media
-            // type requested. Without @Consumes, the provider is considered as
-            // @Consumes("*/*") and matches everything.
-            if (!declaredCompatible(reg.declared(), mt)) continue;
-            if (reg.instance().isReadable(type, genericType, anns, mt)) candidates.add(reg);
+            // §4.2.1: pre-filter by generic type T of the MBR; §4.2.4 step 1: pre-filter by
+            // compatibility @Consumes ↔ media type requested. Without @Consumes, the provider is
+            // considered as @Consumes("*/*") and matches everything.
+            if (reg.applies(boxed, mt) && reg.instance.isReadable(type, genericType, anns, mt)) candidates.add(reg);
         }
         if (candidates.isEmpty()) return Optional.empty();
         // §4.2.4 step 1: sort by @Consumes media type specificity.
         // Stable sort → on ties, providers at the head of the list
         // (user-provided, inserted at index 0) win over built-ins (at the end).
         candidates.sort(Comparator.comparingInt(
-                (Registered<MessageBodyReader<?>> reg) -> declaredSpecificity(reg.declared(), mt)
+                (Registered<MessageBodyReader<?>> reg) -> declaredSpecificity(reg.declared, mt)
         ).reversed());
-        return Optional.of((MessageBodyReader<T>) candidates.get(0).instance());
+        return Optional.of((MessageBodyReader<T>) candidates.get(0).instance);
     }
 
     @SuppressWarnings("unchecked")
@@ -143,23 +158,19 @@ public final class MessageBodyRegistry {
         Class<?> boxed = box(type);
         List<Registered<MessageBodyWriter<?>>> candidates = new ArrayList<>();
         for (Registered<MessageBodyWriter<?>> reg : writers) {
-            Class<?> wType = reg.entityType();
-            if (wType != null && wType != Object.class && !wType.isAssignableFrom(boxed)) continue;
-             // §4.2.4 step 1 (writer) : pre-filter by compatibility @Produces ↔ mt.
-            if (!declaredCompatible(reg.declared(), mt)) continue;
-            if (reg.instance().isWriteable(type, genericType, anns, mt)) candidates.add(reg);
+            // §4.2.1, then §4.2.4 step 1 (writer): pre-filter by compatibility @Produces ↔ mt.
+            if (reg.applies(boxed, mt) && reg.instance.isWriteable(type, genericType, anns, mt)) candidates.add(reg);
         }
         if (candidates.isEmpty()) return Optional.empty();
         candidates.sort(Comparator.comparingInt(
-                (Registered<MessageBodyWriter<?>> reg) -> declaredSpecificity(reg.declared(), mt)
+                (Registered<MessageBodyWriter<?>> reg) -> declaredSpecificity(reg.declared, mt)
         ).reversed());
-        return Optional.of((MessageBodyWriter<T>) candidates.get(0).instance());
+        return Optional.of((MessageBodyWriter<T>) candidates.get(0).instance);
     }
 
     /** §4.2.4 step 1 : @Consumes / @Produces absent → wildcard implicite ; sinon une des
      *  valeurs déclarées doit être compatible avec le media type demandé. */
     private static boolean declaredCompatible(MediaType[] declared, MediaType requested) {
-        if (declared == null) return true;
         if (requested == null) return true;
         for (MediaType d : declared) {
             if (mediaTypeCompatible(d, requested)) return true;
@@ -185,7 +196,7 @@ public final class MessageBodyRegistry {
     // §4.2.4 step 1 : matching specificity between the declared @Consumes / @Produces and the
     // requested media type. 0 = wildcard (or no annotation), 1 = type/*, 2 = type/subtype exact.
     private static int declaredSpecificity(MediaType[] declared, MediaType requested) {
-        if (declared == null || requested == null) return 0;
+        if (requested == null) return 0;
         int best = 0;
         for (MediaType d : declared) {
             if (!d.isCompatible(requested)) continue;

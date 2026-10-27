@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
  * The base URI of a request depends on its scheme, its authority and the context path only. It
  * is the same for every request of a listener, and it was parsed again by every {@code UriInfo}
  * of every request: several times per request, which put {@code java.net.URI} parsing at a tenth
- * of the CPU samples of the Todo benchmark.
+ * of the CPU samples of the REST benchmark (VidocqTools/vidocq-benchmarks).
  */
 class CassiniUriInfoTest {
 

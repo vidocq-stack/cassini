@@ -87,7 +87,7 @@ class MediaTypesTest {
 
     // The same few header strings and declared types come back on every request: parsing them
     // again each time (two splits, a HashMap, a MediaType with its TreeMap) was 8 to 12 parses
-    // per request on the Todo benchmark. A parsed MediaType is immutable, so it can be shared.
+    // per request on the REST benchmark (VidocqTools/vidocq-benchmarks). A parsed MediaType is immutable, so it can be shared.
 
     @Test
     void parseReturnsTheSameMediaTypeForTheSameString() {
@@ -97,8 +97,8 @@ class MediaTypesTest {
 
     @Test
     void aSharedMediaTypeCannotBeMutated() {
-        MediaType mt = MediaTypes.parse("text/plain;charset=UTF-8");
-        assertThrows(UnsupportedOperationException.class, () -> mt.getParameters().put("q", "0.1"));
+        java.util.Map<String, String> parameters = MediaTypes.parse("text/plain;charset=UTF-8").getParameters();
+        assertThrows(UnsupportedOperationException.class, () -> parameters.put("q", "0.1"));
     }
 
     @Test

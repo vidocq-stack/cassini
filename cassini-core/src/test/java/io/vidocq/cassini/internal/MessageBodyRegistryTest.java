@@ -93,6 +93,8 @@ class MessageBodyRegistryTest {
     static final class TodoXmlWriter implements MessageBodyWriter<Todo> {
         @Override public boolean isWriteable(Class<?> t, Type gt, Annotation[] a, MediaType mt) { return true; }
         @Override public void writeTo(Todo todo, Class<?> t, Type gt, Annotation[] a, MediaType mt,
-                                      MultivaluedMap<String, Object> h, OutputStream out) { }
+                                      MultivaluedMap<String, Object> h, OutputStream out) {
+            // Selection only: the tests never write with it.
+        }
     }
 }

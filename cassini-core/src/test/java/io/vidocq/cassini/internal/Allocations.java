@@ -31,7 +31,7 @@ import java.lang.reflect.Method;
  * {@code java.management} nor {@code jdk.management}, and reflection only needs the packages to
  * be exported.</p>
  */
-final class Allocations {
+public final class Allocations {
 
     private static final Object THREADS;
     private static final Method CURRENT_THREAD_ALLOCATED_BYTES;
@@ -49,7 +49,7 @@ final class Allocations {
 
     private Allocations() {}
 
-    static long currentThreadBytes() {
+    public static long currentThreadBytes() {
         try {
             return (Long) CURRENT_THREAD_ALLOCATED_BYTES.invoke(THREADS);
         } catch (ReflectiveOperationException e) {
@@ -61,7 +61,7 @@ final class Allocations {
      * Mean bytes allocated per call of {@code call}, after {@code warmUp} unmeasured calls, over
      * {@code measured} measured ones.
      */
-    static long bytesPerCall(Runnable call, int warmUp, int measured) {
+    public static long bytesPerCall(Runnable call, int warmUp, int measured) {
         for (int i = 0; i < warmUp; i++) call.run();
         long before = currentThreadBytes();
         for (int i = 0; i < measured; i++) call.run();

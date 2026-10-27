@@ -19,7 +19,6 @@
  */
 package io.vidocq.cassini.internal.json;
 
-import io.vidocq.cassini.internal.OptionalClass;
 import io.vidocq.cassini.internal.ParamExtractor;
 import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
@@ -69,8 +68,16 @@ public final class CassiniJsonbReaderWriter
      * Looked up once: a deployment without it must not pay a {@code ClassNotFoundException} on
      * every {@link #isWriteable} / {@link #isReadable} call, that is on every JSON request.
      */
-    private static final OptionalClass DATA_SOURCE =
-            OptionalClass.of("jakarta.activation.DataSource", CassiniJsonbReaderWriter.class.getClassLoader());
+    private static final Class<?> DATA_SOURCE = dataSourceClass();
+
+    /** {@code jakarta.activation.DataSource}, or {@code null} when Jakarta Activation is absent. */
+    private static Class<?> dataSourceClass() {
+        try {
+            return Class.forName("jakarta.activation.DataSource", false, CassiniJsonbReaderWriter.class.getClassLoader());
+        } catch (ClassNotFoundException | LinkageError _) {
+            return null;
+        }
+    }
 
     @Override
     public boolean isReadable(Class<?> type, Type genericType, Annotation[] annotations, MediaType mediaType) {
@@ -152,6 +159,6 @@ public final class CassiniJsonbReaderWriter
         if (jakarta.ws.rs.core.StreamingOutput.class.isAssignableFrom(type)) return true;
         if (java.io.File.class.isAssignableFrom(type)) return true;
         if (javax.xml.transform.Source.class.isAssignableFrom(type)) return true;
-        return DATA_SOURCE.isAssignableFrom(type);
+        return DATA_SOURCE != null && DATA_SOURCE.isAssignableFrom(type);
     }
 }

@@ -290,15 +290,23 @@ public final class Invoker {
                 request, request.contextPath(), match.pathParams()));
     }
 
+    /**
+     * §6.6.1: whether {@link #invokeInternal} runs the pre-matching filters: when there are any,
+     * and the dispatch did not already run them before routing.
+     */
+    private boolean preMatchingToRun() {
+        if (filters.preMatching().isEmpty()) return false;
+        RequestScope scope = RequestScope.current();
+        return scope == null || !scope.preMatchingDone;
+    }
+
     private CassiniHttpResponse invokeInternal(MatchResult match, CassiniHttpExchange request, ResourceMethod route) throws Exception {
 
         // 0. Pre-matching request filters §6.6 — executed before any negotiation, unless the
         //    dispatch already ran them before routing (DefaultCassiniHttpAdapter): §6.6.1, a
         //    pre-matching filter runs once per request. If they throw, go through ExceptionMapper.
         CassiniRequestContext preCtx = null;
-        RequestScope scope = RequestScope.current();
-        boolean preMatchingDone = scope != null && scope.preMatchingDone;
-        if (!filters.preMatching().isEmpty() && !preMatchingDone) {
+        if (preMatchingToRun()) {
             preCtx = new CassiniRequestContext(request, new CassiniUriInfo(
                     request, request.contextPath(), match.pathParams()));
             for (var fe : filters.preMatching()) {

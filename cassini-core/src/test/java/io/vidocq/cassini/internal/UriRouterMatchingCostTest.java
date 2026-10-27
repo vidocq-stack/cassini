@@ -53,7 +53,9 @@ class UriRouterMatchingCostTest {
         @POST public String create() { return "{}"; }
         @GET @Path("/{id}") public String get(@PathParam("id") long id) { return "{}"; }
         @PUT @Path("/{id}") public String update(@PathParam("id") long id) { return "{}"; }
-        @DELETE @Path("/{id}") public void delete(@PathParam("id") long id) { }
+        @DELETE @Path("/{id}") public void delete(@PathParam("id") long id) {
+            // Routing only: the tests never invoke the method.
+        }
     }
 
     private final UriRouter router = new UriRouter(List.copyOf(
@@ -67,7 +69,8 @@ class UriRouterMatchingCostTest {
         assertEquals("list", router.match("GET", "/todos").orElseThrow().method().javaMethod().getName());
         assertEquals("health", router.match("GET", "/health").orElseThrow().method().javaMethod().getName());
         assertTrue(router.match("GET", "/nowhere").isEmpty());
-        assertEquals(List.of("GET", "PUT", "DELETE"), router.methodsAllowedFor("/todos/7"));
+        // The order follows the order in which reflection lists the methods, which the JVM does not fix.
+        assertEquals(java.util.Set.of("GET", "PUT", "DELETE"), java.util.Set.copyOf(router.methodsAllowedFor("/todos/7")));
     }
 
     @Test
