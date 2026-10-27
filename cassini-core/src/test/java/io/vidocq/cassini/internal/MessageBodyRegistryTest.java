@@ -56,6 +56,22 @@ class MessageBodyRegistryTest {
     private final MessageBodyRegistry registry = new MessageBodyRegistry();
 
     @Test
+    void anUploadedFileIsReadableAndWritableByItsOwnerOnly() throws Exception {
+        java.io.File file = new MessageBodyRegistry.FileReader().readFrom(java.io.File.class, java.io.File.class, NONE,
+                MediaType.APPLICATION_OCTET_STREAM_TYPE, new jakarta.ws.rs.core.MultivaluedHashMap<>(),
+                new java.io.ByteArrayInputStream(new byte[] {1, 2, 3}));
+        try {
+            assertEquals(3, file.length());
+            if (java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+                assertEquals("rw-------", java.nio.file.attribute.PosixFilePermissions.toString(
+                        java.nio.file.Files.getPosixFilePermissions(file.toPath())));
+            }
+        } finally {
+            java.nio.file.Files.deleteIfExists(file.toPath());
+        }
+    }
+
+    @Test
     void theJsonProviderServesARecordAsJson() {
         assertEquals(CassiniJsonbReaderWriter.class,
                 registry.findWriter(Todo.class, Todo.class, NONE, MediaType.APPLICATION_JSON_TYPE).orElseThrow().getClass());

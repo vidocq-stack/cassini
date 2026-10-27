@@ -200,7 +200,7 @@ public final class RuntimeAdapterGenerator {
             generateInjectFields(clb, adapterCD, fields);
 
             // invoke(int, Object, Object[]) — P1b: direct typed dispatch
-            generateInvoke(clb, resourceClass, resourceCD, methodIds);
+            generateInvoke(clb, methodIds);
 
             // newInstance() — M6a: direct new Foo() if accessible no-arg ctor exists
             if (hasNoArgCtor) {
@@ -731,7 +731,7 @@ public final class RuntimeAdapterGenerator {
 
         cob.labelBinding(notEmpty);
         // Slot 5 is a non-empty List<String>; convert it to the target type
-        emitConvertFromList(cob, fd, strategy, afterField);
+        emitConvertFromList(cob, fd, strategy);
 
         cob.labelBinding(afterEmpty);
         // value is on stack
@@ -757,8 +757,7 @@ public final class RuntimeAdapterGenerator {
      * Emits conversion of slot 5 (a non-empty {@code List&lt;String&gt;}) to the target type.
      * Stack after: the converted value (Object, boxed for primitives).
      */
-    private static void emitConvertFromList(CodeBuilder cob, FieldDesc fd,
-                                             InlineStrategy strategy, Label afterField) {
+    private static void emitConvertFromList(CodeBuilder cob, FieldDesc fd, InlineStrategy strategy) {
         if (strategy == InlineStrategy.COLLECTION_STRING || strategy == InlineStrategy.COLLECTION_INLINE) {
             emitCollectionConversion(cob, fd);
             return;
@@ -1087,10 +1086,7 @@ public final class RuntimeAdapterGenerator {
     // ClassDesc for Object[] — "[Ljava/lang/Object;" in JVM descriptor notation.
     private static final ClassDesc CD_ObjArr = ClassDesc.ofDescriptor("[Ljava/lang/Object;");
 
-    private static void generateInvoke(java.lang.classfile.ClassBuilder clb,
-                                       Class<?> resourceClass,
-                                       ClassDesc resourceCD,
-                                       Map<Method, Integer> methodIds) {
+    private static void generateInvoke(java.lang.classfile.ClassBuilder clb, Map<Method, Integer> methodIds) {
 
         clb.withMethodBody("invoke",
                 MethodTypeDesc.of(CD_Object, CD_int, CD_Object, CD_ObjArr),
