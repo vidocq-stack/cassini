@@ -88,9 +88,17 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
             if (closed) throw new IOException("Streaming consumer closed");
         }
 
-        /** Producer side — signals normal end of stream. */
+        /** Producer side — signals normal end of stream. Waits for room like {@link #put}: on a
+         *  full queue, dropping the mark would leave the reader waiting, and the response open,
+         *  forever. Gives up only when the reader is gone. */
         void endOfStream() {
-            queue.offer(EOF); // capacity slack: consumer drains; worst case offer fails and closed kicks in
+            try {
+                while (!queue.offer(EOF, 50, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    if (closed) return;
+                }
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
         }
 
         private boolean ensureCurrent() throws IOException {
@@ -136,13 +144,27 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
         @Override public void close() {
             closed = true;
             queue.clear();
-            queue.offer(EOF);
+            // Wakes a reader blocked in poll at once. A producer that refilled the queue in
+            // between loses chunks nobody will read.
+            while (!queue.offer(EOF)) queue.poll();
         }
 
         boolean isConsumerClosed() { return closed; }
     }
 
-    private volatile StreamingInfo streamingInfo;
+    /** Set once by the dispatch thread when it commits a stream, read by the transport thread:
+     *  published through {@link #STREAMING_INFO} (release / acquire), as a volatile would, without
+     *  an extra object per request. */
+    private StreamingInfo streamingInfo;
+    private static final java.lang.invoke.VarHandle STREAMING_INFO;
+    static {
+        try {
+            STREAMING_INFO = java.lang.invoke.MethodHandles.lookup()
+                    .findVarHandle(ChappeHttpExchange.class, "streamingInfo", StreamingInfo.class);
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
     private java.util.concurrent.CountDownLatch streamingLatch;
 
     /** Set by {@code ChappeHttpAdapter} before dispatch; released either by
@@ -153,7 +175,7 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
 
     /** @return the streaming snapshot, or {@code null} if the response is buffered. */
     public StreamingInfo streamingInfo() {
-        return streamingInfo;
+        return (StreamingInfo) STREAMING_INFO.getAcquire(this);
     }
 
     public ChappeHttpExchange(Request request) {
@@ -299,7 +321,7 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
             private void commit() {
                 if (!committed) {
                     committed = true;
-                    streamingInfo = pending;
+                    STREAMING_INFO.setRelease(ChappeHttpExchange.this, pending);
                     if (streamingLatch != null) streamingLatch.countDown();
                 }
             }
