@@ -53,14 +53,18 @@ import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 final class CassiniInvocationBuilder implements Invocation.Builder {
 
     private final CassiniClient client;
     private final URI uri;
     private final MultivaluedMap<String, Object> headers = new MultivaluedHashMap<>();
+    /** Request properties, handed to the {@code ClientRequestContext} of each invocation (CASSINI-023). */
+    private final Map<String, Object> properties = new HashMap<>();
 
     CassiniInvocationBuilder(CassiniClient client, URI uri, String[] acceptedTypes) {
         this.client = client;
@@ -188,7 +192,8 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
 
     @Override
     public Invocation.Builder property(String name, Object value) {
-        client.cassiniConfiguration().putProperty(name, value);
+        if (value == null) properties.remove(name);
+        else properties.put(name, value);
         return this;
     }
 
@@ -265,6 +270,7 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
         Object entityValue = entity == null ? null : entity.getEntity();
         CassiniClientRequestContext reqCtx = new CassiniClientRequestContext(
                 client, uri, method, headers, entityValue, entityMediaType);
+        properties.forEach(reqCtx::setProperty);
 
         List<ClientRequestFilter> requestFilters = client.cassiniConfiguration().getRequestFilters();
         for (ClientRequestFilter f : requestFilters) {

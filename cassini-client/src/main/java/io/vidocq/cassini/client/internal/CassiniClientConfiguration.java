@@ -55,8 +55,10 @@ final class CassiniClientConfiguration implements Configuration {
     private long readTimeoutMs = -1;
     private ExecutorService executorService;
 
+    /** {@code Configurable.property}: a {@code null} value removes the property (CASSINI-023). */
     void putProperty(String name, Object value) {
-        properties.put(name, value);
+        if (value == null) properties.remove(name);
+        else properties.put(name, value);
     }
 
     void registerComponent(Object instance, Map<Class<?>, Integer> componentContracts) {

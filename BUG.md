@@ -258,3 +258,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `AsyncInvokerTest.typed_callback_receives_the_entity_read_as_its_type`, `processing_failure_reaches_the_future_and_the_callback_unwrapped`; `InvocationTest.submitted_invocation_with_a_callback_completes_it`.
 - **Cause**: every async helper wrapped any exception in a `RuntimeException` (the `try`-with-resources on an `AutoCloseable` forced a `catch (Exception)`), and the callback path cast the `Response` to `T`.
 - **Fix**: `AsyncContextPropagator.activate` returns a `Scope` whose `close()` throws nothing, so exceptions pass through unwrapped; the callback's type argument is resolved from its class (`Response` when unresolved) and read through the same `readTyped` as the futures; `failed` gets the cause of the `CompletionException`. `Invocation.submit(...)` delegates to the async invoker.
+
+## CASSINI-023 — Client properties: `null` does not remove, request properties never reach the filters
+- **Date**: 2026-10-27 — **Status**: FIXED (found while covering `cassini-client` with unit tests)
+- **Severity**: medium. `Configurable.property(name, null)` must remove the property; `Invocation.Builder.property` / `Invocation.property` set a property of the request, read by the filters through `ClientRequestContext.getProperty`.
+- **Symptom**: `client.property("k", null)` left `k` among the property names, mapped to `null`. `request().property("k", "v")` was invisible to `ClientRequestContext.getProperty("k")`, and was written to the client's configuration instead, so it leaked into every later request of the client.
+- **Minimal repro**: `PropertiesTest`.
+- **Cause**: `CassiniClientConfiguration.putProperty` always `put`; `CassiniInvocationBuilder.property` delegated to it, and the request context started with an empty property map.
+- **Fix**: `putProperty` removes on `null`; the invocation builder keeps its own properties and copies them into the request context of each invocation.
