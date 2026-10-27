@@ -27,6 +27,7 @@ import java.time.Duration;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The chunk queue behind a streamed (SSE) response: events go in from any thread, Chappe reads
@@ -59,6 +60,30 @@ class ChunkQueueInputStreamTest {
             return n;
         });
         assertEquals(CAPACITY, read);
+    }
+
+    @Test
+    void theEndOfAStreamNobodyReadsAnyMoreGivesUp() throws IOException {
+        var stream = new ChappeHttpExchange.ChunkQueueInputStream();
+        for (int i = 0; i < CAPACITY; i++) stream.put(new byte[] {'x'});
+        Thread producer = Thread.ofVirtual().start(stream::endOfStream);
+        stream.close();
+        assertTimeoutPreemptively(Duration.ofSeconds(10), (org.junit.jupiter.api.function.Executable) producer::join);
+    }
+
+    @Test
+    void anInterruptedEndOfStreamKeepsTheInterruptFlag() throws IOException, InterruptedException {
+        var stream = new ChappeHttpExchange.ChunkQueueInputStream();
+        for (int i = 0; i < CAPACITY; i++) stream.put(new byte[] {'x'});
+        var flagged = new java.util.concurrent.atomic.AtomicBoolean();
+        Thread producer = Thread.ofVirtual().start(() -> {
+            stream.endOfStream();
+            flagged.set(Thread.currentThread().isInterrupted());
+        });
+        while (producer.getState() != Thread.State.TIMED_WAITING) Thread.onSpinWait();
+        producer.interrupt();
+        producer.join();
+        assertTrue(flagged.get());
     }
 
     @Test

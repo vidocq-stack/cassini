@@ -89,6 +89,41 @@ class MessageBodyRegistryTest {
                 registry.findWriter(Todo.class, Todo.class, NONE, MediaType.APPLICATION_JSON_TYPE).orElseThrow().getClass());
     }
 
+    /** RFC 6839: a structured syntax suffix matches either way, declared or requested. */
+    @Test
+    void aStructuredSyntaxSuffixMatchesTheMediaTypesThatCarryIt() {
+        registry.addWriter(new AnyYamlWriter());
+        registry.addWriter(new AtomYamlWriter());
+        assertEquals(AnyYamlWriter.class, registry.findWriter(Note.class, Note.class, NONE,
+                new MediaType("application", "vnd.note+yaml")).orElseThrow().getClass());
+        assertEquals(AtomYamlWriter.class, registry.findWriter(Paper.class, Paper.class, NONE,
+                new MediaType("application", "*+yaml")).orElseThrow().getClass());
+    }
+
+    record Note(String text) {
+    }
+
+    record Paper(String text) {
+    }
+
+    @Produces("application/*+yaml")
+    static final class AnyYamlWriter implements MessageBodyWriter<Note> {
+        @Override public boolean isWriteable(Class<?> t, Type gt, Annotation[] a, MediaType mt) { return true; }
+        @Override public void writeTo(Note note, Class<?> t, Type gt, Annotation[] a, MediaType mt,
+                                      MultivaluedMap<String, Object> h, OutputStream out) {
+            // Selection only: the tests never write with it.
+        }
+    }
+
+    @Produces("application/atom+yaml")
+    static final class AtomYamlWriter implements MessageBodyWriter<Paper> {
+        @Override public boolean isWriteable(Class<?> t, Type gt, Annotation[] a, MediaType mt) { return true; }
+        @Override public void writeTo(Paper paper, Class<?> t, Type gt, Annotation[] a, MediaType mt,
+                                      MultivaluedMap<String, Object> h, OutputStream out) {
+            // Selection only: the tests never write with it.
+        }
+    }
+
     @Produces("application/xml")
     static final class TodoXmlWriter implements MessageBodyWriter<Todo> {
         @Override public boolean isWriteable(Class<?> t, Type gt, Annotation[] a, MediaType mt) { return true; }
