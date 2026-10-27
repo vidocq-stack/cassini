@@ -23,7 +23,6 @@ import jakarta.ws.rs.client.ClientResponseContext;
 import jakarta.ws.rs.core.EntityTag;
 import jakarta.ws.rs.core.Link;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.NewCookie;
 import jakarta.ws.rs.core.Response;
@@ -66,13 +65,13 @@ final class CassiniClientResponseContext implements ClientResponseContext {
     }
 
     static CassiniClientResponseContext from(HttpResponse<byte[]> response) {
-        MultivaluedMap<String, String> hs = new MultivaluedHashMap<>();
+        MultivaluedMap<String, String> hs = CassiniClientResponse.headerMap();
         response.headers().map().forEach((k, vs) -> vs.forEach(v -> hs.add(k, v)));
         return new CassiniClientResponseContext(response.statusCode(), response.body(), hs);
     }
 
     static CassiniClientResponseContext fromAborted(Response response) {
-        MultivaluedMap<String, String> hs = new MultivaluedHashMap<>();
+        MultivaluedMap<String, String> hs = CassiniClientResponse.headerMap();
         response.getStringHeaders().forEach((k, vs) -> vs.forEach(v -> hs.add(k, v)));
         Object entity = response.getEntity();
         byte[] body;

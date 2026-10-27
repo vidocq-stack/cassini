@@ -19,11 +19,12 @@
  */
 package io.vidocq.cassini.client.internal;
 
+import jakarta.ws.rs.core.AbstractMultivaluedMap;
 import jakarta.ws.rs.core.EntityTag;
 import jakarta.ws.rs.core.GenericType;
+import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Link;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.NewCookie;
 import jakarta.ws.rs.core.Response;
@@ -32,12 +33,12 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.net.URI;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Client-side implementation of {@link Response} — wraps a byte[] body and exposes
@@ -60,16 +61,7 @@ final class CassiniClientResponse extends Response {
     }
 
     private MediaType contentType() {
-        String ct = null;
-        if (stringHeaders != null) {
-            // HTTP header names are case-insensitive; java.net.http lower-cases them.
-            for (var e : stringHeaders.entrySet()) {
-                if ("content-type".equalsIgnoreCase(e.getKey()) && e.getValue() != null && !e.getValue().isEmpty()) {
-                    ct = e.getValue().get(0);
-                    break;
-                }
-            }
-        }
+        String ct = stringHeaders.getFirst(HttpHeaders.CONTENT_TYPE);
         if (ct == null || ct.isBlank()) {
             return null;
         }
@@ -89,16 +81,13 @@ final class CassiniClientResponse extends Response {
         this.stringHeaders = stringHeaders;
     }
 
-    static CassiniClientResponse from(HttpResponse<byte[]> response) {
-        MultivaluedMap<String, Object> h = new MultivaluedHashMap<>();
-        MultivaluedMap<String, String> hs = new MultivaluedHashMap<>();
-        response.headers().map().forEach((k, vs) -> {
-            for (String v : vs) {
-                h.add(k, v);
-                hs.add(k, v);
-            }
-        });
-        return new CassiniClientResponse(response.statusCode(), response.body(), h, hs);
+    /**
+     * A header map whose names compare case-insensitively, as HTTP field names do
+     * (RFC 9110 §5.1): {@code java.net.http} hands them over as the server spelled them,
+     * all lower case over HTTP/2 (CASSINI-019).
+     */
+    static <V> MultivaluedMap<String, V> headerMap() {
+        return new AbstractMultivaluedMap<>(new TreeMap<>(String.CASE_INSENSITIVE_ORDER)) { };
     }
 
     /**
@@ -109,7 +98,7 @@ final class CassiniClientResponse extends Response {
      */
     static CassiniClientResponse fromBufferedBody(int status, byte[] body,
                                                     MultivaluedMap<String, String> stringHeaders) {
-        MultivaluedMap<String, Object> h = new MultivaluedHashMap<>();
+        MultivaluedMap<String, Object> h = headerMap();
         stringHeaders.forEach((k, vs) -> vs.forEach(v -> h.add(k, v)));
         return new CassiniClientResponse(status, body, h, stringHeaders);
     }

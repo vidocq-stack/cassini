@@ -226,3 +226,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: no JSON-B implementation on the module path, then `client.target(url).request().post(Entity.entity(42, MediaType.TEXT_PLAIN_TYPE))`.
 - **Cause**: `ClientEntityJsonb` created its default `Jsonb` in a static initialiser, run by its first use, the `isJson(mediaType)` check.
 - **Fix**: the default `Jsonb` is created on the first JSON (de)serialisation; a missing provider then fails with a `ProcessingException`. Regression tests: `WithoutJsonbProviderTest`, run by the `without-jsonb` surefire execution of `cassini-client`, which leaves Champollion's JSON-B out.
+
+## CASSINI-019 — Client responses look header names up case-sensitively: no media type, location or charset from a real server
+- **Date**: 2026-10-27 — **Status**: FIXED (found while covering `cassini-client` with unit tests)
+- **Severity**: medium. HTTP field names are case-insensitive (RFC 9110 §5.1), but the client kept them as the server spelled them; over HTTP/2 they are all lower case. `Response.getMediaType()`, `getLocation()`, `getLanguage()` and `getHeaderString("Content-Type")` returned `null`, and `readEntity(String.class)` ignored the `charset` of the response.
+- **Symptom**: a server answering `Content-type: text/plain;charset=ISO-8859-1` (the JDK `HttpServer` spelling) with `café` in Latin-1: `getMediaType()` is `null` and the entity reads `caf�`.
+- **Minimal repro**: `ClientResponseTest.response_headers_are_exposed` and `string_entity_is_decoded_with_the_charset_of_the_content_type` against the JDK `HttpServer`.
+- **Cause**: `CassiniClientResponseContext` and `CassiniClientResponse` copied the headers into `MultivaluedHashMap`s and looked them up with `getFirst("Content-Type")`; only the JSON path searched the names case-insensitively.
+- **Fix**: the response headers live in a map whose names compare case-insensitively, shared by the response context and the response; the unused `CassiniClientResponse.from(HttpResponse)` is removed.
