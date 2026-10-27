@@ -81,7 +81,7 @@ class RouteRegistryEquivalenceTest {
         @Path("/{id}")
         @Produces(MediaType.WILDCARD)
         @Consumes(MediaType.WILDCARD)
-        public void delete(String id) {}
+        public void delete(String id) { /* routing fixture: never invoked */ }
     }
 
     @Path("/ping")

@@ -239,7 +239,7 @@ class AdapterRegistrySeamTest {
         @Override public Object getAttribute(String key) { return attrs.get(key); }
         @Override public void setAttribute(String key, Object value) { attrs.put(key, value); }
         // Response side — not used by injection tests
-        @Override public void setStatus(int code) {}
+        @Override public void setStatus(int code) { /* response side unused by injection */ }
         @Override public Map<String, List<String>> responseHeaders() { return new java.util.HashMap<>(); }
         @Override public java.io.OutputStream responseBody() { return java.io.OutputStream.nullOutputStream(); }
         @Override public java.net.SocketAddress remoteAddress() { return null; }

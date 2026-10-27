@@ -804,7 +804,7 @@ class RuntimeAdapterGeneratorTest {
 
     /** Resource with a public no-arg constructor — adapter must generate newInstance(). */
     static class PublicNoArgResource {
-        public PublicNoArgResource() {}
+        public PublicNoArgResource() { /* the public no-arg constructor under test */ }
         public String hello() { return "hello"; }
     }
 
@@ -911,7 +911,7 @@ class RuntimeAdapterGeneratorTest {
         @Override public boolean isSecure() { return false; }
         @Override public Object getAttribute(String key) { return attrs.get(key); }
         @Override public void setAttribute(String key, Object value) { attrs.put(key, value); }
-        @Override public void setStatus(int code) {}
+        @Override public void setStatus(int code) { /* response side unused by injection */ }
         @Override public Map<String, List<String>> responseHeaders() { return new java.util.HashMap<>(); }
         @Override public java.io.OutputStream responseBody() { return java.io.OutputStream.nullOutputStream(); }
         @Override public java.net.SocketAddress remoteAddress() { return null; }

@@ -45,10 +45,6 @@ final class RouteNegotiation {
     }
 
 
-    /** §3.7.2: among the candidates (same path+verb), choose the one whose
-     *  @Consumes matches Content-Type AND whose @Produces matches Accept (maximum
-     *  specificity). If none matches, return the first one (the Invoker will raise
-     *  415 or 406 later). */
     /** Returns the highest qs among the route's @Produces. */
     private static double sourceQuality(java.util.List<MediaType> produces) {
         double best = 0;
@@ -61,6 +57,10 @@ final class RouteNegotiation {
         return best;
     }
 
+    /** §3.7.2: among the candidates (same path+verb), choose the one whose
+     *  @Consumes matches Content-Type AND whose @Produces matches Accept (maximum
+     *  specificity). If none matches, return the first one (the Invoker will raise
+     *  415 or 406 later). */
     static MatchResult pickBestMatch(java.util.List<MatchResult> candidates, CassiniHttpExchange request) {
         if (candidates.size() == 1) return candidates.get(0);
         MediaType ct = MediaTypes.parse(request.firstHeader("Content-Type"));

@@ -35,10 +35,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class UriRouterBestMatchTest {
 
     static class Handlers {
-        public void literal() {}
-        public void byId() {}
-        public void numeric() {}
-        public void splat() {}
+        public void literal() { /* routing fixture: never invoked */ }
+        public void byId() { /* routing fixture: never invoked */ }
+        public void numeric() { /* routing fixture: never invoked */ }
+        public void splat() { /* routing fixture: never invoked */ }
     }
 
     private ResourceMethod make(String verb, String template, String methodName) throws Exception {

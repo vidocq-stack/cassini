@@ -55,7 +55,9 @@ public final class CassiniUriBuilder extends UriBuilder {
     /** Per variable: should '/' characters contained in the value be encoded? */
     private final Map<String, Boolean> resolvedTemplatesEncodeSlash = new LinkedHashMap<>();
 
-    public CassiniUriBuilder() {}
+    public CassiniUriBuilder() {
+        // Starts empty: every component is set through the builder methods.
+    }
 
     // --- Factories ---
 

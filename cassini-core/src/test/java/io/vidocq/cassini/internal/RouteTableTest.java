@@ -68,7 +68,7 @@ class RouteTableTest {
 
         @POST
         @Consumes(MediaType.APPLICATION_JSON)
-        public void create(String body) {}
+        public void create(String body) { /* routing fixture: never invoked */ }
 
         @GET
         @Path("{id}")
@@ -98,7 +98,7 @@ class RouteTableTest {
         public AuditFilter() { PROVIDERS_CREATED.incrementAndGet(); }
 
         @Override
-        public void filter(ContainerRequestContext ctx) {}
+        public void filter(ContainerRequestContext ctx) { /* registration fixture: never invoked */ }
     }
 
     private static CassiniStack stack() {
@@ -171,7 +171,7 @@ class RouteTableTest {
         public String get() { return "{}"; }
 
         @jakarta.ws.rs.PUT @Consumes(MediaType.APPLICATION_JSON)
-        public void update(String body) {}
+        public void update(String body) { /* routing fixture: never invoked */ }
     }
 
     @Test

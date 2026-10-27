@@ -64,7 +64,7 @@ final class LogCapture extends Handler implements AutoCloseable {
     }
 
     @Override public void publish(LogRecord r) { records.add(r); }
-    @Override public void flush() { }
+    @Override public void flush() { /* records are kept in memory: nothing to flush */ }
 
     @Override
     public void close() {
