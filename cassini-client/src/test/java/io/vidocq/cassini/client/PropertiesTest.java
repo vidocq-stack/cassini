@@ -47,13 +47,13 @@ class PropertiesTest {
 
     private static RecordingServer server;
     private static Client client;
-    private static final AtomicReference<Object> seen = new AtomicReference<>();
+    private static final AtomicReference<Object> SEEN = new AtomicReference<>();
 
     @BeforeAll
     static void start() throws Exception {
         server = RecordingServer.echo();
         client = ClientBuilder.newClient();
-        client.register((ClientRequestFilter) ctx -> seen.set(ctx.getProperty(KEY)));
+        client.register((ClientRequestFilter) ctx -> SEEN.set(ctx.getProperty(KEY)));
     }
 
     @AfterAll
@@ -64,7 +64,7 @@ class PropertiesTest {
 
     @BeforeEach
     void reset() {
-        seen.set("unset");
+        SEEN.set("unset");
     }
 
     @Test
@@ -86,22 +86,22 @@ class PropertiesTest {
     @Test
     void invocation_builder_property_reaches_the_request_context_only() {
         client.target(server.baseUrl()).request().property(KEY, VALUE).get();
-        assertEquals(VALUE, seen.get());
+        assertEquals(VALUE, SEEN.get());
         assertNull(client.getConfiguration().getProperty(KEY));
 
         client.target(server.baseUrl()).request().get();
-        assertNull(seen.get());
+        assertNull(SEEN.get());
     }
 
     @Test
     void null_value_removes_an_invocation_builder_property() {
         client.target(server.baseUrl()).request().property(KEY, VALUE).property(KEY, null).get();
-        assertNull(seen.get());
+        assertNull(SEEN.get());
     }
 
     @Test
     void invocation_property_reaches_the_request_context() {
         client.target(server.baseUrl()).request().buildGet().property(KEY, VALUE).invoke();
-        assertEquals(VALUE, seen.get());
+        assertEquals(VALUE, SEEN.get());
     }
 }

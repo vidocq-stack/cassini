@@ -50,6 +50,7 @@ class ClientResponseTest {
 
     private static final String CONTENT_TYPE = "Content-Type";
     private static final String TEXT = "hello";
+    private static final String NEXT = "next";
     private static final Annotation[] NO_ANNOTATIONS = new Annotation[0];
 
     private static Client client;
@@ -143,7 +144,7 @@ class ClientResponseTest {
 
     @Test
     void string_entity_is_decoded_with_the_charset_of_the_content_type() throws Exception {
-        try (RecordingServer server = new RecordingServer((exchange, request) -> {
+        try (RecordingServer server = new RecordingServer((exchange, _) -> {
             byte[] latin1 = "café".getBytes(StandardCharsets.ISO_8859_1);
             exchange.getResponseHeaders().add(CONTENT_TYPE, "text/plain;charset=ISO-8859-1");
             exchange.sendResponseHeaders(200, latin1.length);
@@ -179,9 +180,9 @@ class ClientResponseTest {
         assertTrue(response.getAllowedMethods().isEmpty());
         assertTrue(response.getCookies().isEmpty());
         assertTrue(response.getLinks().isEmpty());
-        assertFalse(response.hasLink("next"));
-        assertNull(response.getLink("next"));
-        assertNull(response.getLinkBuilder("next"));
+        assertFalse(response.hasLink(NEXT));
+        assertNull(response.getLink(NEXT));
+        assertNull(response.getLinkBuilder(NEXT));
         assertNull(response.getEntityTag());
         assertNull(response.getDate());
         assertNull(response.getLastModified());

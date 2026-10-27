@@ -42,6 +42,7 @@ class InvocationTest {
 
     private static final long TIMEOUT_S = 5;
     private static final String POST_ECHO = "POST:x";
+    private static final String GET_ECHO = "GET:";
 
     private static RecordingServer server;
     private static Client client;
@@ -68,7 +69,7 @@ class InvocationTest {
 
     @Test
     void built_invocations_run_their_method_and_entity() {
-        assertEquals("GET:", request().buildGet().invoke().readEntity(String.class));
+        assertEquals(GET_ECHO, request().buildGet().invoke().readEntity(String.class));
         assertEquals("DELETE:", request().buildDelete().invoke(String.class));
         assertEquals(POST_ECHO, request().buildPost(Entity.text("x")).invoke(String.class));
         assertEquals("PUT:x", request().buildPut(Entity.text("x")).invoke(new GenericType<>(String.class)));
@@ -98,8 +99,8 @@ class InvocationTest {
             @Override public void completed(String entity) { result.complete(entity); }
             @Override public void failed(Throwable throwable) { result.completeExceptionally(throwable); }
         });
-        assertEquals("GET:", result.get(TIMEOUT_S, TimeUnit.SECONDS));
-        assertEquals("GET:", await(future));
+        assertEquals(GET_ECHO, result.get(TIMEOUT_S, TimeUnit.SECONDS));
+        assertEquals(GET_ECHO, await(future));
     }
 
     @Test

@@ -43,6 +43,14 @@ class SyncInvokerTest {
     private static final GenericType<String> STRING = new GenericType<>(String.class);
     private static final String PATCH = "PATCH";
     private static final String BODY = "payload";
+    private static final String GET_ECHO = "GET:";
+    private static final String DELETE_ECHO = "DELETE:";
+    private static final String OPTIONS_ECHO = "OPTIONS:";
+    private static final String TRACE_ECHO = "TRACE:";
+    private static final String PATCH_ECHO = "PATCH:";
+    private static final String PUT_ECHO = "PUT:payload";
+    private static final String POST_ECHO = "POST:payload";
+    private static final String PATCH_BODY_ECHO = "PATCH:payload";
 
     private static RecordingServer server;
     private static Client client;
@@ -69,20 +77,20 @@ class SyncInvokerTest {
 
     @Test
     void verbs_without_entity_send_their_method() {
-        assertEquals("GET:", request().get().readEntity(String.class));
-        assertEquals("DELETE:", request().delete().readEntity(String.class));
-        assertEquals("OPTIONS:", request().options().readEntity(String.class));
-        assertEquals("TRACE:", request().trace().readEntity(String.class));
-        assertEquals("PATCH:", request().method(PATCH).readEntity(String.class));
+        assertEquals(GET_ECHO, request().get().readEntity(String.class));
+        assertEquals(DELETE_ECHO, request().delete().readEntity(String.class));
+        assertEquals(OPTIONS_ECHO, request().options().readEntity(String.class));
+        assertEquals(TRACE_ECHO, request().trace().readEntity(String.class));
+        assertEquals(PATCH_ECHO, request().method(PATCH).readEntity(String.class));
         assertEquals("/echo", server.last().uri());
     }
 
     @Test
     void verbs_with_entity_send_the_body_and_its_content_type() {
-        assertEquals("PUT:payload", request().put(text()).readEntity(String.class));
+        assertEquals(PUT_ECHO, request().put(text()).readEntity(String.class));
         assertEquals("text/plain", server.last().header("Content-Type"));
-        assertEquals("POST:payload", request().post(text()).readEntity(String.class));
-        assertEquals("PATCH:payload", request().method(PATCH, text()).readEntity(String.class));
+        assertEquals(POST_ECHO, request().post(text()).readEntity(String.class));
+        assertEquals(PATCH_BODY_ECHO, request().method(PATCH, text()).readEntity(String.class));
     }
 
     @Test
@@ -95,26 +103,26 @@ class SyncInvokerTest {
 
     @Test
     void typed_verbs_read_the_entity_as_the_requested_class() {
-        assertEquals("GET:", request().get(String.class));
-        assertEquals("PUT:payload", request().put(text(), String.class));
-        assertEquals("POST:payload", request().post(text(), String.class));
-        assertEquals("DELETE:", request().delete(String.class));
-        assertEquals("OPTIONS:", request().options(String.class));
-        assertEquals("TRACE:", request().trace(String.class));
-        assertEquals("PATCH:", request().method(PATCH, String.class));
-        assertEquals("PATCH:payload", request().method(PATCH, text(), String.class));
+        assertEquals(GET_ECHO, request().get(String.class));
+        assertEquals(PUT_ECHO, request().put(text(), String.class));
+        assertEquals(POST_ECHO, request().post(text(), String.class));
+        assertEquals(DELETE_ECHO, request().delete(String.class));
+        assertEquals(OPTIONS_ECHO, request().options(String.class));
+        assertEquals(TRACE_ECHO, request().trace(String.class));
+        assertEquals(PATCH_ECHO, request().method(PATCH, String.class));
+        assertEquals(PATCH_BODY_ECHO, request().method(PATCH, text(), String.class));
     }
 
     @Test
     void generic_typed_verbs_read_the_entity_as_the_requested_type() {
-        assertEquals("GET:", request().get(STRING));
-        assertEquals("PUT:payload", request().put(text(), STRING));
-        assertEquals("POST:payload", request().post(text(), STRING));
-        assertEquals("DELETE:", request().delete(STRING));
-        assertEquals("OPTIONS:", request().options(STRING));
-        assertEquals("TRACE:", request().trace(STRING));
-        assertEquals("PATCH:", request().method(PATCH, STRING));
-        assertEquals("PATCH:payload", request().method(PATCH, text(), STRING));
+        assertEquals(GET_ECHO, request().get(STRING));
+        assertEquals(PUT_ECHO, request().put(text(), STRING));
+        assertEquals(POST_ECHO, request().post(text(), STRING));
+        assertEquals(DELETE_ECHO, request().delete(STRING));
+        assertEquals(OPTIONS_ECHO, request().options(STRING));
+        assertEquals(TRACE_ECHO, request().trace(STRING));
+        assertEquals(PATCH_ECHO, request().method(PATCH, STRING));
+        assertEquals(PATCH_BODY_ECHO, request().method(PATCH, text(), STRING));
     }
 
     @Test

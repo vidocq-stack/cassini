@@ -59,6 +59,11 @@ class ClientContextsTest {
     private static final String X_LIST = "X-List";
     private static final String CONTENT_TYPE = "Content-Type";
     private static final String BODY = "body";
+    private static final String POST = "POST";
+    private static final String GET = "GET";
+    private static final String X_ABSENT = "X-Absent";
+    private static final String TEXT_PLAIN = "text/plain";
+    private static final String NEXT = "next";
 
     /** Runs {@code builder.method} with the given filters on a fresh client against {@code server}. */
     private static Response run(RecordingServer server, String method, Entity<?> entity, Object... filters) {
@@ -74,16 +79,16 @@ class ClientContextsTest {
     void request_context_exposes_the_request() throws Exception {
         AtomicReference<String> problems = new AtomicReference<>("not run");
         try (RecordingServer server = RecordingServer.echo()) {
-            Response response = run(server, "POST", Entity.text(BODY), (ClientRequestFilter) ctx -> {
+            Response response = run(server, POST, Entity.text(BODY), (ClientRequestFilter) ctx -> {
                 StringBuilder p = new StringBuilder();
-                check(p, "method", "POST", ctx.getMethod());
+                check(p, "method", POST, ctx.getMethod());
                 check(p, "uri", URI.create(server.baseUrl() + "/c"), ctx.getUri());
                 check(p, "header string", "a,b", ctx.getHeaderString(X_LIST));
-                check(p, "absent header", null, ctx.getHeaderString("X-Absent"));
+                check(p, "absent header", null, ctx.getHeaderString(X_ABSENT));
                 check(p, "string headers", List.of("a", "b"), ctx.getStringHeaders().get(X_LIST));
                 check(p, "contains", true, ctx.containsHeaderString(X_LIST, ",", "b"::equals));
                 check(p, "not contains", false, ctx.containsHeaderString(X_LIST, ",", "c"::equals));
-                check(p, "contains absent", false, ctx.containsHeaderString("X-Absent", ",", "c"::equals));
+                check(p, "contains absent", false, ctx.containsHeaderString(X_ABSENT, ",", "c"::equals));
                 check(p, "acceptable", List.of(MediaType.WILDCARD_TYPE), ctx.getAcceptableMediaTypes());
                 check(p, "languages", List.of(), ctx.getAcceptableLanguages());
                 check(p, "media type", MediaType.TEXT_PLAIN_TYPE, ctx.getMediaType());
@@ -113,7 +118,7 @@ class ClientContextsTest {
                 types.set(ctx.getAcceptableMediaTypes());
                 languages.set(ctx.getAcceptableLanguages());
             });
-            client.target(server.baseUrl()).request("text/plain", "application/json")
+            client.target(server.baseUrl()).request(TEXT_PLAIN, "application/json")
                     .acceptLanguage(Locale.FRANCE, Locale.GERMANY).get();
             assertEquals(List.of(MediaType.TEXT_PLAIN_TYPE, MediaType.APPLICATION_JSON_TYPE), types.get());
             assertEquals(List.of(Locale.FRANCE, Locale.GERMANY), languages.get());
@@ -135,7 +140,7 @@ class ClientContextsTest {
                 ctx.removeProperty("gone");
                 property.set(Set.copyOf(ctx.getPropertyNames()) + "=" + ctx.getProperty("k"));
             };
-            Response response = run(server, "POST", Entity.text(BODY), rewrite);
+            Response response = run(server, POST, Entity.text(BODY), rewrite);
             assertEquals("PUT:rewritten", response.readEntity(String.class));
             assertEquals("application/xml", server.last().header(CONTENT_TYPE));
         }
@@ -146,13 +151,13 @@ class ClientContextsTest {
     void request_filter_can_add_or_drop_the_entity() throws Exception {
         try (RecordingServer server = RecordingServer.echo()) {
             ClientRequestFilter add = ctx -> ctx.setEntity("added");
-            assertEquals("POST:added", run(server, "POST", null, add).readEntity(String.class));
+            assertEquals("POST:added", run(server, POST, null, add).readEntity(String.class));
 
             ClientRequestFilter drop = ctx -> ctx.setEntity(null);
-            assertEquals("POST:", run(server, "POST", Entity.text(BODY), drop).readEntity(String.class));
+            assertEquals("POST:", run(server, POST, Entity.text(BODY), drop).readEntity(String.class));
 
             ClientRequestFilter untyped = ctx -> ctx.setEntity("plain", null, null);
-            assertEquals("POST:plain", run(server, "POST", Entity.text(BODY), untyped).readEntity(String.class));
+            assertEquals("POST:plain", run(server, POST, Entity.text(BODY), untyped).readEntity(String.class));
         }
     }
 
@@ -160,7 +165,7 @@ class ClientContextsTest {
     void request_without_entity_has_none_in_the_context() throws Exception {
         AtomicReference<String> seen = new AtomicReference<>();
         try (RecordingServer server = RecordingServer.echo()) {
-            run(server, "GET", null, (ClientRequestFilter) ctx ->
+            run(server, GET, null, (ClientRequestFilter) ctx ->
                     seen.set(ctx.hasEntity() + " " + ctx.getEntity() + " " + ctx.getEntityClass() + " " + ctx.getMediaType()));
         }
         assertEquals("false null null null", seen.get());
@@ -170,16 +175,16 @@ class ClientContextsTest {
     void response_context_exposes_the_response() throws Exception {
         AtomicReference<String> problems = new AtomicReference<>("not run");
         try (RecordingServer server = RecordingServer.fixed(201,
-                Map.of(CONTENT_TYPE, "text/plain", "Location", "http://h/new", X_LIST, "a"), BODY)) {
-            run(server, "GET", null, (ClientResponseFilter) (req, ctx) -> {
+                Map.of(CONTENT_TYPE, TEXT_PLAIN, "Location", "http://h/new", X_LIST, "a"), BODY)) {
+            run(server, GET, null, (ClientResponseFilter) (_, ctx) -> {
                 StringBuilder p = new StringBuilder();
                 check(p, "status", 201, ctx.getStatus());
                 check(p, "status info", Response.Status.CREATED, ctx.getStatusInfo());
                 check(p, "header", "a", ctx.getHeaderString(X_LIST));
-                check(p, "absent header", null, ctx.getHeaderString("X-Absent"));
+                check(p, "absent header", null, ctx.getHeaderString(X_ABSENT));
                 check(p, "contains", true, ctx.containsHeaderString(X_LIST, ",", "a"::equals));
                 check(p, "not contains", false, ctx.containsHeaderString(X_LIST, ",", "z"::equals));
-                check(p, "contains absent", false, ctx.containsHeaderString("X-Absent", ",", "z"::equals));
+                check(p, "contains absent", false, ctx.containsHeaderString(X_ABSENT, ",", "z"::equals));
                 check(p, "length", BODY.length(), ctx.getLength());
                 check(p, "media type", MediaType.TEXT_PLAIN_TYPE, ctx.getMediaType());
                 check(p, "location", URI.create("http://h/new"), ctx.getLocation());
@@ -189,9 +194,9 @@ class ClientContextsTest {
                 check(p, "allowed", Set.of(), ctx.getAllowedMethods());
                 check(p, "cookies", Map.of(), ctx.getCookies());
                 check(p, "links", Set.of(), ctx.getLinks());
-                check(p, "has link", false, ctx.hasLink("next"));
-                check(p, "link", null, ctx.getLink("next"));
-                check(p, "link builder", null, ctx.getLinkBuilder("next"));
+                check(p, "has link", false, ctx.hasLink(NEXT));
+                check(p, "link", null, ctx.getLink(NEXT));
+                check(p, "link builder", null, ctx.getLinkBuilder(NEXT));
                 check(p, "etag", null, ctx.getEntityTag());
                 check(p, "date", null, ctx.getDate());
                 check(p, "last modified", null, ctx.getLastModified());
@@ -206,7 +211,7 @@ class ClientContextsTest {
     void response_context_without_type_or_location() throws Exception {
         AtomicReference<String> seen = new AtomicReference<>();
         try (RecordingServer server = RecordingServer.fixed(204, Map.of(), "")) {
-            run(server, "GET", null, (ClientResponseFilter) (req, ctx) ->
+            run(server, GET, null, (ClientResponseFilter) (_, ctx) ->
                     seen.set(ctx.getMediaType() + " " + ctx.getLocation() + " " + ctx.hasEntity()));
         }
         assertEquals("null null false", seen.get());
@@ -214,25 +219,25 @@ class ClientContextsTest {
 
     @Test
     void response_filter_can_change_status_headers_and_entity() throws Exception {
-        try (RecordingServer server = RecordingServer.fixed(200, Map.of(CONTENT_TYPE, "text/plain"), BODY)) {
-            ClientResponseFilter rewrite = (req, ctx) -> {
+        try (RecordingServer server = RecordingServer.fixed(200, Map.of(CONTENT_TYPE, TEXT_PLAIN), BODY)) {
+            ClientResponseFilter rewrite = (_, ctx) -> {
                 ctx.setStatus(202);
                 ctx.getHeaders().putSingle("X-Added", "yes");
                 ctx.setEntityStream(new ByteArrayInputStream("replaced".getBytes(StandardCharsets.UTF_8)));
             };
-            Response response = run(server, "GET", null, rewrite);
+            Response response = run(server, GET, null, rewrite);
             assertEquals(202, response.getStatus());
             assertEquals("yes", response.getHeaderString("X-Added"));
             assertEquals("replaced", response.readEntity(String.class));
 
-            ClientResponseFilter info = (req, ctx) -> {
+            ClientResponseFilter info = (_, ctx) -> {
                 assertTrue(ctx.hasEntity());
                 ctx.setStatusInfo(Response.Status.ACCEPTED);
             };
-            assertEquals(202, run(server, "GET", null, info).getStatus());
+            assertEquals(202, run(server, GET, null, info).getStatus());
 
-            ClientResponseFilter keepInfo = (req, ctx) -> ctx.setStatusInfo(null);
-            assertEquals(200, run(server, "GET", null, keepInfo).getStatus());
+            ClientResponseFilter keepInfo = (_, ctx) -> ctx.setStatusInfo(null);
+            assertEquals(200, run(server, GET, null, keepInfo).getStatus());
         }
     }
 
@@ -240,7 +245,7 @@ class ClientContextsTest {
     void replaced_entity_stream_is_read_by_the_response_context() throws Exception {
         AtomicReference<Integer> length = new AtomicReference<>();
         try (RecordingServer server = RecordingServer.fixed(200, Map.of(), BODY)) {
-            run(server, "GET", null, (ClientResponseFilter) (req, ctx) -> {
+            run(server, GET, null, (ClientResponseFilter) (_, ctx) -> {
                 ByteArrayInputStream replacement = new ByteArrayInputStream(new byte[] {1, 2, 3});
                 ctx.setEntityStream(replacement);
                 assertSame(replacement, ctx.getEntityStream());
@@ -255,17 +260,17 @@ class ClientContextsTest {
         try (RecordingServer server = RecordingServer.echo()) {
             ClientRequestFilter bytes = ctx -> ctx.abortWith(Response.ok(new byte[] {'o', 'k'})
                     .header("X-Abort", "1").build());
-            Response aborted = run(server, "GET", null, bytes);
+            Response aborted = run(server, GET, null, bytes);
             assertArrayEquals(new byte[] {'o', 'k'}, aborted.readEntity(byte[].class));
             assertEquals("1", aborted.getHeaderString("X-Abort"));
 
             ClientRequestFilter empty = ctx -> ctx.abortWith(Response.noContent().build());
-            Response noContent = run(server, "GET", null, empty);
+            Response noContent = run(server, GET, null, empty);
             assertEquals(204, noContent.getStatus());
             assertFalse(noContent.hasEntity());
 
             ClientRequestFilter number = ctx -> ctx.abortWith(Response.ok(42).build());
-            assertEquals("42", run(server, "GET", null, number).readEntity(String.class));
+            assertEquals("42", run(server, GET, null, number).readEntity(String.class));
         }
     }
 
@@ -274,12 +279,12 @@ class ClientContextsTest {
         try (RecordingServer server = RecordingServer.echo()) {
             ClientRequestFilter replace = ctx -> {
                 MultivaluedHashMap<String, Object> headers = new MultivaluedHashMap<>();
-                headers.putSingle(HttpHeaders.ACCEPT, "text/plain");
+                headers.putSingle(HttpHeaders.ACCEPT, TEXT_PLAIN);
                 ctx.getHeaders().clear();
                 ctx.getHeaders().putAll(headers);
             };
-            run(server, "GET", null, replace);
-            assertEquals("text/plain", server.last().header(HttpHeaders.ACCEPT));
+            run(server, GET, null, replace);
+            assertEquals(TEXT_PLAIN, server.last().header(HttpHeaders.ACCEPT));
             assertNull(server.last().header(X_LIST));
             assertNotNull(server.last().header("Host"));
         }

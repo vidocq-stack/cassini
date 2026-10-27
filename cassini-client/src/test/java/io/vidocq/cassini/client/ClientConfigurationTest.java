@@ -46,7 +46,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -60,6 +59,7 @@ class ClientConfigurationTest {
 
     private static final String NAME = "p";
     private static final String VALUE = "v";
+    private static final String LATE = "late";
 
     @Test
     void client_configuration_is_a_client_one() {
@@ -138,11 +138,11 @@ class ClientConfigurationTest {
         List<String> order = new ArrayList<>();
         try (RecordingServer server = RecordingServer.echo();
              Client client = ClientBuilder.newClient()) {
-            client.register((ClientRequestFilter) ctx -> order.add("late"), 900);
+            client.register((ClientRequestFilter) ctx -> order.add(LATE), 900);
             client.register(new Recording(order), Map.of(ClientRequestFilter.class, 100));
             client.target(server.baseUrl()).request().get();
         }
-        assertEquals(List.of("early", "late"), order);
+        assertEquals(List.of("early", LATE), order);
     }
 
     @Test
@@ -164,7 +164,7 @@ class ClientConfigurationTest {
     @Test
     void ssl_settings_are_exposed_by_the_client() throws Exception {
         SSLContext ssl = SSLContext.getDefault();
-        HostnameVerifier verifier = (host, session) -> true;
+        HostnameVerifier verifier = (_, _) -> true;
         KeyStore store = KeyStore.getInstance(KeyStore.getDefaultType());
         ClientBuilder builder = ClientBuilder.newBuilder();
         assertSame(builder, builder.keyStore(store, new char[0]));
@@ -182,9 +182,9 @@ class ClientConfigurationTest {
     @Test
     void read_timeout_fails_a_slow_response() throws Exception {
         CountDownLatch release = new CountDownLatch(1);
-        try (RecordingServer server = new RecordingServer((exchange, request) -> {
+        try (RecordingServer server = new RecordingServer((exchange, _) -> {
             awaitQuietly(release);
-            RecordingServer.send(exchange, 200, Map.of(), "late");
+            RecordingServer.send(exchange, 200, Map.of(), LATE);
         }); Client client = ClientBuilder.newBuilder().readTimeout(100, TimeUnit.MILLISECONDS)
                 .connectTimeout(2, TimeUnit.SECONDS).build()) {
             var builder = client.target(server.baseUrl()).request();
@@ -243,7 +243,9 @@ class ClientConfigurationTest {
     }
 
     public static class NoDefaultConstructor {
-        public NoDefaultConstructor(String ignored) { /* no nullary constructor */ }
+        private final String value;
+        public NoDefaultConstructor(String value) { this.value = value; }
+        @Override public String toString() { return value; }
     }
 
     @Priority(Priorities.USER)

@@ -49,6 +49,13 @@ class AsyncInvokerTest {
     private static final GenericType<String> STRING = new GenericType<>(String.class);
     private static final String PATCH = "PATCH";
     private static final String GET_ECHO = "GET:";
+    private static final String PUT_ECHO = "PUT:x";
+    private static final String POST_ECHO = "POST:x";
+    private static final String DELETE_ECHO = "DELETE:";
+    private static final String OPTIONS_ECHO = "OPTIONS:";
+    private static final String TRACE_ECHO = "TRACE:";
+    private static final String PATCH_ECHO = "PATCH:";
+    private static final String PATCH_X_ECHO = "PATCH:x";
     private static final long TIMEOUT_S = 5;
 
     private static RecordingServer server;
@@ -89,51 +96,51 @@ class AsyncInvokerTest {
     @Test
     void untyped_futures_complete_with_the_response() throws Exception {
         assertEquals(GET_ECHO, body(async().get()));
-        assertEquals("PUT:x", body(async().put(text())));
-        assertEquals("POST:x", body(async().post(text())));
-        assertEquals("DELETE:", body(async().delete()));
+        assertEquals(PUT_ECHO, body(async().put(text())));
+        assertEquals(POST_ECHO, body(async().post(text())));
+        assertEquals(DELETE_ECHO, body(async().delete()));
         assertEquals(200, await(async().head()).getStatus());
-        assertEquals("OPTIONS:", body(async().options()));
-        assertEquals("TRACE:", body(async().trace()));
-        assertEquals("PATCH:", body(async().method(PATCH)));
-        assertEquals("PATCH:x", body(async().method(PATCH, text())));
+        assertEquals(OPTIONS_ECHO, body(async().options()));
+        assertEquals(TRACE_ECHO, body(async().trace()));
+        assertEquals(PATCH_ECHO, body(async().method(PATCH)));
+        assertEquals(PATCH_X_ECHO, body(async().method(PATCH, text())));
     }
 
     @Test
     void class_typed_futures_complete_with_the_entity() throws Exception {
         assertEquals(GET_ECHO, await(async().get(String.class)));
-        assertEquals("PUT:x", await(async().put(text(), String.class)));
-        assertEquals("POST:x", await(async().post(text(), String.class)));
-        assertEquals("DELETE:", await(async().delete(String.class)));
-        assertEquals("OPTIONS:", await(async().options(String.class)));
-        assertEquals("TRACE:", await(async().trace(String.class)));
-        assertEquals("PATCH:", await(async().method(PATCH, String.class)));
-        assertEquals("PATCH:x", await(async().method(PATCH, text(), String.class)));
+        assertEquals(PUT_ECHO, await(async().put(text(), String.class)));
+        assertEquals(POST_ECHO, await(async().post(text(), String.class)));
+        assertEquals(DELETE_ECHO, await(async().delete(String.class)));
+        assertEquals(OPTIONS_ECHO, await(async().options(String.class)));
+        assertEquals(TRACE_ECHO, await(async().trace(String.class)));
+        assertEquals(PATCH_ECHO, await(async().method(PATCH, String.class)));
+        assertEquals(PATCH_X_ECHO, await(async().method(PATCH, text(), String.class)));
     }
 
     @Test
     void generic_typed_futures_complete_with_the_entity() throws Exception {
         assertEquals(GET_ECHO, await(async().get(STRING)));
-        assertEquals("PUT:x", await(async().put(text(), STRING)));
-        assertEquals("POST:x", await(async().post(text(), STRING)));
-        assertEquals("DELETE:", await(async().delete(STRING)));
-        assertEquals("OPTIONS:", await(async().options(STRING)));
-        assertEquals("TRACE:", await(async().trace(STRING)));
-        assertEquals("PATCH:", await(async().method(PATCH, STRING)));
-        assertEquals("PATCH:x", await(async().method(PATCH, text(), STRING)));
+        assertEquals(PUT_ECHO, await(async().put(text(), STRING)));
+        assertEquals(POST_ECHO, await(async().post(text(), STRING)));
+        assertEquals(DELETE_ECHO, await(async().delete(STRING)));
+        assertEquals(OPTIONS_ECHO, await(async().options(STRING)));
+        assertEquals(TRACE_ECHO, await(async().trace(STRING)));
+        assertEquals(PATCH_ECHO, await(async().method(PATCH, STRING)));
+        assertEquals(PATCH_X_ECHO, await(async().method(PATCH, text(), STRING)));
     }
 
     @Test
     void response_callbacks_receive_the_response() throws Exception {
         assertEquals(GET_ECHO, callback(c -> async().get(c)).readEntity(String.class));
-        assertEquals("PUT:x", callback(c -> async().put(text(), c)).readEntity(String.class));
-        assertEquals("POST:x", callback(c -> async().post(text(), c)).readEntity(String.class));
-        assertEquals("DELETE:", callback(c -> async().delete(c)).readEntity(String.class));
+        assertEquals(PUT_ECHO, callback(c -> async().put(text(), c)).readEntity(String.class));
+        assertEquals(POST_ECHO, callback(c -> async().post(text(), c)).readEntity(String.class));
+        assertEquals(DELETE_ECHO, callback(c -> async().delete(c)).readEntity(String.class));
         assertEquals(200, callback(c -> async().head(c)).getStatus());
-        assertEquals("OPTIONS:", callback(c -> async().options(c)).readEntity(String.class));
-        assertEquals("TRACE:", callback(c -> async().trace(c)).readEntity(String.class));
-        assertEquals("PATCH:", callback(c -> async().method(PATCH, c)).readEntity(String.class));
-        assertEquals("PATCH:x", callback(c -> async().method(PATCH, text(), c)).readEntity(String.class));
+        assertEquals(OPTIONS_ECHO, callback(c -> async().options(c)).readEntity(String.class));
+        assertEquals(TRACE_ECHO, callback(c -> async().trace(c)).readEntity(String.class));
+        assertEquals(PATCH_ECHO, callback(c -> async().method(PATCH, c)).readEntity(String.class));
+        assertEquals(PATCH_X_ECHO, callback(c -> async().method(PATCH, text(), c)).readEntity(String.class));
     }
 
     @Test
@@ -148,7 +155,7 @@ class AsyncInvokerTest {
     void callback_type_is_found_on_a_superclass() throws Exception {
         StringCallback callback = new StringCallback() { };
         async().post(text(), callback);
-        assertEquals("POST:x", callback.result.get(TIMEOUT_S, TimeUnit.SECONDS));
+        assertEquals(POST_ECHO, callback.result.get(TIMEOUT_S, TimeUnit.SECONDS));
     }
 
     @Test

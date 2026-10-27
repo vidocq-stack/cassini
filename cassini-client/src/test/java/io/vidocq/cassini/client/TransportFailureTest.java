@@ -78,7 +78,7 @@ class TransportFailureTest {
     @Test
     void failing_response_filter_fails_with_a_processing_exception() throws Exception {
         try (RecordingServer server = RecordingServer.echo(); Client client = ClientBuilder.newClient()) {
-            client.register((ClientResponseFilter) (req, resp) -> { throw new IOException("response filter"); });
+            client.register((ClientResponseFilter) (_, _) -> { throw new IOException("response filter"); });
             Invocation.Builder builder = client.target(server.baseUrl()).request();
             ProcessingException e = assertThrows(ProcessingException.class, builder::get);
             assertInstanceOf(IOException.class, e.getCause());

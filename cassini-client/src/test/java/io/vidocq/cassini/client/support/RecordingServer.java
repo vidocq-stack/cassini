@@ -66,7 +66,7 @@ public final class RecordingServer implements AutoCloseable {
 
     /** Replies with a fixed status, headers and body to every request. */
     public static RecordingServer fixed(int status, Map<String, String> headers, String body) throws IOException {
-        return new RecordingServer((exchange, request) -> send(exchange, status, headers, body));
+        return new RecordingServer((exchange, _) -> send(exchange, status, headers, body));
     }
 
     /** Sends a reply; an empty body or a HEAD request is sent without a body. */

@@ -91,7 +91,7 @@ final class AsyncContextPropagator {
     private static void closeQuietly(AutoCloseable scope) {
         try {
             scope.close();
-        } catch (Exception ignored) {
+        } catch (Exception _) {
             // restoring the previous OTel Context cannot fail in a way the invocation could act on
         }
     }
