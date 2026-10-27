@@ -47,7 +47,7 @@ class ExchangeResponseBodyTest {
     }
 
     @Test
-    void theWholeBodyIsKeptAsItIsGiven() throws IOException {
+    void theWholeBodyIsKeptAsItIsGiven() {
         var exchange = new ChappeHttpExchange(request());
         byte[] body = bytes("[{\"id\":1}]");
         exchange.writeResponseBody(body);
