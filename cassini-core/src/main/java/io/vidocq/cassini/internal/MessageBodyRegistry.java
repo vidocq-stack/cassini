@@ -58,8 +58,22 @@ import java.util.Optional;
  */
 public final class MessageBodyRegistry {
 
-    private final List<MessageBodyReader<?>> readers = new ArrayList<>();
-    private final List<MessageBodyWriter<?>> writers = new ArrayList<>();
+    /**
+     * A registered provider with what its selection needs to know, resolved once at
+     * registration: the entity type it declares as its type parameter (§4.2.1) and its declared
+     * media types, {@code @Consumes} for a reader and {@code @Produces} for a writer (§4.2.4),
+     * parsed. {@code declared} is {@code null} when the provider declares nothing, which means
+     * the wildcard; it is empty when every declared value was invalid.
+     */
+    private record Registered<P>(P instance, Class<?> entityType, MediaType[] declared) {
+        static <P> Registered<P> of(P instance, Class<?> providerInterface, String[] declaredValues) {
+            return new Registered<>(instance, resolveProviderType(instance.getClass(), providerInterface),
+                    parseDeclared(declaredValues));
+        }
+    }
+
+    private final List<Registered<MessageBodyReader<?>>> readers = new ArrayList<>();
+    private final List<Registered<MessageBodyWriter<?>>> writers = new ArrayList<>();
 
     public MessageBodyRegistry() {
         registerBuiltins();
@@ -68,78 +82,87 @@ public final class MessageBodyRegistry {
     public void addReader(MessageBodyReader<?> r) {
         jakarta.ws.rs.ConstrainedTo ct = r.getClass().getAnnotation(jakarta.ws.rs.ConstrainedTo.class);
         if (ct != null && ct.value() == jakarta.ws.rs.RuntimeType.CLIENT) return;
-        readers.add(0, r);
+        readers.add(0, registeredReader(r));
     }
     public void addWriter(MessageBodyWriter<?> w) {
         jakarta.ws.rs.ConstrainedTo ct = w.getClass().getAnnotation(jakarta.ws.rs.ConstrainedTo.class);
         if (ct != null && ct.value() == jakarta.ws.rs.RuntimeType.CLIENT) return;
-        writers.add(0, w);
+        writers.add(0, registeredWriter(w));
+    }
+
+    private static Registered<MessageBodyReader<?>> registeredReader(MessageBodyReader<?> r) {
+        Consumes consumes = r.getClass().getAnnotation(Consumes.class);
+        return Registered.of(r, MessageBodyReader.class, consumes == null ? null : consumes.value());
+    }
+
+    private static Registered<MessageBodyWriter<?>> registeredWriter(MessageBodyWriter<?> w) {
+        Produces produces = w.getClass().getAnnotation(Produces.class);
+        return Registered.of(w, MessageBodyWriter.class, produces == null ? null : produces.value());
+    }
+
+    /** Parses the declared values once; an invalid one is skipped, as it was on every call. */
+    private static MediaType[] parseDeclared(String[] values) {
+        if (values == null || values.length == 0) return null;
+        List<MediaType> parsed = new ArrayList<>(values.length);
+        for (String s : values) {
+            try {
+                parsed.add(MediaTypes.parse(s));
+            } catch (RuntimeException ignored) {}
+        }
+        return parsed.toArray(MediaType[]::new);
     }
 
     @SuppressWarnings("unchecked")
     public <T> Optional<MessageBodyReader<T>> findReader(Class<T> type, Type genericType,
                                                          Annotation[] anns, MediaType mt) {
         Class<?> boxed = box(type);
-        List<MessageBodyReader<?>> candidates = new ArrayList<>();
-        for (MessageBodyReader<?> r : readers) {
+        List<Registered<MessageBodyReader<?>>> candidates = new ArrayList<>();
+        for (Registered<MessageBodyReader<?>> reg : readers) {
             // §4.2.1 : pre-filter by generic type T of the MBR.
-            Class<?> rType = resolveProviderType(r.getClass(), MessageBodyReader.class);
+            Class<?> rType = reg.entityType();
             if (rType != null && rType != Object.class && !rType.isAssignableFrom(boxed)) continue;
             // §4.2.4 step 1 : pre-filter by compatibility @Consumes ↔ media
             // type requested. Without @Consumes, the provider is considered as
             // @Consumes("*/*") and matches everything.
-            if (!consumesCompatible(r.getClass().getAnnotation(Consumes.class), mt)) continue;
-            if (r.isReadable(type, genericType, anns, mt)) candidates.add(r);
+            if (!declaredCompatible(reg.declared(), mt)) continue;
+            if (reg.instance().isReadable(type, genericType, anns, mt)) candidates.add(reg);
         }
         if (candidates.isEmpty()) return Optional.empty();
         // §4.2.4 step 1: sort by @Consumes media type specificity.
         // Stable sort → on ties, providers at the head of the list
         // (user-provided, inserted at index 0) win over built-ins (at the end).
         candidates.sort(Comparator.comparingInt(
-                (MessageBodyReader<?> r) -> consumesSpecificity(r.getClass().getAnnotation(Consumes.class), mt)
+                (Registered<MessageBodyReader<?>> reg) -> declaredSpecificity(reg.declared(), mt)
         ).reversed());
-        return Optional.of((MessageBodyReader<T>) candidates.get(0));
+        return Optional.of((MessageBodyReader<T>) candidates.get(0).instance());
     }
 
     @SuppressWarnings("unchecked")
     public <T> Optional<MessageBodyWriter<T>> findWriter(Class<?> type, Type genericType,
                                                          Annotation[] anns, MediaType mt) {
         Class<?> boxed = box(type);
-        List<MessageBodyWriter<?>> candidates = new ArrayList<>();
-        for (MessageBodyWriter<?> w : writers) {
-            Class<?> wType = resolveProviderType(w.getClass(), MessageBodyWriter.class);
+        List<Registered<MessageBodyWriter<?>>> candidates = new ArrayList<>();
+        for (Registered<MessageBodyWriter<?>> reg : writers) {
+            Class<?> wType = reg.entityType();
             if (wType != null && wType != Object.class && !wType.isAssignableFrom(boxed)) continue;
              // §4.2.4 step 1 (writer) : pre-filter by compatibility @Produces ↔ mt.
-            if (!producesCompatible(w.getClass().getAnnotation(Produces.class), mt)) continue;
-            if (w.isWriteable(type, genericType, anns, mt)) candidates.add(w);
+            if (!declaredCompatible(reg.declared(), mt)) continue;
+            if (reg.instance().isWriteable(type, genericType, anns, mt)) candidates.add(reg);
         }
         if (candidates.isEmpty()) return Optional.empty();
         candidates.sort(Comparator.comparingInt(
-                (MessageBodyWriter<?> w) -> producesSpecificity(w.getClass().getAnnotation(Produces.class), mt)
+                (Registered<MessageBodyWriter<?>> reg) -> declaredSpecificity(reg.declared(), mt)
         ).reversed());
-        return Optional.of((MessageBodyWriter<T>) candidates.get(0));
+        return Optional.of((MessageBodyWriter<T>) candidates.get(0).instance());
     }
 
-    /** §4.2.4 step 1 : @Consumes absent → wildcard implicite ; sinon une des
-     *  valeurs de l'annotation doit être compatible avec le media type demandé. */
-    private static boolean consumesCompatible(Consumes consumes, MediaType requested) {
-        if (consumes == null || consumes.value().length == 0) return true;
+    /** §4.2.4 step 1 : @Consumes / @Produces absent → wildcard implicite ; sinon une des
+     *  valeurs déclarées doit être compatible avec le media type demandé. */
+    private static boolean declaredCompatible(MediaType[] declared, MediaType requested) {
+        if (declared == null) return true;
         if (requested == null) return true;
-        for (String s : consumes.value()) {
-            try {
-                if (mediaTypeCompatible(MediaType.valueOf(s), requested)) return true;
-            } catch (RuntimeException ignored) {}
-        }
-        return false;
-    }
-
-    private static boolean producesCompatible(Produces produces, MediaType requested) {
-        if (produces == null || produces.value().length == 0) return true;
-        if (requested == null) return true;
-        for (String s : produces.value()) {
-            try {
-                if (mediaTypeCompatible(MediaType.valueOf(s), requested)) return true;
-            } catch (RuntimeException ignored) {}
+        for (MediaType d : declared) {
+            if (mediaTypeCompatible(d, requested)) return true;
         }
         return false;
     }
@@ -159,28 +182,15 @@ public final class MessageBodyRegistry {
         return false;
     }
 
-    // §4.2.4 step 1 : matching specificity between declared @Consumes and requested media type.
-    // 0 = wildcard (or no annotation), 1 = type/*, 2 = type/subtype exact.
-    private static int consumesSpecificity(Consumes consumes, MediaType requested) {
-        if (consumes == null || requested == null) return 0;
+    // §4.2.4 step 1 : matching specificity between the declared @Consumes / @Produces and the
+    // requested media type. 0 = wildcard (or no annotation), 1 = type/*, 2 = type/subtype exact.
+    private static int declaredSpecificity(MediaType[] declared, MediaType requested) {
+        if (declared == null || requested == null) return 0;
         int best = 0;
-        for (String s : consumes.value()) {
-            MediaType declared = MediaType.valueOf(s);
-            if (!declared.isCompatible(requested)) continue;
-            if (!declared.isWildcardType() && !declared.isWildcardSubtype()) best = Math.max(best, 2);
-            else if (!declared.isWildcardType()) best = Math.max(best, 1);
-        }
-        return best;
-    }
-
-    private static int producesSpecificity(Produces produces, MediaType requested) {
-        if (produces == null || requested == null) return 0;
-        int best = 0;
-        for (String s : produces.value()) {
-            MediaType declared = MediaType.valueOf(s);
-            if (!declared.isCompatible(requested)) continue;
-            if (!declared.isWildcardType() && !declared.isWildcardSubtype()) best = Math.max(best, 2);
-            else if (!declared.isWildcardType()) best = Math.max(best, 1);
+        for (MediaType d : declared) {
+            if (!d.isCompatible(requested)) continue;
+            if (!d.isWildcardType() && !d.isWildcardSubtype()) best = Math.max(best, 2);
+            else if (!d.isWildcardType()) best = Math.max(best, 1);
         }
         return best;
     }
@@ -188,33 +198,33 @@ public final class MessageBodyRegistry {
     private void registerBuiltins() {
         // Built-in providers: added at the END (user providers, added
         // via addReader/addWriter, are at index 0 and win on equal specificity).
-        writers.add(new ByteArrayWriter());
-        writers.add(new StringWriter());
-        writers.add(new StreamingOutputWriter());
-        writers.add(new InputStreamWriter());
-        writers.add(new FileWriter());
-        writers.add(new ReaderWriter());
-        writers.add(new SourceWriter());
-        if (activationAvailable()) writers.add(new DataSourceWriter());
-        if (jaxbAvailable()) writers.add(new JaxbWriter());
-        if (jsonbAvailable()) writers.add(new io.vidocq.cassini.internal.json.CassiniJsonbReaderWriter());
-        writers.add(new io.vidocq.cassini.internal.multipart.MultipartFormDataProvider());
-        writers.add(new FormUrlEncodedWriter());
-        writers.add(new PrimitiveWriter());
-        writers.add(new FallbackToStringWriter());
+        writers.add(registeredWriter(new ByteArrayWriter()));
+        writers.add(registeredWriter(new StringWriter()));
+        writers.add(registeredWriter(new StreamingOutputWriter()));
+        writers.add(registeredWriter(new InputStreamWriter()));
+        writers.add(registeredWriter(new FileWriter()));
+        writers.add(registeredWriter(new ReaderWriter()));
+        writers.add(registeredWriter(new SourceWriter()));
+        if (activationAvailable()) writers.add(registeredWriter(new DataSourceWriter()));
+        if (jaxbAvailable()) writers.add(registeredWriter(new JaxbWriter()));
+        if (jsonbAvailable()) writers.add(registeredWriter(new io.vidocq.cassini.internal.json.CassiniJsonbReaderWriter()));
+        writers.add(registeredWriter(new io.vidocq.cassini.internal.multipart.MultipartFormDataProvider()));
+        writers.add(registeredWriter(new FormUrlEncodedWriter()));
+        writers.add(registeredWriter(new PrimitiveWriter()));
+        writers.add(registeredWriter(new FallbackToStringWriter()));
 
-        readers.add(new ByteArrayReader());
-        readers.add(new StringReader());
-        readers.add(new InputStreamReaderMBR());
-        readers.add(new ReaderReaderMBR());
-        readers.add(new FileReader());
-        readers.add(new SourceReader());
-        if (activationAvailable()) readers.add(new DataSourceReader());
-        if (jaxbAvailable()) readers.add(new JaxbReader());
-        if (jsonbAvailable()) readers.add(new io.vidocq.cassini.internal.json.CassiniJsonbReaderWriter());
-        readers.add(new io.vidocq.cassini.internal.multipart.MultipartFormDataProvider());
-        readers.add(new FormUrlEncodedReader());
-        readers.add(new PrimitiveReader());
+        readers.add(registeredReader(new ByteArrayReader()));
+        readers.add(registeredReader(new StringReader()));
+        readers.add(registeredReader(new InputStreamReaderMBR()));
+        readers.add(registeredReader(new ReaderReaderMBR()));
+        readers.add(registeredReader(new FileReader()));
+        readers.add(registeredReader(new SourceReader()));
+        if (activationAvailable()) readers.add(registeredReader(new DataSourceReader()));
+        if (jaxbAvailable()) readers.add(registeredReader(new JaxbReader()));
+        if (jsonbAvailable()) readers.add(registeredReader(new io.vidocq.cassini.internal.json.CassiniJsonbReaderWriter()));
+        readers.add(registeredReader(new io.vidocq.cassini.internal.multipart.MultipartFormDataProvider()));
+        readers.add(registeredReader(new FormUrlEncodedReader()));
+        readers.add(registeredReader(new PrimitiveReader()));
     }
 
     /** JSON-B (Yasson) optional: not registered if jakarta.json.bind is absent. */
