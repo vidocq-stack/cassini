@@ -201,8 +201,8 @@ class CassiniRuntimeDelegateTest {
         Link l = delegate.createLinkBuilder()
                 .uri(java.net.URI.create("http://e.org/%7Bkind%7D/%7Bid:%5Cd+%7D/%7Bkind%7D")).rel("self").build("items", "42");
         assertEquals("http://e.org/items/42/items", l.getUri().toString());
-        assertThrows(IllegalArgumentException.class, () -> delegate.createLinkBuilder()
-                .uri(java.net.URI.create("http://e.org/%7Bid%7D")).build());
+        Link.Builder unresolved = delegate.createLinkBuilder().uri(java.net.URI.create("http://e.org/%7Bid%7D"));
+        assertThrows(IllegalArgumentException.class, unresolved::build);
     }
 
     @Test

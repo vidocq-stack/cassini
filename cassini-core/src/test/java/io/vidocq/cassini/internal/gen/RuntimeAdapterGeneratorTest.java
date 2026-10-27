@@ -149,7 +149,6 @@ class RuntimeAdapterGeneratorTest {
 
     // ---- P1b invoke fixtures ----
 
-    /** Resource with a simple method: takes a @QueryParam int + @Context String-like arg. */
     /** One identity method per primitive type: the adapter unboxes each argument and boxes each result. */
     public static class PrimitiveEchoResource {
         public boolean z(boolean v) { return v; }

@@ -580,15 +580,16 @@ public final class MessageBodyRegistry {
             }
         }
 
-        private static Object parsePrimitive(Class<?> c, String s) {
-            if (c == Boolean.class || c == boolean.class) return parseBoolean(s);
-            if (c == Character.class || c == char.class) return parseCharacter(s);
-            if (c == Byte.class || c == byte.class) return Byte.valueOf(s);
-            if (c == Short.class || c == short.class) return Short.valueOf(s);
-            if (c == Integer.class || c == int.class) return Integer.valueOf(s);
-            if (c == Long.class || c == long.class) return Long.valueOf(s);
-            if (c == Float.class || c == float.class) return Float.valueOf(s);
-            if (c == Double.class || c == double.class) return Double.valueOf(s);
+        private static Object parsePrimitive(Class<?> type, String s) {
+            Class<?> c = type.isPrimitive() ? java.lang.invoke.MethodType.methodType(type).wrap().returnType() : type;
+            if (c == Boolean.class) return parseBoolean(s);
+            if (c == Character.class) return parseCharacter(s);
+            if (c == Byte.class) return Byte.valueOf(s);
+            if (c == Short.class) return Short.valueOf(s);
+            if (c == Integer.class) return Integer.valueOf(s);
+            if (c == Long.class) return Long.valueOf(s);
+            if (c == Float.class) return Float.valueOf(s);
+            if (c == Double.class) return Double.valueOf(s);
             if (c == java.math.BigDecimal.class || c == Number.class) return new java.math.BigDecimal(s);
             if (c == java.math.BigInteger.class) return new java.math.BigInteger(s);
             return s;

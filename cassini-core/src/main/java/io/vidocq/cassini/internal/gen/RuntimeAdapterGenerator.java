@@ -619,14 +619,15 @@ public final class RuntimeAdapterGenerator {
 
     /** The strategy of a primitive or wrapper type, or null for any other type. */
     private static InlineStrategy primitiveStrategy(Class<?> type) {
-        if (type == boolean.class || type == Boolean.class)   return InlineStrategy.BOOLEAN;
-        if (type == byte.class    || type == Byte.class)      return InlineStrategy.BYTE;
-        if (type == short.class   || type == Short.class)     return InlineStrategy.SHORT;
-        if (type == int.class     || type == Integer.class)   return InlineStrategy.INT;
-        if (type == long.class    || type == Long.class)      return InlineStrategy.LONG;
-        if (type == float.class   || type == Float.class)     return InlineStrategy.FLOAT;
-        if (type == double.class  || type == Double.class)    return InlineStrategy.DOUBLE;
-        if (type == char.class    || type == Character.class) return InlineStrategy.CHAR;
+        Class<?> wrapper = type.isPrimitive() ? java.lang.invoke.MethodType.methodType(type).wrap().returnType() : type;
+        if (wrapper == Boolean.class)   return InlineStrategy.BOOLEAN;
+        if (wrapper == Byte.class)      return InlineStrategy.BYTE;
+        if (wrapper == Short.class)     return InlineStrategy.SHORT;
+        if (wrapper == Integer.class)   return InlineStrategy.INT;
+        if (wrapper == Long.class)      return InlineStrategy.LONG;
+        if (wrapper == Float.class)     return InlineStrategy.FLOAT;
+        if (wrapper == Double.class)    return InlineStrategy.DOUBLE;
+        if (wrapper == Character.class) return InlineStrategy.CHAR;
         return null;
     }
 
