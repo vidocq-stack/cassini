@@ -50,10 +50,10 @@ final class CassiniInvocation implements Invocation {
     @Override public Response invoke() { return builder.invoke(method, entity); }
 
     @Override
-    public <T> T invoke(Class<T> responseType) { return invoke().readEntity(responseType); }
+    public <T> T invoke(Class<T> responseType) { return CassiniInvocationBuilder.readTyped(invoke(), responseType); }
 
     @Override
-    public <T> T invoke(GenericType<T> responseType) { return invoke().readEntity(responseType); }
+    public <T> T invoke(GenericType<T> responseType) { return CassiniInvocationBuilder.readTyped(invoke(), responseType); }
 
     @Override
     public Future<Response> submit() {

@@ -242,3 +242,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `ClientResponseTest.closed_response_cannot_be_read` and `unreadable_entity_type_fails_with_a_processing_exception`.
 - **Cause**: `CassiniClientResponse.close()` set a flag nothing read; the fallback of `readEntity` threw `UnsupportedOperationException`.
 - **Fix**: `readEntity`, `hasEntity` and `bufferEntity` throw `IllegalStateException` on a closed response; an unreadable type throws `ProcessingException`.
+
+## CASSINI-021 — Typed client invocations return the body of an error response instead of throwing `WebApplicationException`
+- **Date**: 2026-10-27 — **Status**: FIXED (found while covering `cassini-client` with unit tests)
+- **Severity**: medium. `SyncInvoker`/`AsyncInvoker`/`Invocation` contract: a typed invocation (`get(String.class)`, `invoke(GenericType)`…) whose response status is not successful throws `WebApplicationException`; `Response.class` returns the response.
+- **Symptom**: `target.request().get(String.class)` on a 404 returned the error body. The async invoker threw a bare `WebApplicationException` for statuses ≥ 400 only (a 302 was read as a success). `get(Response.class)` failed in `readEntity`.
+- **Minimal repro**: `ErrorStatusTest` (a server answering the status it is asked for).
+- **Cause**: the typed sync methods and `CassiniInvocation.invoke(Class)` called `readEntity` directly; `CassiniAsyncInvoker` had its own `≥ 400` check.
+- **Fix**: one `readTyped` for the three paths: `Response.class` passes the response through, a status outside 2xx throws the matching subclass (`NotFoundException`, `RedirectionException`, `ServerErrorException`…), as other implementations do.

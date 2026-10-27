@@ -19,7 +19,19 @@
  */
 package io.vidocq.cassini.client.internal;
 
+import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.ClientErrorException;
+import jakarta.ws.rs.ForbiddenException;
+import jakarta.ws.rs.InternalServerErrorException;
+import jakarta.ws.rs.NotAcceptableException;
+import jakarta.ws.rs.NotAuthorizedException;
+import jakarta.ws.rs.NotFoundException;
+import jakarta.ws.rs.NotSupportedException;
 import jakarta.ws.rs.ProcessingException;
+import jakarta.ws.rs.RedirectionException;
+import jakarta.ws.rs.ServerErrorException;
+import jakarta.ws.rs.ServiceUnavailableException;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.client.AsyncInvoker;
 import jakarta.ws.rs.client.ClientRequestFilter;
 import jakarta.ws.rs.client.ClientResponseFilter;
@@ -61,37 +73,37 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
     // ---- SyncInvoker ----------------------------------------------------------------------
 
     @Override public Response get() { return invoke("GET", null); }
-    @Override public <T> T get(Class<T> responseType) { return get().readEntity(responseType); }
-    @Override public <T> T get(GenericType<T> responseType) { return get().readEntity(responseType); }
+    @Override public <T> T get(Class<T> responseType) { return readTyped(get(), responseType); }
+    @Override public <T> T get(GenericType<T> responseType) { return readTyped(get(), responseType); }
 
     @Override public Response put(Entity<?> entity) { return invoke("PUT", entity); }
-    @Override public <T> T put(Entity<?> entity, Class<T> responseType) { return put(entity).readEntity(responseType); }
-    @Override public <T> T put(Entity<?> entity, GenericType<T> responseType) { return put(entity).readEntity(responseType); }
+    @Override public <T> T put(Entity<?> entity, Class<T> responseType) { return readTyped(put(entity), responseType); }
+    @Override public <T> T put(Entity<?> entity, GenericType<T> responseType) { return readTyped(put(entity), responseType); }
 
     @Override public Response post(Entity<?> entity) { return invoke("POST", entity); }
-    @Override public <T> T post(Entity<?> entity, Class<T> responseType) { return post(entity).readEntity(responseType); }
-    @Override public <T> T post(Entity<?> entity, GenericType<T> responseType) { return post(entity).readEntity(responseType); }
+    @Override public <T> T post(Entity<?> entity, Class<T> responseType) { return readTyped(post(entity), responseType); }
+    @Override public <T> T post(Entity<?> entity, GenericType<T> responseType) { return readTyped(post(entity), responseType); }
 
     @Override public Response delete() { return invoke("DELETE", null); }
-    @Override public <T> T delete(Class<T> responseType) { return delete().readEntity(responseType); }
-    @Override public <T> T delete(GenericType<T> responseType) { return delete().readEntity(responseType); }
+    @Override public <T> T delete(Class<T> responseType) { return readTyped(delete(), responseType); }
+    @Override public <T> T delete(GenericType<T> responseType) { return readTyped(delete(), responseType); }
 
     @Override public Response head() { return invoke("HEAD", null); }
 
     @Override public Response options() { return invoke("OPTIONS", null); }
-    @Override public <T> T options(Class<T> responseType) { return options().readEntity(responseType); }
-    @Override public <T> T options(GenericType<T> responseType) { return options().readEntity(responseType); }
+    @Override public <T> T options(Class<T> responseType) { return readTyped(options(), responseType); }
+    @Override public <T> T options(GenericType<T> responseType) { return readTyped(options(), responseType); }
 
     @Override public Response trace() { return invoke("TRACE", null); }
-    @Override public <T> T trace(Class<T> responseType) { return trace().readEntity(responseType); }
-    @Override public <T> T trace(GenericType<T> responseType) { return trace().readEntity(responseType); }
+    @Override public <T> T trace(Class<T> responseType) { return readTyped(trace(), responseType); }
+    @Override public <T> T trace(GenericType<T> responseType) { return readTyped(trace(), responseType); }
 
     @Override public Response method(String name) { return invoke(name, null); }
-    @Override public <T> T method(String name, Class<T> responseType) { return method(name).readEntity(responseType); }
-    @Override public <T> T method(String name, GenericType<T> responseType) { return method(name).readEntity(responseType); }
+    @Override public <T> T method(String name, Class<T> responseType) { return readTyped(method(name), responseType); }
+    @Override public <T> T method(String name, GenericType<T> responseType) { return readTyped(method(name), responseType); }
     @Override public Response method(String name, Entity<?> entity) { return invoke(name, entity); }
-    @Override public <T> T method(String name, Entity<?> entity, Class<T> responseType) { return method(name, entity).readEntity(responseType); }
-    @Override public <T> T method(String name, Entity<?> entity, GenericType<T> responseType) { return method(name, entity).readEntity(responseType); }
+    @Override public <T> T method(String name, Entity<?> entity, Class<T> responseType) { return readTyped(method(name, entity), responseType); }
+    @Override public <T> T method(String name, Entity<?> entity, GenericType<T> responseType) { return readTyped(method(name, entity), responseType); }
 
     // ---- Invocation.Builder ---------------------------------------------------------------
 
@@ -191,6 +203,49 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
     }
 
     // ---- Internal -------------------------------------------------------------------------
+
+    /**
+     * Reads the entity of a typed invocation: {@code Response.class} gets the response itself,
+     * any other type a {@link WebApplicationException} when the status is not successful
+     * ({@code SyncInvoker} / {@code AsyncInvoker} contracts, CASSINI-021).
+     */
+    @SuppressWarnings("unchecked")
+    static <T> T readTyped(Response response, Class<T> type) {
+        if (type == Response.class) return (T) response;
+        if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+            throw errorFor(response);
+        }
+        return response.readEntity(type);
+    }
+
+    @SuppressWarnings("unchecked")
+    static <T> T readTyped(Response response, GenericType<T> type) {
+        if (type.getRawType() == Response.class) return (T) response;
+        if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+            throw errorFor(response);
+        }
+        return response.readEntity(type);
+    }
+
+    /** The most specific {@link WebApplicationException} for a status that is not successful. */
+    static WebApplicationException errorFor(Response response) {
+        return switch (response.getStatus()) {
+            case 400 -> new BadRequestException(response);
+            case 401 -> new NotAuthorizedException(response);
+            case 403 -> new ForbiddenException(response);
+            case 404 -> new NotFoundException(response);
+            case 406 -> new NotAcceptableException(response);
+            case 415 -> new NotSupportedException(response);
+            case 500 -> new InternalServerErrorException(response);
+            case 503 -> new ServiceUnavailableException(response);
+            default -> switch (response.getStatusInfo().getFamily()) {
+                case REDIRECTION -> new RedirectionException(response);
+                case CLIENT_ERROR -> new ClientErrorException(response);
+                case SERVER_ERROR -> new ServerErrorException(response);
+                default -> new WebApplicationException(response);
+            };
+        };
+    }
 
     /**
      * JAX-RS §6.3 compliant invocation pipeline:

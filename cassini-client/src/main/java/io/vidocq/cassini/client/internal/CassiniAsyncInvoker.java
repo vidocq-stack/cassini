@@ -71,43 +71,26 @@ final class CassiniAsyncInvoker implements AsyncInvoker {
         }, executor);
     }
 
-    @SuppressWarnings("unchecked")
     private <T> Future<T> asyncTyped(String method, Entity<?> entity, Class<T> type) {
         Object ctx = AsyncContextPropagator.capture();
         return CompletableFuture.supplyAsync(() -> {
             try (var scope = AsyncContextPropagator.activate(ctx)) {
-                Response r = builder.invoke(method, entity);
-                throwIfErrorStatus(r);
-                return (T) r.readEntity(type);
+                return CassiniInvocationBuilder.readTyped(builder.invoke(method, entity), type);
             } catch (jakarta.ws.rs.WebApplicationException wae) {
                 throw wae;  // Propagate as-is so Future.get() exposes via ExecutionException.getCause()
             } catch (Exception e) { throw new RuntimeException(e); }
         }, executor);
     }
 
-    @SuppressWarnings("unchecked")
     private <T> Future<T> asyncTyped(String method, Entity<?> entity, GenericType<T> type) {
         Object ctx = AsyncContextPropagator.capture();
         return CompletableFuture.supplyAsync(() -> {
             try (var scope = AsyncContextPropagator.activate(ctx)) {
-                Response r = builder.invoke(method, entity);
-                throwIfErrorStatus(r);
-                return (T) r.readEntity(type.getRawType());
+                return CassiniInvocationBuilder.readTyped(builder.invoke(method, entity), type);
             } catch (jakarta.ws.rs.WebApplicationException wae) {
                 throw wae;
             } catch (Exception e) { throw new RuntimeException(e); }
         }, executor);
-    }
-
-    /**
-     * Spec JAX-RS §5.6 — when a non-null entity type is requested and the response
-     * has an error status (≥400), throw {@link jakarta.ws.rs.WebApplicationException}
-     * (or a specialized subclass depending on the status code, e.g. NotFoundException for 404).
-     */
-    private static void throwIfErrorStatus(Response r) {
-        int s = r.getStatus();
-        if (s < 400) return;
-        throw new jakarta.ws.rs.WebApplicationException("HTTP " + s, r);
     }
 
     private <T> Future<T> asyncCallback(String method, Entity<?> entity, InvocationCallback<T> callback) {
