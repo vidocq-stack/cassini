@@ -56,4 +56,19 @@ class CassiniJsonbReaderWriterTest {
         assertEquals(42, read(Integer.class, "42"));
         assertEquals(7, read(Integer.class, "7"));
     }
+
+    /** §4.2.3: a DataSource has its own provider; the JSON one must leave it alone. */
+    @Test
+    void aDataSourceIsLeftToItsDedicatedProvider() {
+        assertFalse(reader.isWriteable(ADataSource.class, ADataSource.class, new Annotation[0], MediaType.APPLICATION_JSON_TYPE));
+        assertFalse(reader.isReadable(ADataSource.class, ADataSource.class, new Annotation[0], MediaType.APPLICATION_JSON_TYPE));
+        assertTrue(reader.isWriteable(Integer.class, Integer.class, new Annotation[0], MediaType.APPLICATION_JSON_TYPE));
+    }
+
+    static final class ADataSource implements jakarta.activation.DataSource {
+        @Override public java.io.InputStream getInputStream() { return java.io.InputStream.nullInputStream(); }
+        @Override public java.io.OutputStream getOutputStream() { return java.io.OutputStream.nullOutputStream(); }
+        @Override public String getContentType() { return "application/octet-stream"; }
+        @Override public String getName() { return "a"; }
+    }
 }

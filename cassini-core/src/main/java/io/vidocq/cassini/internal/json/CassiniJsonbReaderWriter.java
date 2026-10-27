@@ -19,6 +19,7 @@
  */
 package io.vidocq.cassini.internal.json;
 
+import io.vidocq.cassini.internal.OptionalClass;
 import io.vidocq.cassini.internal.ParamExtractor;
 import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
@@ -62,6 +63,14 @@ public final class CassiniJsonbReaderWriter
     private static final class DefaultJsonb {
         static final Jsonb INSTANCE = JsonbBuilder.create();
     }
+
+    /**
+     * §4.2.3: {@code DataSource} has its own dedicated MBR/MBW when Jakarta Activation is present.
+     * Looked up once: a deployment without it must not pay a {@code ClassNotFoundException} on
+     * every {@link #isWriteable} / {@link #isReadable} call, that is on every JSON request.
+     */
+    private static final OptionalClass DATA_SOURCE =
+            OptionalClass.of("jakarta.activation.DataSource", CassiniJsonbReaderWriter.class.getClassLoader());
 
     @Override
     public boolean isReadable(Class<?> type, Type genericType, Annotation[] annotations, MediaType mediaType) {
@@ -143,11 +152,6 @@ public final class CassiniJsonbReaderWriter
         if (jakarta.ws.rs.core.StreamingOutput.class.isAssignableFrom(type)) return true;
         if (java.io.File.class.isAssignableFrom(type)) return true;
         if (javax.xml.transform.Source.class.isAssignableFrom(type)) return true;
-        // §4.2.3: DataSource has its own dedicated MBR/MBW.
-        try {
-            Class<?> dataSource = Class.forName("jakarta.activation.DataSource");
-            if (dataSource.isAssignableFrom(type)) return true;
-        } catch (ClassNotFoundException ignored) {}
-        return false;
+        return DATA_SOURCE.isAssignableFrom(type);
     }
 }
