@@ -269,18 +269,38 @@ public final class Invoker {
                             preCtx);
                 }
             }
+            // §6.6.1: once per request — invokeInternal must not run them a second time.
+            RequestScope.current().preMatchingDone = true;
             return new PreMatchResult(null, preCtx);
         } finally {
             ParamExtractor.clearProviders();
         }
     }
 
+    /**
+     * The request context handed to the response filters when parameter resolution or the
+     * entity read fails: the pre-matching context when this call built one, otherwise one built
+     * on demand under the same conditions (pre-matching filters registered, response filters to
+     * run), {@code null} when no response filter needs it. Keeps the error paths as they were
+     * when the pre-matching filters ran, and their context was built, on every invocation.
+     */
+    private CassiniRequestContext errorContext(CassiniRequestContext preCtx, MatchResult match,
+                                               CassiniHttpExchange request) {
+        if (preCtx != null) return preCtx;
+        if (filters.preMatching().isEmpty() || filters.responseFilters().isEmpty()) return null;
+        return new CassiniRequestContext(request, new CassiniUriInfo(
+                request, request.contextPath(), match.pathParams()));
+    }
+
     private CassiniHttpResponse invokeInternal(MatchResult match, CassiniHttpExchange request, ResourceMethod route) throws Exception {
 
-        // 0. Pre-matching request filters §6.6 — executed before any
-        //    negotiation. If they throw, go through ExceptionMapper.
+        // 0. Pre-matching request filters §6.6 — executed before any negotiation, unless the
+        //    dispatch already ran them before routing (DefaultCassiniHttpAdapter): §6.6.1, a
+        //    pre-matching filter runs once per request. If they throw, go through ExceptionMapper.
         CassiniRequestContext preCtx = null;
-        if (!filters.preMatching().isEmpty()) {
+        RequestScope scope = RequestScope.current();
+        boolean preMatchingDone = scope != null && scope.preMatchingDone;
+        if (!filters.preMatching().isEmpty() && !preMatchingDone) {
             preCtx = new CassiniRequestContext(request, new CassiniUriInfo(
                     request, request.contextPath(), match.pathParams()));
             for (var fe : filters.preMatching()) {
@@ -363,11 +383,12 @@ public final class Invoker {
             return renderWebAppException(wae, route, chosen, null);
         } catch (EntityReadException ere) {
             // cassini#39: the reader (or its interceptor chain) failed on the entity.
-            return renderEntityReadFailure(ere.getCause(), route, chosen, preCtx, request);
+            return renderEntityReadFailure(ere.getCause(), route, chosen,
+                    errorContext(preCtx, match, request), request);
         } catch (RuntimeException | java.io.IOException re) {
             // §4.4: parameter resolution or body buffering failed
             // (RuntimeException or IOException) → try ExceptionMapper.
-            CassiniHttpResponse mapped = mapFilterThrowable(re, route, chosen, preCtx);
+            CassiniHttpResponse mapped = mapFilterThrowable(re, route, chosen, errorContext(preCtx, match, request));
             if (mapped != null) return mapped;
             if (re instanceof RuntimeException rrt) throw rrt;
             throw new RuntimeException(re);

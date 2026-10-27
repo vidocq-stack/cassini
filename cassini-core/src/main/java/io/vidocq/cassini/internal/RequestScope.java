@@ -57,6 +57,9 @@ public final class RequestScope {
     List<jakarta.ws.rs.ext.ParamConverterProvider> paramConverterProviders;
     jakarta.ws.rs.core.Application application;
     io.vidocq.cassini.internal.sse.CassiniSseEventSink sink;
+    /** §6.6.1: the pre-matching filters ran before routing in this dispatch — they must not run
+     *  again before negotiation. */
+    boolean preMatchingDone;
     private URI baseUri;
 
     private RequestScope() {

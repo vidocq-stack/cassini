@@ -61,9 +61,13 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     private final CassiniHttpExchange exchange;
     private final CassiniHttpHeaders httpHeaders;
     private final Map<String, Object> properties = new HashMap<>();
-    private final MultivaluedMap<String, String> headers;
+    /** The mutable copy of the request headers, built the first time a filter asks for it: most
+     *  filters never do, and the copy walks every header of the exchange. */
+    private MultivaluedMap<String, String> headers;
     private String method;
     private URI requestUri;
+    /** Set by {@link #setRequestUri(URI, URI)} only; until then {@link #getUriInfo()} reads the
+     *  base URI from the {@link UriInfo}, which costs nothing when nobody asks for it. */
     private URI baseUri;
     private InputStream entityStream;
     private SecurityContext securityContext;
@@ -94,10 +98,8 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     public CassiniRequestContext(CassiniHttpExchange exchange, UriInfo uriInfo) {
         this.exchange = exchange;
         this.httpHeaders = new CassiniHttpHeaders(exchange);
-        this.headers = buildHeaders(exchange);
         this.method = exchange.method();
         this.requestUri = exchange.requestUri();
-        this.baseUri = uriInfo.getBaseUri();
         this.entityStream = exchange.requestBody() == null ? new ByteArrayInputStream(new byte[0])
                 : exchange.requestBody();
         // §6: a @PreMatching filter may have set a SecurityContext (stored on the exchange).
@@ -123,6 +125,15 @@ public final class CassiniRequestContext implements ContainerRequestContext {
             for (String v : e.getValue()) m.add(e.getKey(), v);
         }
         return m;
+    }
+
+    private MultivaluedMap<String, String> headers() {
+        MultivaluedMap<String, String> h = headers;
+        if (h == null) {
+            h = buildHeaders(exchange);
+            headers = h;
+        }
+        return h;
     }
 
     @Override public Object getProperty(String name) { return properties.get(name); }
@@ -154,16 +165,17 @@ public final class CassiniRequestContext implements ContainerRequestContext {
         this.method = method;
     }
 
-    @Override public MultivaluedMap<String, String> getHeaders() { return headers; }
+    @Override public MultivaluedMap<String, String> getHeaders() { return headers(); }
 
     @Override public String getHeaderString(String name) {
-        List<String> v = headers.get(name);
+        List<String> v = headers().get(name);
         if (v == null || v.isEmpty()) return null;
         return String.join(",", v);
     }
 
     @Override public boolean containsHeaderString(String n, String sep, java.util.function.Predicate<String> p) {
         // §6.7.4 : recherche case-insensitive (RFC 7230).
+        MultivaluedMap<String, String> headers = headers();
         List<String> vs = headers.get(n);
         if (vs == null) {
             for (var e : headers.entrySet()) {
@@ -246,7 +258,8 @@ public final class CassiniRequestContext implements ContainerRequestContext {
             this.delegate = delegate; this.base = base; this.request = request;
         }
         @Override public String getPath() {
-            String b = base == null ? "/" : base.getPath();
+            URI baseUri = getBaseUri();
+            String b = baseUri == null ? "/" : baseUri.getPath();
             String r = request == null ? "" : request.getPath();
             if (b == null) b = "/";
             if (r == null) r = "";
