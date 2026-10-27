@@ -108,6 +108,20 @@ public final class MessageBodyRegistry {
             return false;
         }
 
+        /** RFC 6839 + §3.5: {@link MediaType#isCompatible} extended to structured syntax
+         *  suffixes ({@code application/*+xml} matches {@code application/atom+xml}). */
+        private static boolean mediaTypeCompatible(MediaType declared, MediaType requested) {
+            if (declared.isCompatible(requested)) return true;
+            boolean typeOk = declared.getType().equalsIgnoreCase(requested.getType())
+                    || declared.isWildcardType() || requested.isWildcardType();
+            if (!typeOk) return false;
+            String dSub = declared.getSubtype();
+            String rSub = requested.getSubtype();
+            if (dSub.startsWith("*+") && rSub.toLowerCase().endsWith(dSub.substring(1).toLowerCase())) return true;
+            if (rSub.startsWith("*+") && dSub.toLowerCase().endsWith(rSub.substring(1).toLowerCase())) return true;
+            return false;
+        }
+
         /**
          * Parses the declared values once. No value declared means {@link #ANY}; an invalid value is
          * skipped, as it was when the values were parsed on every call.
@@ -189,21 +203,6 @@ public final class MessageBodyRegistry {
                 (Registered<MessageBodyWriter<?>> reg) -> reg.specificity(mt)
         ).reversed());
         return Optional.of((MessageBodyWriter<T>) candidates.get(0).instance);
-    }
-
-    /** RFC 6839 + §3.5 : étend {@link MediaType#isCompatible} pour traiter
-     *  les suffixes structurés (ex : {@code application/*+xml} matche
-     *  {@code application/atom+xml}). */
-    private static boolean mediaTypeCompatible(MediaType declared, MediaType requested) {
-        if (declared.isCompatible(requested)) return true;
-        boolean typeOk = declared.getType().equalsIgnoreCase(requested.getType())
-                || declared.isWildcardType() || requested.isWildcardType();
-        if (!typeOk) return false;
-        String dSub = declared.getSubtype();
-        String rSub = requested.getSubtype();
-        if (dSub.startsWith("*+") && rSub.toLowerCase().endsWith(dSub.substring(1).toLowerCase())) return true;
-        if (rSub.startsWith("*+") && dSub.toLowerCase().endsWith(rSub.substring(1).toLowerCase())) return true;
-        return false;
     }
 
     private void registerBuiltins() {
