@@ -342,22 +342,23 @@ public final class MessageBodyRegistry {
     // ---- File reader (writes to a temporary file) ----
 
     /**
-     * Owner-only permissions for an upload's temporary file. NIO already creates it so on a POSIX file system; they
+     * A temporary file for an upload, owner-only. NIO already creates it so on a POSIX file system; they
      * are spelled out so the shared temporary directory is visibly used safely. Elsewhere (Windows) the file system's
      * own defaults apply.
      */
-    static java.nio.file.attribute.FileAttribute<?>[] ownerOnly() {
-        return java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix")
-                ? new java.nio.file.attribute.FileAttribute<?>[] {java.nio.file.attribute.PosixFilePermissions
-                        .asFileAttribute(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"))}
-                : new java.nio.file.attribute.FileAttribute<?>[0];
+    static java.nio.file.Path createUploadFile() throws IOException {
+        if (java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+            return java.nio.file.Files.createTempFile("cassini-upload-", ".bin", java.nio.file.attribute.PosixFilePermissions
+                    .asFileAttribute(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")));
+        }
+        return java.nio.file.Files.createTempFile("cassini-upload-", ".bin");
     }
 
     static final class FileReader implements MessageBodyReader<File> {
         @Override public boolean isReadable(Class<?> t, Type gt, Annotation[] a, MediaType mt) { return File.class.isAssignableFrom(t); }
         @Override public File readFrom(Class<File> t, Type gt, Annotation[] a, MediaType mt,
                                        MultivaluedMap<String, String> h, InputStream in) throws IOException {
-            java.nio.file.Path tmp = java.nio.file.Files.createTempFile("cassini-upload-", ".bin", ownerOnly());
+            java.nio.file.Path tmp = createUploadFile();
             try (OutputStream os = java.nio.file.Files.newOutputStream(tmp)) {
                 in.transferTo(os);
             }
