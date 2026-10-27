@@ -342,17 +342,20 @@ public final class MessageBodyRegistry {
     // ---- File reader (writes to a temporary file) ----
 
     /**
-     * A temporary file for an upload, owner-only. NIO already creates it so on a POSIX file system; they
+     * A temporary file for an upload, owner-only. NIO already creates it so on a POSIX file system; the permissions
      * are spelled out so the shared temporary directory is visibly used safely. Elsewhere (Windows) the file system's
      * own defaults apply.
      */
     static java.nio.file.Path createUploadFile() throws IOException {
-        if (java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
-            return java.nio.file.Files.createTempFile("cassini-upload-", ".bin", java.nio.file.attribute.PosixFilePermissions
-                    .asFileAttribute(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")));
-        }
-        return java.nio.file.Files.createTempFile("cassini-upload-", ".bin");
+        return java.nio.file.Files.createTempFile("cassini-upload-", ".bin", UPLOAD_ATTRIBUTES);
     }
+
+    /** {@code rw-------} where the default file system has POSIX permissions, none elsewhere. */
+    private static final java.nio.file.attribute.FileAttribute<?>[] UPLOAD_ATTRIBUTES =
+            java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix")
+                    ? new java.nio.file.attribute.FileAttribute<?>[] {java.nio.file.attribute.PosixFilePermissions
+                            .asFileAttribute(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"))}
+                    : new java.nio.file.attribute.FileAttribute<?>[0];
 
     static final class FileReader implements MessageBodyReader<File> {
         @Override public boolean isReadable(Class<?> t, Type gt, Annotation[] a, MediaType mt) { return File.class.isAssignableFrom(t); }
