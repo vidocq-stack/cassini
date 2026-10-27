@@ -39,7 +39,7 @@ import java.util.Map;
  * front, the response is collected for assertions. Lets a test drive
  * {@code DefaultCassiniHttpAdapter.dispatch} end to end without opening a socket.
  */
-final class InMemoryExchange implements CassiniHttpExchange {
+public final class InMemoryExchange implements CassiniHttpExchange {
 
     private final String method;
     private final URI uri;
@@ -73,7 +73,7 @@ final class InMemoryExchange implements CassiniHttpExchange {
     }
 
     /** A {@code GET} with no body. */
-    static InMemoryExchange get(String path) {
+    public static InMemoryExchange get(String path) {
         return new InMemoryExchange("GET", path, null, null);
     }
 
@@ -83,19 +83,19 @@ final class InMemoryExchange implements CassiniHttpExchange {
     }
 
     /** Any method, with an optional {@code Content-Type} and UTF-8 body ({@code null} = no body). */
-    static InMemoryExchange request(String method, String path, String contentType, String body) {
+    public static InMemoryExchange request(String method, String path, String contentType, String body) {
         return new InMemoryExchange(method, path, contentType,
                 body == null ? null : body.getBytes(StandardCharsets.UTF_8));
     }
 
     /** Adds a request header value. */
-    InMemoryExchange header(String name, String value) {
+    public InMemoryExchange header(String name, String value) {
         requestHeaders.computeIfAbsent(name, _ -> new java.util.ArrayList<>()).add(value);
         return this;
     }
 
     /** Replaces every value of a request header; null removes it. */
-    InMemoryExchange replaceHeader(String name, String value) {
+    public InMemoryExchange replaceHeader(String name, String value) {
         if (value == null) requestHeaders.remove(name);
         else requestHeaders.put(name, new java.util.ArrayList<>(List.of(value)));
         return this;

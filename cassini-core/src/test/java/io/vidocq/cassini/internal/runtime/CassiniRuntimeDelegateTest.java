@@ -19,17 +19,28 @@
  */
 package io.vidocq.cassini.internal.runtime;
 
+import jakarta.ws.rs.SeBootstrap;
+import jakarta.ws.rs.core.Application;
 import jakarta.ws.rs.core.CacheControl;
 import jakarta.ws.rs.core.Cookie;
 import jakarta.ws.rs.core.EntityTag;
 import jakarta.ws.rs.core.Link;
+import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.NewCookie;
+import jakarta.ws.rs.core.UriBuilderException;
+import jakarta.ws.rs.core.Variant;
 import jakarta.ws.rs.ext.RuntimeDelegate;
 import jakarta.ws.rs.ext.RuntimeDelegate.HeaderDelegate;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.net.URI;
 import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -211,5 +222,261 @@ class CassiniRuntimeDelegateTest {
         Link l = delegate.createLinkBuilder()
                 .uri("http://e.org/a").rel("self").title("t").param("z", "1").build();
         assertEquals("<http://e.org/a>;rel=\"self\";title=\"t\";z=\"1\"", l.toString());
+    }
+
+    // ── Factories ─────────────────────────────────────────────────────────────
+
+    private static final String E_ORG_A = "http://e.org/a";
+    private static final String VALUE_IS_NULL = "a null value is rejected";
+
+    public static class App extends Application { }
+
+    @Test
+    void the_builders_are_cassini_ones() throws java.io.IOException {
+        assertInstanceOf(CassiniUriBuilder.class, delegate.createUriBuilder());
+        assertInstanceOf(CassiniResponseBuilder.class, delegate.createResponseBuilder());
+        assertEquals("p", delegate.createEntityPartBuilder("p").content("x").build().getName());
+    }
+
+    @Test
+    void createEndpoint_validates_then_is_unsupported() {
+        Application app = new App();
+        assertThrows(IllegalArgumentException.class, () -> delegate.createEndpoint(null, Object.class));
+        assertThrows(IllegalArgumentException.class, () -> delegate.createEndpoint(app, null));
+        assertThrows(UnsupportedOperationException.class, () -> delegate.createEndpoint(app, Object.class));
+    }
+
+    @Test
+    void bootstrap_needs_a_transport_adapter() {
+        SeBootstrap.Configuration config = delegate.createConfigurationBuilder().build();
+        var byInstance = delegate.bootstrap(new App(), config).toCompletableFuture();
+        var byClass = delegate.bootstrap(App.class, config).toCompletableFuture();
+        var unbuildable = delegate.bootstrap(AbstractApp.class, config).toCompletableFuture();
+        assertInstanceOf(UnsupportedOperationException.class,
+                assertThrows(ExecutionException.class, byInstance::get).getCause());
+        assertInstanceOf(UnsupportedOperationException.class,
+                assertThrows(ExecutionException.class, byClass::get).getCause());
+        assertInstanceOf(ReflectiveOperationException.class,
+                assertThrows(ExecutionException.class, unbuildable::get).getCause());
+    }
+
+    public abstract static class AbstractApp extends Application { }
+
+    @Test
+    void the_configuration_has_defaults_explicit_properties_and_external_ones() {
+        SeBootstrap.Configuration defaults = delegate.createConfigurationBuilder().build();
+        assertEquals("HTTP", defaults.protocol());
+        assertEquals("localhost", defaults.host());
+        assertEquals("/", defaults.rootPath());
+
+        SeBootstrap.Configuration c = delegate.createConfigurationBuilder()
+                .property("custom", "v")
+                .from((name, type) -> switch (name) {
+                    case SeBootstrap.Configuration.HOST -> Optional.of(type.cast("example.org"));
+                    case SeBootstrap.Configuration.PORT -> Optional.of(type.cast(8080));
+                    case SeBootstrap.Configuration.ROOT_PATH -> throw new IllegalStateException("source down");
+                    default -> Optional.empty();
+                })
+                .build();
+        assertEquals("v", c.property("custom"));
+        assertEquals("example.org", c.host());
+        assertEquals(8080, c.port());
+        assertEquals("/", c.rootPath());
+    }
+
+    // ── Header delegates: argument checks and remaining branches ─────────────
+
+    @Test
+    void every_header_delegate_rejects_null() {
+        assertThrows(IllegalArgumentException.class, () -> delegate.createHeaderDelegate(null));
+        for (Class<?> type : List.of(MediaType.class, NewCookie.class, Cookie.class, EntityTag.class,
+                CacheControl.class, Link.class, Date.class, Object.class)) {
+            HeaderDelegate<?> hd = delegate.createHeaderDelegate(type);
+            assertThrows(IllegalArgumentException.class, () -> hd.fromString(null), VALUE_IS_NULL);
+        }
+        for (Class<?> type : List.of(MediaType.class, NewCookie.class, Cookie.class, EntityTag.class,
+                CacheControl.class, Link.class, Object.class)) {
+            @SuppressWarnings("unchecked")
+            HeaderDelegate<Object> hd = (HeaderDelegate<Object>) delegate.createHeaderDelegate(type);
+            assertThrows(IllegalArgumentException.class, () -> hd.toString(null), VALUE_IS_NULL);
+        }
+    }
+
+    @Test
+    void mediaType_and_toString_delegates_round_trip() {
+        HeaderDelegate<MediaType> mt = headerDelegate(MediaType.class);
+        assertEquals(MediaType.TEXT_PLAIN_TYPE, mt.fromString("text/plain"));
+        assertEquals("text/plain;charset=UTF-8", mt.toString(MediaType.TEXT_PLAIN_TYPE.withCharset("UTF-8")));
+        HeaderDelegate<Integer> other = headerDelegate(Integer.class);
+        assertEquals("12", other.toString(12));
+        assertEquals("12", ((HeaderDelegate<?>) other).fromString("12"));
+    }
+
+    @Test
+    void newCookie_parses_every_attribute_and_skips_unknown_ones() {
+        HeaderDelegate<NewCookie> hd = headerDelegate(NewCookie.class);
+        NewCookie c = hd.fromString("n=\"v\"; Comment=hello; Version=2; Max-Age=x; Unknown=1; Flag");
+        assertEquals("v", c.getValue());
+        assertEquals("hello", c.getComment());
+        assertEquals(2, c.getVersion());
+        assertEquals(-1, c.getMaxAge());
+        assertFalse(c.isSecure());
+        assertNull(c.getPath());
+    }
+
+    @Test
+    void newCookie_serialises_only_the_set_attributes_and_quotes_when_needed() {
+        HeaderDelegate<NewCookie> hd = headerDelegate(NewCookie.class);
+        NewCookie full = new NewCookie.Builder("n").value("a b").path("/p").domain("d").maxAge(5)
+                .comment("c;d").version(1).secure(true).httpOnly(true).build();
+        assertEquals("n=\"a b\";Version=1;Path=/p;Domain=d;Max-Age=5;Comment=\"c;d\";Secure;HttpOnly",
+                hd.toString(full));
+        NewCookie bare = new NewCookie.Builder("n").version(0).build();
+        assertEquals("n=", hd.toString(bare));
+    }
+
+    @Test
+    void cookie_serialises_its_rfc_2109_attributes() {
+        HeaderDelegate<Cookie> hd = headerDelegate(Cookie.class);
+        Cookie full = new Cookie.Builder("n").value("v,w").path("/p").domain("d").version(1).build();
+        assertEquals("$Version=1;n=\"v,w\";$Path=/p;$Domain=d", hd.toString(full));
+        assertEquals("n=v", hd.toString(new Cookie.Builder("n").value("v").version(0).build()));
+    }
+
+    @Test
+    void cookie_without_a_value_is_named_after_the_whole_header() {
+        HeaderDelegate<Cookie> hd = headerDelegate(Cookie.class);
+        assertEquals("solo", hd.fromString("solo").getName());
+        Cookie onlyAttributes = hd.fromString("$Version=x; ;$Domain=d");
+        assertEquals("$Version=x; ;$Domain=d", onlyAttributes.getName());
+        assertEquals(0, onlyAttributes.getVersion());
+    }
+
+    @Test
+    void cacheControl_serialises_flags_field_lists_and_extensions() {
+        HeaderDelegate<CacheControl> hd = headerDelegate(CacheControl.class);
+        CacheControl cc = new CacheControl();
+        cc.setPrivate(true);
+        cc.setNoCache(true);
+        cc.setNoTransform(false);
+        cc.setSMaxAge(3);
+        cc.getCacheExtension().put("ext", "1");
+        cc.getCacheExtension().put("flag", null);
+        cc.getCacheExtension().put("empty", "");
+        assertEquals("private, no-cache, s-maxage=3, ext=1, flag, empty", hd.toString(cc));
+
+        CacheControl parsed = hd.fromString("no-cache, private=\"\", max-age=oops, , s-maxage=x");
+        assertTrue(parsed.isNoCache());
+        assertTrue(parsed.getNoCacheFields().isEmpty());
+        assertTrue(parsed.getPrivateFields().isEmpty());
+        assertEquals(-1, parsed.getMaxAge());
+        assertEquals(-1, parsed.getSMaxAge());
+        assertFalse(parsed.isNoTransform());
+        assertEquals(List.of("a"), hd.fromString("no-cache=\"a, ,\"").getNoCacheFields());
+    }
+
+    @Test
+    void link_header_without_brackets_or_params() {
+        HeaderDelegate<Link> hd = headerDelegate(Link.class);
+        assertEquals(URI.create(E_ORG_A), hd.fromString(E_ORG_A).getUri());
+        Link bare = hd.fromString("<http://e.org/a>");
+        assertTrue(bare.getParams().isEmpty());
+        assertEquals("<http://e.org/a>", hd.toString(bare));
+        assertEquals(Map.of("rel", "x"), hd.fromString("<http://e.org/a>; novalue; rel=x").getParams());
+    }
+
+    // ── Variant list builder ─────────────────────────────────────────────────
+
+    @Test
+    void variantListBuilder_builds_the_cartesian_product_of_each_group() {
+        // Variant.VariantListBuilder#add: "the cartesian product of the current set of media types, languages
+        // and encodings" is added to the list.
+        List<Variant> variants = delegate.createVariantListBuilder()
+                .mediaTypes(MediaType.TEXT_PLAIN_TYPE, MediaType.TEXT_HTML_TYPE).languages(Locale.ENGLISH).add()
+                .encodings("gzip").add()
+                .add()
+                .build();
+        assertEquals(List.of(
+                new Variant(MediaType.TEXT_PLAIN_TYPE, Locale.ENGLISH, null),
+                new Variant(MediaType.TEXT_HTML_TYPE, Locale.ENGLISH, null),
+                new Variant(null, (Locale) null, "gzip")), variants);
+        assertTrue(delegate.createVariantListBuilder().build().isEmpty());
+    }
+
+    // ── Link builder ─────────────────────────────────────────────────────────
+
+    @Test
+    void linkBuilder_copies_an_existing_link() {
+        Link original = Link.fromUri(E_ORG_A).rel("self").type("text/plain").build();
+        Link copy = delegate.createLinkBuilder().link(original).build();
+        assertEquals(original, copy);
+        assertEquals(original.hashCode(), copy.hashCode());
+        assertEquals("text/plain", copy.getType());
+    }
+
+    @Test
+    void linkBuilder_parses_a_link_header() {
+        Link l = delegate.createLinkBuilder().link("<http://e.org/a>; rel=\"a b\"; title=t; skipped").build();
+        assertEquals(URI.create(E_ORG_A), l.getUri());
+        assertEquals(List.of("a", "b"), l.getRels());
+        assertEquals("t", l.getTitle());
+        assertEquals(URI.create(E_ORG_A), delegate.createLinkBuilder().link("<http://e.org/a>").build().getUri());
+        assertEquals(URI.create(E_ORG_A), delegate.createLinkBuilder().link(E_ORG_A).build().getUri());
+        assertEquals(List.of(), delegate.createLinkBuilder().link(E_ORG_A).build().getRels());
+    }
+
+    @Test
+    void linkBuilder_rejects_malformed_links() {
+        Link.Builder b = delegate.createLinkBuilder();
+        assertThrows(IllegalArgumentException.class, () -> b.link((String) null));
+        assertThrows(IllegalArgumentException.class, () -> b.link("<>; rel=x"));
+        assertThrows(IllegalArgumentException.class, () -> b.link("<a<b>"));
+        assertThrows(IllegalArgumentException.class, () -> b.link("<a>>"));
+        assertThrows(IllegalArgumentException.class, () -> b.uri((URI) null));
+        assertThrows(IllegalArgumentException.class, () -> b.uri((String) null));
+        assertThrows(IllegalArgumentException.class, () -> b.uri("a b"));
+        assertThrows(IllegalArgumentException.class, () -> b.uri("{a} b"));
+        assertThrows(IllegalArgumentException.class, () -> b.rel(null));
+        assertThrows(IllegalArgumentException.class, () -> b.param(null, "v"));
+        assertThrows(IllegalArgumentException.class, () -> b.build((Object[]) null));
+        assertThrows(IllegalArgumentException.class, () -> b.buildRelativized(null));
+    }
+
+    @Test
+    void linkBuilder_rejects_an_unbuildable_uri() {
+        // Link.Builder#build: UriBuilderException "if a URI cannot be constructed based on the current state".
+        // "a_b:x" is not a valid server authority: java.net.URI keeps it as a registry-based one, without host.
+        Link.Builder badAuthority = delegate.createLinkBuilder().uri(URI.create("http://a_b:x/"));
+        assertThrows(UriBuilderException.class, badAuthority::build);
+    }
+
+    @Test
+    void linkBuilder_resolves_templates_and_a_base() {
+        Link templated = delegate.createLinkBuilder().uri("http://e.org/{a}/{b}/{a}").build("1", "2");
+        assertEquals(URI.create("http://e.org/1/2/1"), templated.getUri());
+        Link relative = delegate.createLinkBuilder().baseUri("http://e.org/base/").uri("x").build();
+        assertEquals(URI.create("http://e.org/base/x"), relative.getUri());
+        Link relativeToUri = delegate.createLinkBuilder().baseUri(URI.create("http://e.org/b/")).uri("y").build();
+        assertEquals(URI.create("http://e.org/b/y"), relativeToUri.getUri());
+        assertEquals(URI.create(""), delegate.createLinkBuilder().build().getUri());
+        Link.Builder unclosed = delegate.createLinkBuilder().uri("http://e.org/a/{x");
+        assertThrows(IllegalArgumentException.class, unclosed::build);
+    }
+
+    @Test
+    void linkBuilder_buildRelativized_relativises_against_the_base() {
+        Link l = delegate.createLinkBuilder().uri("http://e.org/a/b").rel("r").buildRelativized(URI.create("http://e.org/a/"));
+        assertEquals(URI.create("b"), l.getUri());
+        assertEquals("r", l.getRel());
+    }
+
+    @Test
+    void a_built_link_offers_a_uri_builder() {
+        Link l = delegate.createLinkBuilder().uri(E_ORG_A).build();
+        assertEquals(URI.create("http://e.org/a/b"), l.getUriBuilder().path("b").build());
+        assertNotEquals(l, delegate.createLinkBuilder().uri(E_ORG_A).rel("x").build());
+        assertNotEquals(l, delegate.createLinkBuilder().uri("http://e.org/z").build());
+        assertNotEquals(null, l);
+        assertEquals(l, l);
     }
 }
