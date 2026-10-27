@@ -196,7 +196,8 @@ public final class Invoker {
     private static void publishBaseUri(CassiniHttpExchange request) {
         try {
             // From the raw request target: building the request URI parses it, for two fields.
-            String raw = request.requestUriRaw();
+            // An exchange without a target gives "": an origin-form target, as far as the base URI goes.
+            String raw = java.util.Objects.requireNonNullElse(request.requestUriRaw(), "");
             int authorityStart = authorityStart(raw);
             String scheme = authorityStart < 0 ? schemeOf(request) : raw.substring(0, authorityStart - 3);
             String authority = authorityStart < 0 ? null : authorityOf(raw, authorityStart);
@@ -210,7 +211,6 @@ public final class Invoker {
     /** Where the authority of an absolute {@code http}/{@code https} target starts, -1 for any
      *  other target (origin-form, or none). */
     private static int authorityStart(String raw) {
-        if (raw == null) return -1;
         if (raw.regionMatches(true, 0, HTTP_PREFIX, 0, HTTP_PREFIX.length())) return HTTP_PREFIX.length();
         if (raw.regionMatches(true, 0, HTTPS_PREFIX, 0, HTTPS_PREFIX.length())) return HTTPS_PREFIX.length();
         return -1;
