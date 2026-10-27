@@ -281,3 +281,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   8. Several cookies are joined into one `Cookie` header with `", "`; RFC 6265 §5.4 uses `"; "`.
   9. An `InputStream` entity with a JSON media type is sent through its `toString()`.
 - **Minimal repro**: per item, through `ClientBuilder.newClient()` against `RecordingServer` (cassini-client tests).
+
+## CASSINI-025 — An annotation value with a newline or another control character breaks the APT-generated adapter
+- **Date**: 2026-10-28 — **Status**: FIXED
+- **Severity**: low. A resource or application whose annotation value carries a control character failed to compile under `cassini-processor` (a ` ` / ` ` would have been carried raw into the generated source).
+- **Symptom**: `@DefaultValue("a\nb")` (or the same value in `@ApplicationPath`, `@Path`, `@QueryParam`, `@Produces`...) made javac fail on the generated `$$CassiniAdapter` / `$$CassiniApplication` with `unclosed string literal`.
+- **Minimal repro**: `@Path("/ctl") class R { @QueryParam("q") @DefaultValue("a\nb") public String q; @GET public String get() { return q; } }` compiled with `cassini-processor` on the processor path.
+- **Cause**: `CassiniResourceProcessor.escapeString` escaped only `\` and `"` when rendering values into generated string literals. The Maven-plugin and runtime generators write Class-File constants directly and are not affected.
+- **Fix**: escape `\n`, `\r`, `\t`, `\b`, `\f` by name and any other character below 0x20, 0x7f, U+2028 and U+2029 as a Unicode escape, like grimm/dirac `lit` and foy `literal`. Regression test: `CassiniResourceProcessorTest.controlCharactersInAnnotationValuesSurviveTheGeneratedSource`.

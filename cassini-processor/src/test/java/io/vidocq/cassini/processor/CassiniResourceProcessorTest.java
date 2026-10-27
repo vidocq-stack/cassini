@@ -284,6 +284,52 @@ class CassiniResourceProcessorTest {
         assertEquals("a\\b\"c", descriptor.applicationPath());
     }
 
+    /** Every escape the generated string literals must survive (CASSINI-025). */
+    private static final String CONTROL_CHARS_VALUE = "a\nb\rc\td\be\ff\0g\u007fh\u2028i\u2029j\"k\\l\u0001m";
+
+    @Test
+    void controlCharactersInAnnotationValuesSurviveTheGeneratedSource() throws Throwable {
+        // Before CASSINI-025 only \ and " were escaped: a newline in @DefaultValue or
+        // @ApplicationPath produced a generated adapter that did not compile.
+        String literal = "a\\nb\\rc\\td\\be\\ff\\0g\\u007fh\\u2028i\\u2029j\\\"k\\\\l\\u0001m";
+        File app = writeSource("io/vidocq/cassini/test/apt/CtlApp.java", """
+                package io.vidocq.cassini.test.apt;
+
+                @jakarta.ws.rs.ApplicationPath("%s")
+                public class CtlApp extends jakarta.ws.rs.core.Application {}
+                """.formatted(literal));
+        File resource = writeSource("io/vidocq/cassini/test/apt/CtlResource.java", """
+                package io.vidocq.cassini.test.apt;
+
+                import jakarta.ws.rs.DefaultValue;
+                import jakarta.ws.rs.GET;
+                import jakarta.ws.rs.Path;
+                import jakarta.ws.rs.QueryParam;
+
+                @Path("/ctl")
+                public class CtlResource {
+                    @QueryParam("q") @DefaultValue("%s") public String q;
+
+                    @GET public String get() { return q; }
+                }
+                """.formatted(literal));
+        File outDir = tempDir.resolve("out-ctl").toFile();
+        outDir.mkdirs();
+
+        URLClassLoader loader = compileWithProcessor(outDir, app, resource);
+
+        ApplicationDescriptor descriptor = (ApplicationDescriptor) loader
+                .loadClass("io.vidocq.cassini.test.apt.CtlApp$$CassiniApplication").getDeclaredConstructor().newInstance();
+        assertEquals(CONTROL_CHARS_VALUE, descriptor.applicationPath());
+
+        ResourceAdapter adapter = (ResourceAdapter) loader
+                .loadClass("io.vidocq.cassini.test.apt.CtlResource$$CassiniAdapter").getDeclaredConstructor().newInstance();
+        Class<?> rc = loader.loadClass("io.vidocq.cassini.test.apt.CtlResource");
+        Object instance = rc.getDeclaredConstructor().newInstance();
+        adapter.injectFields(instance, new MapSupport(new HashMap<>(), new HashMap<>()), true);
+        assertEquals(CONTROL_CHARS_VALUE, fld(rc, instance, "q"));
+    }
+
     @Test
     void applicationPathOnANonApplicationGeneratesNothing() throws Throwable {
         File src = writeSource("io/vidocq/cassini/test/apt/NotAnApp.java", """

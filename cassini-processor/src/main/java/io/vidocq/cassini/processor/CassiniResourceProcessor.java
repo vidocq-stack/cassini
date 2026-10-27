@@ -1515,8 +1515,36 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         };
     }
 
+    private static final char LINE_SEPARATOR = 0x2028;
+    private static final char PARAGRAPH_SEPARATOR = 0x2029;
+
+    /**
+     * Escapes {@code s} for the body of a generated Java string literal: backslash, double quote,
+     * the named control escapes, and any other control character or U+2028 / U+2029 as a
+     * Unicode escape, so that any annotation value yields compilable source (CASSINI-025).
+     */
     private static String escapeString(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+        StringBuilder out = new StringBuilder(s.length() + 8);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\' -> out.append("\\\\");
+                case '"' -> out.append("\\\"");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                case '\b' -> out.append("\\b");
+                case '\f' -> out.append("\\f");
+                default -> {
+                    if (c < 0x20 || c == 0x7f || c == LINE_SEPARATOR || c == PARAGRAPH_SEPARATOR) {
+                        out.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        out.append(c);
+                    }
+                }
+            }
+        }
+        return out.toString();
     }
 
     // -------------------------------------------------------------------------
