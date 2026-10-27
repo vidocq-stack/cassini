@@ -96,7 +96,7 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
                 while (!queue.offer(EOF, 50, java.util.concurrent.TimeUnit.MILLISECONDS)) {
                     if (closed) return;
                 }
-            } catch (InterruptedException ie) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             }
         }
@@ -155,6 +155,7 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
     /** Set once by the dispatch thread when it commits a stream, read by the transport thread:
      *  published through {@link #STREAMING_INFO} (release / acquire), as a volatile would, without
      *  an extra object per request. */
+    @SuppressWarnings("java:S1068") // read and written through STREAMING_INFO, which SonarQube does not see
     private StreamingInfo streamingInfo;
     private static final java.lang.invoke.VarHandle STREAMING_INFO;
     static {
