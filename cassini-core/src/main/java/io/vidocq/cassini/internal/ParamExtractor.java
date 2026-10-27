@@ -32,12 +32,20 @@ import jakarta.ws.rs.MatrixParam;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.container.ResourceContext;
+import jakarta.ws.rs.container.ResourceInfo;
+import jakarta.ws.rs.core.Application;
+import jakarta.ws.rs.core.Configuration;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.core.UriInfo;
+import jakarta.ws.rs.ext.ContextResolver;
 import jakarta.ws.rs.ext.ParamConverter;
 import jakarta.ws.rs.ext.ParamConverterProvider;
 import jakarta.ws.rs.ext.Providers;
+import jakarta.ws.rs.sse.Sse;
+import jakarta.ws.rs.sse.SseEventSink;
 
 import java.lang.reflect.Parameter;
 import java.net.URLDecoder;
@@ -63,8 +71,8 @@ public final class ParamExtractor {
     public record ResolvedArgs(Object[] args, int bodyIndex) {
         @Override
         public boolean equals(Object o) {
-            return o instanceof ResolvedArgs other && bodyIndex == other.bodyIndex
-                    && java.util.Arrays.equals(args, other.args);
+            return o instanceof ResolvedArgs(Object[] otherArgs, int otherBodyIndex)
+                    && bodyIndex == otherBodyIndex && java.util.Arrays.equals(args, otherArgs);
         }
 
         @Override
@@ -226,97 +234,113 @@ public final class ParamExtractor {
         }
     }
 
+    /** The server-side {@code @Context Configuration}: nothing registered, nothing enabled. */
+    private static final Configuration SERVER_CONFIGURATION = new Configuration() {
+        @Override public jakarta.ws.rs.RuntimeType getRuntimeType() { return jakarta.ws.rs.RuntimeType.SERVER; }
+        @Override public Map<String, Object> getProperties() { return Map.of(); }
+        @Override public Object getProperty(String name) { return null; }
+        @Override public java.util.Collection<String> getPropertyNames() { return List.of(); }
+        @Override public boolean isEnabled(jakarta.ws.rs.core.Feature feature) { return false; }
+        @Override public boolean isEnabled(Class<? extends jakarta.ws.rs.core.Feature> featureClass) { return false; }
+        @Override public boolean isRegistered(Object component) { return false; }
+        @Override public boolean isRegistered(Class<?> componentClass) { return false; }
+        @Override public Map<Class<?>, Integer> getContracts(Class<?> componentClass) { return Map.of(); }
+        @Override public java.util.Set<Class<?>> getClasses() { return java.util.Set.of(); }
+        @Override public java.util.Set<Object> getInstances() { return java.util.Set.of(); }
+    };
+
+    /** Resolves the {@code @Context} value of one type, or null when there is none here. */
+    @FunctionalInterface
+    private interface ContextValue {
+        Object resolve(MatchResult match, CassiniHttpExchange request);
+    }
+
+    /** The {@code @Context} types a parameter may declare (§9.2), by exact type. */
+    private static final Map<Class<?>, ContextValue> CONTEXT_VALUES = Map.ofEntries(
+            Map.entry(UriInfo.class, (match, request) -> new CassiniUriInfo(request, request.contextPath(),
+                    match.pathParams(), match.method() == null ? null : match.method().path())),
+            Map.entry(HttpHeaders.class, (_, request) -> new CassiniHttpHeaders(request)),
+            Map.entry(jakarta.ws.rs.core.Request.class, (_, request) -> new CassiniRequest(request)),
+            Map.entry(SecurityContext.class, (_, request) -> securityContext(request)),
+            Map.entry(Providers.class, (_, _) -> currentProviders()),
+            Map.entry(ContainerRequestContext.class, ParamExtractor::requestContext),
+            Map.entry(ResourceInfo.class, (match, _) -> resourceInfo(match.method())),
+            Map.entry(Application.class, ParamExtractor::application),
+            Map.entry(ContextResolver.class, (_, _) -> currentProviders()),
+            Map.entry(ResourceContext.class, ParamExtractor::resourceContext),
+            Map.entry(Sse.class, (_, _) -> new io.vidocq.cassini.internal.sse.CassiniSse()),
+            Map.entry(SseEventSink.class, (_, _) -> currentSinkOrNew()),
+            Map.entry(Configuration.class, (_, _) -> SERVER_CONFIGURATION),
+            // The SPI HTTP exchange (useful for tests).
+            Map.entry(CassiniHttpExchange.class, (_, request) -> request));
+
     private static Object resolveContext(Class<?> type, MatchResult match, CassiniHttpExchange request) {
-        if (type == UriInfo.class) return new CassiniUriInfo(request, request.contextPath(),
-                match.pathParams(), match.method() == null ? null : match.method().path());
-        if (type == HttpHeaders.class) return new CassiniHttpHeaders(request);
-        if (type == jakarta.ws.rs.core.Request.class) return new CassiniRequest(request);
-        if (type == SecurityContext.class) {
-            Object filterSc = request.getAttribute(
-                    io.vidocq.cassini.internal.filter.CassiniRequestContext.ATTR_SECURITY_CONTEXT);
-            return filterSc != null ? filterSc : new CassiniSecurityContext(request);
+        ContextValue value = CONTEXT_VALUES.get(type);
+        Object resolved = value == null ? null : value.resolve(match, request);
+        if (resolved == null) {
+            throw new WebApplicationException("Unsupported @Context type: " + type.getName(), 500);
         }
-        if (type == Providers.class) {
-            Providers p = currentProviders();
-            if (p != null) return p;
+        return resolved;
+    }
+
+    /** The security context a request filter set, or the one of the exchange. */
+    private static Object securityContext(CassiniHttpExchange request) {
+        Object filterSc = request.getAttribute(
+                io.vidocq.cassini.internal.filter.CassiniRequestContext.ATTR_SECURITY_CONTEXT);
+        return filterSc != null ? filterSc : new CassiniSecurityContext(request);
+    }
+
+    private static Object requestContext(MatchResult match, CassiniHttpExchange request) {
+        var rctx = new io.vidocq.cassini.internal.filter.CassiniRequestContext(
+                request, new CassiniUriInfo(request, request.contextPath(), match.pathParams()));
+        rctx.markPostMatching();
+        rctx.markPostResource();
+        return rctx;
+    }
+
+    private static ResourceInfo resourceInfo(ResourceMethod route) {
+        return new ResourceInfo() {
+            @Override public java.lang.reflect.Method getResourceMethod() { return route.javaMethod(); }
+            @Override public Class<?> getResourceClass() { return route.beanClass(); }
+        };
+    }
+
+    /** §9.4: the application instance the harness or the integration published, otherwise a
+     *  minimal Application. */
+    private static Application application(MatchResult match, CassiniHttpExchange request) {
+        Application app = currentApplication();
+        if (app == null) return new Application();
+        // §9.2: @Context fields on the Application subclass must
+        // expose the current context (per-request proxy injection).
+        try {
+            io.vidocq.cassini.internal.FieldInjector.inject(app, match, request);
+        } catch (RuntimeException _) {
+            // An Application whose fields cannot be injected is still the application.
         }
-        if (type == jakarta.ws.rs.container.ContainerRequestContext.class) {
-            var rctx = new io.vidocq.cassini.internal.filter.CassiniRequestContext(
-                    request, new CassiniUriInfo(request, request.contextPath(), match.pathParams()));
-            rctx.markPostMatching();
-            rctx.markPostResource();
-            return rctx;
-        }
-        if (type == jakarta.ws.rs.container.ResourceInfo.class) {
-            var route = match.method();
-            return new jakarta.ws.rs.container.ResourceInfo() {
-                @Override public java.lang.reflect.Method getResourceMethod() { return route.javaMethod(); }
-                @Override public Class<?> getResourceClass() { return route.beanClass(); }
-            };
-        }
-        if (type == jakarta.ws.rs.core.Application.class) {
-            // §9.4: Application is the user-level instance if the harness
-            // (or integration) published one via setCurrentApplication()
-            // — otherwise we return a minimal Application.
-            jakarta.ws.rs.core.Application app = currentApplication();
-            if (app != null) {
-                // §9.2: @Context fields on the Application subclass must
-                // expose the current context (per-request proxy injection).
+        return app;
+    }
+
+    /** Minimal stub §6.5.2: per-request injection on a fresh instance. */
+    private static ResourceContext resourceContext(MatchResult match, CassiniHttpExchange request) {
+        return new ResourceContext() {
+            @Override public <T> T getResource(Class<T> resourceClass) {
                 try {
-                    io.vidocq.cassini.internal.FieldInjector.inject(app, match, request);
-                } catch (RuntimeException _) {
-                    // An Application whose fields cannot be injected is still the application.
-                }
-                return app;
+                    T r = resourceClass.getDeclaredConstructor().newInstance();
+                    io.vidocq.cassini.internal.FieldInjector.inject(r, match, request);
+                    return r;
+                } catch (ReflectiveOperationException _) { return null; }
             }
-            return new jakarta.ws.rs.core.Application();
-        }
-        if (type == jakarta.ws.rs.ext.ContextResolver.class) {
-            Providers p = currentProviders();
-            if (p != null) return p;
-        }
-        if (type == jakarta.ws.rs.container.ResourceContext.class) {
-            // Minimal stub §6.5.2: per-request injection on a fresh instance.
-            return new jakarta.ws.rs.container.ResourceContext() {
-                @Override public <T> T getResource(Class<T> resourceClass) {
-                    try {
-                        T r = resourceClass.getDeclaredConstructor().newInstance();
-                        io.vidocq.cassini.internal.FieldInjector.inject(r, match, request);
-                        return r;
-                    } catch (ReflectiveOperationException _) { return null; }
-                }
-                @Override public <T> T initResource(T resource) {
-                    io.vidocq.cassini.internal.FieldInjector.inject(resource, match, request);
-                    return resource;
-                }
-            };
-        }
-        if (type == jakarta.ws.rs.sse.Sse.class) {
-            return new io.vidocq.cassini.internal.sse.CassiniSse();
-        }
-        if (type == jakarta.ws.rs.sse.SseEventSink.class) {
-            var s = currentSink();
-            if (s != null) return s;
-            // No current sink: §11.1 expects us to construct a new one.
-            return new io.vidocq.cassini.internal.sse.CassiniSseEventSink(null);
-        }
-        if (type == jakarta.ws.rs.core.Configuration.class) {
-            return new jakarta.ws.rs.core.Configuration() {
-                @Override public jakarta.ws.rs.RuntimeType getRuntimeType() { return jakarta.ws.rs.RuntimeType.SERVER; }
-                @Override public java.util.Map<String, Object> getProperties() { return java.util.Map.of(); }
-                @Override public Object getProperty(String name) { return null; }
-                @Override public java.util.Collection<String> getPropertyNames() { return java.util.List.of(); }
-                @Override public boolean isEnabled(jakarta.ws.rs.core.Feature feature) { return false; }
-                @Override public boolean isEnabled(Class<? extends jakarta.ws.rs.core.Feature> featureClass) { return false; }
-                @Override public boolean isRegistered(Object component) { return false; }
-                @Override public boolean isRegistered(Class<?> componentClass) { return false; }
-                @Override public java.util.Map<Class<?>, Integer> getContracts(Class<?> componentClass) { return java.util.Map.of(); }
-                @Override public java.util.Set<Class<?>> getClasses() { return java.util.Set.of(); }
-                @Override public java.util.Set<Object> getInstances() { return java.util.Set.of(); }
-            };
-        }
-        if (type == CassiniHttpExchange.class) return request; // SPI HTTP exchange (useful for tests)
-        throw new WebApplicationException("Unsupported @Context type: " + type.getName(), 500);
+            @Override public <T> T initResource(T resource) {
+                io.vidocq.cassini.internal.FieldInjector.inject(resource, match, request);
+                return resource;
+            }
+        };
+    }
+
+    /** The sink of the current SSE invocation; without one, §11.1 expects a new one. */
+    private static Object currentSinkOrNew() {
+        var s = currentSink();
+        return s != null ? s : new io.vidocq.cassini.internal.sse.CassiniSseEventSink(null);
     }
 
     private static Object coerce(MethodParameters.Param p, List<String> raws) {
