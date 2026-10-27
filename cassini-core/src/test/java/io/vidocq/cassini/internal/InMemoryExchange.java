@@ -82,6 +82,50 @@ final class InMemoryExchange implements CassiniHttpExchange {
         return new InMemoryExchange("GET", authority, path, null, null);
     }
 
+    /** Any method, with an optional {@code Content-Type} and UTF-8 body ({@code null} = no body). */
+    static InMemoryExchange request(String method, String path, String contentType, String body) {
+        return new InMemoryExchange(method, path, contentType,
+                body == null ? null : body.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Adds a request header value. */
+    InMemoryExchange header(String name, String value) {
+        requestHeaders.computeIfAbsent(name, _ -> new java.util.ArrayList<>()).add(value);
+        return this;
+    }
+
+    /** Replaces every value of a request header; null removes it. */
+    InMemoryExchange replaceHeader(String name, String value) {
+        if (value == null) requestHeaders.remove(name);
+        else requestHeaders.put(name, new java.util.ArrayList<>(List.of(value)));
+        return this;
+    }
+
+    private String contextPath = "";
+    private boolean failingBody;
+
+    /** Serves the request under an application prefix (e.g. {@code /app}). */
+    InMemoryExchange contextPath(String prefix) {
+        this.contextPath = prefix;
+        return this;
+    }
+
+    /** A request whose body fails on the first read, as a connection cut mid-body does. */
+    InMemoryExchange failingBody() {
+        this.failingBody = true;
+        return this;
+    }
+
+    @Override public String contextPath() { return contextPath; }
+
+    /** The first value of a response header, or null. */
+    String responseHeader(String name) {
+        for (var e : responseHeaders.entrySet()) {
+            if (e.getKey().equalsIgnoreCase(name) && !e.getValue().isEmpty()) return e.getValue().get(0);
+        }
+        return null;
+    }
+
     int status() { return status; }
 
     String responseText() { return responseBody.toString(StandardCharsets.UTF_8); }
@@ -95,7 +139,16 @@ final class InMemoryExchange implements CassiniHttpExchange {
     @Override public URI requestUri() { return uri; }
     @Override public String requestUriRaw() { return uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery()); }
     @Override public Map<String, List<String>> requestHeaders() { return requestHeaders; }
-    @Override public InputStream requestBody() { return body == null ? null : new ByteArrayInputStream(body); }
+    @Override public InputStream requestBody() {
+        if (failingBody) {
+            return new InputStream() {
+                @Override public int read() throws java.io.IOException {
+                    throw new java.io.IOException("connection reset");
+                }
+            };
+        }
+        return body == null ? null : new ByteArrayInputStream(body);
+    }
     @Override public void setStatus(int code) { this.status = code; }
     @Override public Map<String, List<String>> responseHeaders() { return responseHeaders; }
     @Override public OutputStream responseBody() { return responseBody; }

@@ -189,12 +189,12 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
         List<String> allowed = router.methodsAllowedFor(path);
         if (allowed.isEmpty()) {
             return invoker.renderThrowable(
-                    new jakarta.ws.rs.NotFoundException("No resource matches " + verb + " " + path), exchange);
+                    new jakarta.ws.rs.NotFoundException("No resource matches " + verb + " " + path));
         }
         if (!OPTIONS.equalsIgnoreCase(verb)) {
             var r405 = jakarta.ws.rs.core.Response.status(405)
                     .header(ALLOW, String.join(", ", allowed)).build();
-            return invoker.renderThrowable(new jakarta.ws.rs.WebApplicationException(r405), exchange);
+            return invoker.renderThrowable(new jakarta.ws.rs.WebApplicationException(r405));
         }
         if (!allowed.contains(OPTIONS)) allowed.add(OPTIONS);
         if (allowed.contains("GET") && !allowed.contains(HEAD)) allowed.add(HEAD);

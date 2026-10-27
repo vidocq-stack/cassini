@@ -880,7 +880,7 @@ public final class Invoker {
      *  resolution (no MatchResult — typically 404/405 from the bridge).
      *  Checks application ExceptionMappers first; otherwise returns the
      *  Response carried by the WAE, or a default 500. */
-    public CassiniHttpResponse renderThrowable(Throwable t, CassiniHttpExchange request) throws IOException {
+    public CassiniHttpResponse renderThrowable(Throwable t) throws IOException {
         return RequestScope.call(() -> renderThrowableInScope(t));
     }
 

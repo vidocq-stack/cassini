@@ -87,6 +87,19 @@ public final class MessageBodyRegistry {
 
         /** §4.2.4 step 1 : @Consumes / @Produces absent → wildcard implicite ; sinon une des
          *  valeurs déclarées doit être compatible avec le media type demandé. */
+        /** §4.2.4 step 1: how specifically the declared {@code @Consumes} / {@code @Produces}
+         *  match {@code requested}: 0 = wildcard (or no annotation), 1 = type/*, 2 = type/subtype. */
+        int specificity(MediaType requested) {
+            if (requested == null) return 0;
+            int best = 0;
+            for (MediaType d : declared) {
+                if (d.isCompatible(requested) && !d.isWildcardType()) {
+                    best = Math.max(best, d.isWildcardSubtype() ? 1 : 2);
+                }
+            }
+            return best;
+        }
+
         private boolean declaredCompatible(MediaType requested) {
             if (requested == null) return true;
             for (MediaType d : declared) {
@@ -157,7 +170,7 @@ public final class MessageBodyRegistry {
         // Stable sort → on ties, providers at the head of the list
         // (user-provided, inserted at index 0) win over built-ins (at the end).
         candidates.sort(Comparator.comparingInt(
-                (Registered<MessageBodyReader<?>> reg) -> declaredSpecificity(reg.declared, mt)
+                (Registered<MessageBodyReader<?>> reg) -> reg.specificity(mt)
         ).reversed());
         return Optional.of((MessageBodyReader<T>) candidates.get(0).instance);
     }
@@ -173,7 +186,7 @@ public final class MessageBodyRegistry {
         }
         if (candidates.isEmpty()) return Optional.empty();
         candidates.sort(Comparator.comparingInt(
-                (Registered<MessageBodyWriter<?>> reg) -> declaredSpecificity(reg.declared, mt)
+                (Registered<MessageBodyWriter<?>> reg) -> reg.specificity(mt)
         ).reversed());
         return Optional.of((MessageBodyWriter<T>) candidates.get(0).instance);
     }
@@ -191,19 +204,6 @@ public final class MessageBodyRegistry {
         if (dSub.startsWith("*+") && rSub.toLowerCase().endsWith(dSub.substring(1).toLowerCase())) return true;
         if (rSub.startsWith("*+") && dSub.toLowerCase().endsWith(rSub.substring(1).toLowerCase())) return true;
         return false;
-    }
-
-    // §4.2.4 step 1 : matching specificity between the declared @Consumes / @Produces and the
-    // requested media type. 0 = wildcard (or no annotation), 1 = type/*, 2 = type/subtype exact.
-    private static int declaredSpecificity(MediaType[] declared, MediaType requested) {
-        if (requested == null) return 0;
-        int best = 0;
-        for (MediaType d : declared) {
-            if (!d.isCompatible(requested)) continue;
-            if (!d.isWildcardType() && !d.isWildcardSubtype()) best = Math.max(best, 2);
-            else if (!d.isWildcardType()) best = Math.max(best, 1);
-        }
-        return best;
     }
 
     private void registerBuiltins() {
