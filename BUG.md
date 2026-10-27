@@ -194,3 +194,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: a `ContainerResponseFilter` on a resource answering `Response.status(599)`, calling `ctx.getStatusInfo().getFamily()`.
 - **Cause**: the status info came from `Response.Status.fromStatusCode`, null for an unknown code, although the Javadoc says it is never null; `getHeaderString`/`getStringHeaders` used `String.valueOf` where the Javadoc asks for the `HeaderDelegate` of the value's class.
 - **Fix**: a bare `StatusType` (code, family, empty reason) for a non-standard code; header values converted through `RuntimeDelegate.createHeaderDelegate`. Regression tests: `CassiniResponseContextTest.a_non_standard_status_still_has_a_status_info`, `header_strings_go_through_the_header_delegates`.
+
+## CASSINI-015 — `HttpHeaders.getAcceptableLanguages()` is empty without an `Accept-Language`
+- **Date**: 2026-10-27 — **Status**: FIXED (found while covering `CassiniHttpHeaders` with unit tests)
+- **Severity**: low. A resource picking a language with `headers.getAcceptableLanguages().get(0)` failed with an `IndexOutOfBoundsException` on a request without `Accept-Language`.
+- **Symptom**: `@Context HttpHeaders h; h.getAcceptableLanguages()` returned `[]`.
+- **Minimal repro**: any request without (or with a blank) `Accept-Language`.
+- **Cause**: `CassiniHttpHeaders.getAcceptableLanguages` returned `List.of()`; the Javadoc asks for "a read-only list containing a single wildcard Locale instance (with language field set to "*")" (the media-type counterpart already returned `*/*`).
+- **Fix**: return `List.of(Locale.of("*"))`. Regression test: `CassiniHttpHeadersTest.without_accept_language_any_language_is_acceptable`.

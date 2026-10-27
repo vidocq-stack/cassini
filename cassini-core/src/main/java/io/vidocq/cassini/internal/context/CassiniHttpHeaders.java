@@ -39,6 +39,10 @@ import java.util.Map;
  */
 public final class CassiniHttpHeaders implements HttpHeaders {
 
+    /** What {@link #getAcceptableLanguages()} answers without an {@code Accept-Language}: a single
+     *  wildcard locale, per the {@code HttpHeaders} Javadoc (CASSINI-015). */
+    private static final List<Locale> ANY_LANGUAGE = List.of(Locale.of("*"));
+
     private final CassiniHttpExchange exchange;
 
     public CassiniHttpHeaders(CassiniHttpExchange exchange) {
@@ -82,7 +86,7 @@ public final class CassiniHttpHeaders implements HttpHeaders {
     @Override public List<Locale> getAcceptableLanguages() {
         // §6.7.4.7: sort by descending q-value.
         String raw = exchange.firstHeader("Accept-Language");
-        if (raw == null || raw.isBlank()) return List.of();
+        if (raw == null || raw.isBlank()) return ANY_LANGUAGE;
         java.util.List<java.util.Map.Entry<Locale, Double>> entries = new java.util.ArrayList<>();
         for (String tok : raw.split(",")) {
             int semi = tok.indexOf(';');

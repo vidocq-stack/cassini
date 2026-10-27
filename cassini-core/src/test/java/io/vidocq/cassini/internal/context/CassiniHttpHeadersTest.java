@@ -93,6 +93,16 @@ class CassiniHttpHeadersTest {
     }
 
     @Test
+    void without_accept_language_any_language_is_acceptable() {
+        // CASSINI-015. HttpHeaders#getAcceptableLanguages: "If no acceptable languages are specified, a read-only
+        // list containing a single wildcard Locale instance (with language field set to "*") is returned."
+        List<Locale> none = new CassiniHttpHeaders(exchange()).getAcceptableLanguages();
+        assertEquals(1, none.size());
+        assertEquals("*", none.get(0).getLanguage());
+        assertEquals(none, headers(ACCEPT_LANGUAGE, " ").getAcceptableLanguages());
+    }
+
+    @Test
     void the_entity_media_type_is_null_without_a_content_type() {
         assertNull(new CassiniHttpHeaders(exchange()).getMediaType());
         assertNull(headers("Content-Type", " ").getMediaType());
