@@ -32,6 +32,7 @@ import java.net.URI;
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -178,12 +179,31 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
         return u == null ? request.path() : u.toString();
     }
 
+    /** All the request headers by name, built on the first call that asks for them all: a lookup
+     *  by name goes to Chappe's headers directly. Read-only; one exchange per request. */
+    private Map<String, List<String>> requestHeaders;
+
     @Override public Map<String, List<String>> requestHeaders() {
-        Map<String, List<String>> m = new LinkedHashMap<>();
-        for (var e : request.headers()) {
-            m.computeIfAbsent(e.name(), _ -> new ArrayList<>()).add(e.value());
+        Map<String, List<String>> all = requestHeaders;
+        if (all == null) {
+            Map<String, List<String>> m = new LinkedHashMap<>();
+            for (var e : request.headers()) {
+                m.computeIfAbsent(e.name(), _ -> new ArrayList<>()).add(e.value());
+            }
+            all = Collections.unmodifiableMap(m);
+            requestHeaders = all;
         }
-        return m;
+        return all;
+    }
+
+    /** Case-insensitive, without building the map of all headers. */
+    @Override public String firstHeader(String name) {
+        return request.headers().firstOrNull(name);
+    }
+
+    /** Case-insensitive, without building the map of all headers. */
+    @Override public List<String> headers(String name) {
+        return request.headers().all(name);
     }
 
     @Override public InputStream requestBody() {
