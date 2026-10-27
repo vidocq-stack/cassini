@@ -29,9 +29,9 @@ import jakarta.enterprise.util.AnnotationLiteral;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.ext.Provider;
 
-import java.lang.annotation.Annotation;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Implementation of {@link BeanProvider} for the Vauban CDI container.
@@ -44,9 +44,19 @@ public final class VaubanBeanProvider implements BeanProvider {
 
     private static final AnnotationLiteral<Any> ANY = new AnnotationLiteral<Any>() {};
 
+    /** What the container resolved for a class: its bean, and the client proxy it hands out for
+     *  it when the bean is normal-scoped, always the same one. Neither changes while the container
+     *  runs. Both null when the class resolves to no single bean. */
+    private record Resolution(Bean<?> bean, Object clientProxy) {}
+
+    private static final Resolution UNRESOLVED = new Resolution(null, null);
+
     private final VaubanContainer container;
     /** Singleton — will activate/deactivate the RequestContext around each HTTP dispatch. */
     private final VaubanRequestScopeFilter requestScopeFilter;
+    /** Per resource or provider class, resolved on the first request: Cassini looks the resource
+     *  up on every request, and resolving it walks every bean of the container. */
+    private final ConcurrentHashMap<Class<?>, Resolution> resolutions = new ConcurrentHashMap<>();
 
     public VaubanBeanProvider(VaubanContainer container) {
         this.container = container;
@@ -59,7 +69,10 @@ public final class VaubanBeanProvider implements BeanProvider {
         if (type == VaubanRequestScopeFilter.class) {
             return (T) requestScopeFilter;
         }
+        Object clientProxy = resolution(type).clientProxy();
+        if (clientProxy != null) return (T) clientProxy;
         try {
+            // @Dependent and the other pseudo-scopes: a new instance on each lookup.
             return container.select(type);
         } catch (RuntimeException e) {
             throw new IllegalArgumentException("Not managed by Vauban: " + type, e);
@@ -80,21 +93,40 @@ public final class VaubanBeanProvider implements BeanProvider {
     @Override
     public Object contextualInstance(Class<?> type, Object bean) {
         if (bean == null) return null;
+        Resolution resolution = resolution(type);
+        // Only normal-scoped beans are proxied (cf. VAU-INJ-001). For @Dependent and other
+        // pseudo-scopes, getBean() already returns the real instance.
+        if (resolution.clientProxy() == null) return bean;
+        try {
+            var bm = container.getBeanManager();
+            Object contextual = fromContext(bm.getContext(resolution.bean().getScope()), resolution.bean(), bm);
+            return contextual != null ? contextual : bean;
+        } catch (RuntimeException e) {
+            // inactive scope → keep the original object (the proxy).
+            return bean;
+        }
+    }
+
+    private Resolution resolution(Class<?> type) {
+        Resolution known = resolutions.get(type);
+        if (known != null) return known;
+        Resolution resolved = resolve(type);
+        Resolution raced = resolutions.putIfAbsent(type, resolved);
+        return raced != null ? raced : resolved;
+    }
+
+    private Resolution resolve(Class<?> type) {
         try {
             var bm = container.getBeanManager();
             Set<Bean<?>> candidates = bm.getBeans(type);
-            if (candidates.isEmpty()) return bean;
-            Bean<?> resolved = bm.resolve(candidates);
-            if (resolved == null) return bean;
-            Class<? extends Annotation> scope = resolved.getScope();
-            // Only normal-scoped beans are proxied (cf. VAU-INJ-001). For @Dependent and
-            // other pseudo-scopes, getBean() already returns the real instance.
-            if (scope == null || !scope.isAnnotationPresent(NormalScope.class)) return bean;
-            Object contextual = fromContext(bm.getContext(scope), resolved, bm);
-            return contextual != null ? contextual : bean;
+            Bean<?> bean = candidates.isEmpty() ? null : bm.resolve(candidates);
+            if (bean == null) return UNRESOLVED;
+            var scope = bean.getScope();
+            boolean normal = scope != null && scope.isAnnotationPresent(NormalScope.class);
+            return new Resolution(bean, normal ? container.select(type) : null);
         } catch (RuntimeException e) {
-            // inactive scope or unresolved bean → keep the original object (the proxy).
-            return bean;
+            // Unresolvable: getBean() asks the container on each call and reports its error.
+            return UNRESOLVED;
         }
     }
 

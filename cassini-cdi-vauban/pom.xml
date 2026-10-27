@@ -87,6 +87,17 @@
                     </execution>
                 </executions>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Test fixtures get no generated components (no APT on testCompile): the
+                         container builds them reflectively, which needs the package open to it.
+                         Test runs only; the module itself opens nothing. -->
+                    <!-- @{argLine} keeps the JaCoCo agent of the quality profile (vidocq-parent). -->
+                    <argLine>@{argLine} --add-opens io.vidocq.cassini.cdi.vauban/io.vidocq.cassini.cdi.vauban=io.vidocq.vauban.core</argLine>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>
