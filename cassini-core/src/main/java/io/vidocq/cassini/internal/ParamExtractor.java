@@ -181,11 +181,11 @@ public final class ParamExtractor {
                     .getOrDefault(p.name(), List.of()));
             case HEADER -> listValue(p, request.headers(p.name()));
             case COOKIE -> {
-                String raw = cookie(request, p.name());
+                String raw = FieldInjector.cookie(request, p.name());
                 yield coerce(p, raw == null ? emptyOrDefault(p.defaultValue()) : List.of(raw));
             }
             case FORM -> listValue(p, readForm(request, encoded).getOrDefault(p.name(), List.of()));
-            case MATRIX -> listValue(p, matrix(request, p.name(), encoded));
+            case MATRIX -> listValue(p, FieldInjector.matrix(request, p.name(), encoded));
             case ENTITY, NONE -> ParamValueConverter.defaultForType(p.type());
         };
     }
@@ -455,47 +455,6 @@ public final class ParamExtractor {
     private static Map<String, List<String>> parsedQueryFromRequest(CassiniHttpExchange request, boolean encoded) {
         String raw = request.requestUri() == null ? null : request.requestUri().getRawQuery();
         return parseQuery(raw, encoded);
-    }
-
-    private static String cookie(CassiniHttpExchange request, String name) {
-        for (String header : request.headers("Cookie")) {
-            for (String pair : header.split(";")) {
-                int eq = pair.indexOf('=');
-                if (eq < 0) continue;
-                String n = pair.substring(0, eq).trim();
-                if (n.equals(name)) {
-                    String v = pair.substring(eq + 1).trim();
-                    if (v.startsWith("\"") && v.endsWith("\"") && v.length() >= 2) {
-                        v = v.substring(1, v.length() - 1);
-                    }
-                    return v;
-                }
-            }
-        }
-        return null;
-    }
-
-    /** The values of the matrix parameter {@code name} in every segment of the request path (§3.2). */
-    private static List<String> matrix(CassiniHttpExchange request, String name, boolean encoded) {
-        List<String> out = new ArrayList<>();
-        String path = request.requestUri() == null ? null : request.requestUri().getRawPath();
-        if (path == null) return out;
-        for (String seg : path.split("/")) {
-            int semi = seg.indexOf(';');
-            if (semi >= 0) addMatrixValues(seg.substring(semi + 1), name, encoded, out);
-        }
-        return out;
-    }
-
-    /** Adds the values of {@code name} found in the {@code ;}-separated parameters of one segment. */
-    private static void addMatrixValues(String parameters, String name, boolean encoded, List<String> out) {
-        for (String pair : parameters.split(";")) {
-            int eq = pair.indexOf('=');
-            String n = eq < 0 ? pair : pair.substring(0, eq);
-            if (!URLDecoder.decode(n, StandardCharsets.UTF_8).equals(name)) continue;
-            String v = eq < 0 ? "" : pair.substring(eq + 1);
-            out.add(encoded || eq < 0 ? v : URLDecoder.decode(v, StandardCharsets.UTF_8));
-        }
     }
 
     @SuppressWarnings("unchecked")

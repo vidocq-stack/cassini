@@ -87,133 +87,141 @@ public final class FieldInjector {
         }
     }
 
-    private static Object resolveFieldValue(Field f, MatchResult match, CassiniHttpExchange request) {
-        return resolveFieldValue(f, match, request, true);
+    private static Object resolveFieldValue(Field f, MatchResult match, CassiniHttpExchange request, boolean injectParams) {
+        if (f.getAnnotation(Context.class) != null) return resolveContext(f.getType(), match, request);
+        if (!injectParams) return null;
+        if (f.getAnnotation(BeanParam.class) != null) return beanParam(f, match, request);
+        return paramValue(f, match, request);
     }
 
-    private static Object resolveFieldValue(Field f, MatchResult match, CassiniHttpExchange request, boolean injectParams) {
-        Context ctx = f.getAnnotation(Context.class);
-        if (ctx != null) return resolveContext(f.getType(), match, request);
-        if (!injectParams) return null;
-
-        BeanParam bp = f.getAnnotation(BeanParam.class);
-        if (bp != null) {
-            try {
-                Object nested = f.getType().getDeclaredConstructor().newInstance();
-                inject(nested, match, request);
-                return nested;
-            } catch (ReflectiveOperationException e) {
-                throw new WebApplicationException("Failed to instantiate @BeanParam field "
-                        + f.getName() + ": " + e.getMessage(), 500);
-            }
+    private static Object beanParam(Field f, MatchResult match, CassiniHttpExchange request) {
+        try {
+            Object nested = f.getType().getDeclaredConstructor().newInstance();
+            inject(nested, match, request);
+            return nested;
+        } catch (ReflectiveOperationException e) {
+            throw new WebApplicationException("Failed to instantiate @BeanParam field "
+                    + f.getName() + ": " + e.getMessage(), 500);
         }
+    }
 
+    /** The value of a {@code @*Param} field (§3.2), or null when the field has none of them. */
+    private static Object paramValue(Field f, MatchResult match, CassiniHttpExchange request) {
         String def = defaultValue(f);
         boolean encoded = f.getAnnotation(jakarta.ws.rs.Encoded.class) != null
                 || f.getDeclaringClass().getAnnotation(jakarta.ws.rs.Encoded.class) != null;
         PathParam pp = f.getAnnotation(PathParam.class);
-        if (pp != null) {
-            List<String> raws = match.pathParams().getOrDefault(pp.value(), List.of());
-            if (raws.isEmpty()) return coerce(f, emptyOrDef(def));
-            List<String> vals = encoded ? raws : raws.stream().map(FieldInjector::decodePath).toList();
-            return coerce(f, vals);
-        }
+        if (pp != null) return pathValue(f, match.pathParams().getOrDefault(pp.value(), List.of()), def, encoded);
         QueryParam qp = f.getAnnotation(QueryParam.class);
-        if (qp != null) {
-            List<String> raws = parsedQueryParams(request, encoded).getOrDefault(qp.value(), List.of());
-            return coerce(f, raws.isEmpty() ? emptyOrDef(def) : raws);
-        }
+        if (qp != null) return coerce(f, orDefault(parsedQueryParams(request, encoded).getOrDefault(qp.value(), List.of()), def));
         HeaderParam hp = f.getAnnotation(HeaderParam.class);
-        if (hp != null) {
-            List<String> raws = request.headers(hp.value());
-            return coerce(f, raws.isEmpty() ? emptyOrDef(def) : raws);
-        }
+        if (hp != null) return coerce(f, orDefault(request.headers(hp.value()), def));
         CookieParam cp = f.getAnnotation(CookieParam.class);
         if (cp != null) {
             String raw = cookie(request, cp.value());
             return coerce(f, raw == null ? emptyOrDef(def) : List.of(raw));
         }
         MatrixParam mp = f.getAnnotation(MatrixParam.class);
-        if (mp != null) {
-            List<String> raws = matrix(request, mp.value(), encoded);
-            return coerce(f, raws.isEmpty() ? emptyOrDef(def) : raws);
-        }
+        if (mp != null) return coerce(f, orDefault(matrix(request, mp.value(), encoded), def));
         FormParam fp = f.getAnnotation(FormParam.class);
-        if (fp != null) {
-            Map<String, List<String>> form = readForm(request, encoded);
-            List<String> raws = form.getOrDefault(fp.value(), List.of());
-            return coerce(f, raws.isEmpty() ? emptyOrDef(def) : raws);
-        }
+        if (fp != null) return coerce(f, orDefault(readForm(request, encoded).getOrDefault(fp.value(), List.of()), def));
         return null;
     }
 
-    /** Internal: delegated to by {@code InjectionSupportImpl} to keep a single source of truth. */
+    private static Object pathValue(Field f, List<String> raws, String def, boolean encoded) {
+        if (raws.isEmpty()) return coerce(f, emptyOrDef(def));
+        if (encoded) return coerce(f, raws);
+        List<String> decoded = new ArrayList<>(raws.size());
+        for (String raw : raws) decoded.add(decodePath(raw));
+        return coerce(f, decoded);
+    }
+
+    /** {@code raws}, or the {@code @DefaultValue} when there is none. */
+    private static List<String> orDefault(List<String> raws, String def) {
+        return raws.isEmpty() ? emptyOrDef(def) : raws;
+    }
+
+    /** Resolves the {@code @Context} value of one type, or null when there is none here. */
+    @FunctionalInterface
+    private interface ContextValue {
+        Object resolve(MatchResult match, CassiniHttpExchange request);
+    }
+
+    /** Stub minimal §10.1: no dynamic properties or features. */
+    private static final jakarta.ws.rs.core.Configuration SERVER_CONFIGURATION = new jakarta.ws.rs.core.Configuration() {
+        @Override public jakarta.ws.rs.RuntimeType getRuntimeType() { return jakarta.ws.rs.RuntimeType.SERVER; }
+        @Override public Map<String, Object> getProperties() { return Map.of(); }
+        @Override public Object getProperty(String name) { return null; }
+        @Override public java.util.Collection<String> getPropertyNames() { return List.of(); }
+        @Override public boolean isEnabled(jakarta.ws.rs.core.Feature feature) { return false; }
+        @Override public boolean isEnabled(Class<? extends jakarta.ws.rs.core.Feature> featureClass) { return false; }
+        @Override public boolean isRegistered(Object component) { return false; }
+        @Override public boolean isRegistered(Class<?> componentClass) { return false; }
+        @Override public Map<Class<?>, Integer> getContracts(Class<?> componentClass) { return Map.of(); }
+        @Override public java.util.Set<Class<?>> getClasses() { return java.util.Set.of(); }
+        @Override public java.util.Set<Object> getInstances() { return java.util.Set.of(); }
+    };
+
+    /** The {@code @Context} types a field may declare (§9.2), by exact type. */
+    private static final Map<Class<?>, ContextValue> CONTEXT_VALUES = Map.ofEntries(
+            Map.entry(UriInfo.class, (match, request) -> new CassiniUriInfo(request, request.contextPath(),
+                    match.pathParams(), match.method() == null ? null : match.method().path())),
+            Map.entry(HttpHeaders.class, (_, request) -> new CassiniHttpHeaders(request)),
+            Map.entry(jakarta.ws.rs.core.Request.class, (_, request) -> new CassiniRequest(request)),
+            Map.entry(SecurityContext.class, (_, request) -> securityContext(request)),
+            Map.entry(jakarta.ws.rs.ext.Providers.class, (_, _) -> ParamExtractor.currentProviders()),
+            Map.entry(jakarta.ws.rs.core.Application.class, (_, _) -> new jakarta.ws.rs.core.Application()),
+            Map.entry(jakarta.ws.rs.container.ResourceInfo.class, (match, _) -> resourceInfo(match.method())),
+            Map.entry(jakarta.ws.rs.container.ContainerRequestContext.class, FieldInjector::requestContext),
+            Map.entry(jakarta.ws.rs.container.ResourceContext.class, FieldInjector::resourceContext),
+            Map.entry(jakarta.ws.rs.core.Configuration.class, (_, _) -> SERVER_CONFIGURATION));
+
+    /** Internal: delegated to by {@code InjectionSupportImpl} to keep a single source of truth.
+     *  Null for a type that has no {@code @Context} value here. */
     public static Object resolveContext(Class<?> type, MatchResult match, CassiniHttpExchange request) {
-        if (type == UriInfo.class) return new CassiniUriInfo(request, request.contextPath(),
-                match.pathParams(), match.method() == null ? null : match.method().path());
-        if (type == HttpHeaders.class) return new CassiniHttpHeaders(request);
-        if (type == jakarta.ws.rs.core.Request.class) return new CassiniRequest(request);
-        if (type == SecurityContext.class) {
-            Object filterSc = request.getAttribute(
-                    io.vidocq.cassini.internal.filter.CassiniRequestContext.ATTR_SECURITY_CONTEXT);
-            return filterSc != null ? filterSc : new CassiniSecurityContext(request);
-        }
-        if (type == jakarta.ws.rs.ext.Providers.class) return ParamExtractor.currentProviders();
-        if (type == jakarta.ws.rs.core.Application.class) return new jakarta.ws.rs.core.Application();
-        if (type == jakarta.ws.rs.container.ResourceInfo.class) {
-            var route = match.method();
-            return new jakarta.ws.rs.container.ResourceInfo() {
-                @Override public java.lang.reflect.Method getResourceMethod() { return route.javaMethod(); }
-                @Override public Class<?> getResourceClass() { return route.beanClass(); }
-            };
-        }
-        if (type == jakarta.ws.rs.container.ContainerRequestContext.class) {
-            var rctx = new io.vidocq.cassini.internal.filter.CassiniRequestContext(
-                    request, new CassiniUriInfo(request, request.contextPath(), match.pathParams()));
-            rctx.markPostMatching();
-            rctx.markPostResource();
-            return rctx;
-        }
-        if (type == jakarta.ws.rs.container.ResourceContext.class) {
-            // §6.5.2 stub minimal : getResource(class) instancie via constructor
-            // no-arg + injection de fields (per-request).
-            return new jakarta.ws.rs.container.ResourceContext() {
-                @Override public <T> T getResource(Class<T> resourceClass) {
-                    try {
-                        T r = resourceClass.getDeclaredConstructor().newInstance();
-                        FieldInjector.inject(r, match, request);
-                        return r;
-                    } catch (ReflectiveOperationException e) {
-                        return null;
-                    }
+        ContextValue value = CONTEXT_VALUES.get(type);
+        return value == null ? null : value.resolve(match, request);
+    }
+
+    private static Object securityContext(CassiniHttpExchange request) {
+        Object filterSc = request.getAttribute(
+                io.vidocq.cassini.internal.filter.CassiniRequestContext.ATTR_SECURITY_CONTEXT);
+        return filterSc != null ? filterSc : new CassiniSecurityContext(request);
+    }
+
+    private static jakarta.ws.rs.container.ResourceInfo resourceInfo(ResourceMethod route) {
+        return new jakarta.ws.rs.container.ResourceInfo() {
+            @Override public java.lang.reflect.Method getResourceMethod() { return route.javaMethod(); }
+            @Override public Class<?> getResourceClass() { return route.beanClass(); }
+        };
+    }
+
+    private static Object requestContext(MatchResult match, CassiniHttpExchange request) {
+        var rctx = new io.vidocq.cassini.internal.filter.CassiniRequestContext(
+                request, new CassiniUriInfo(request, request.contextPath(), match.pathParams()));
+        rctx.markPostMatching();
+        rctx.markPostResource();
+        return rctx;
+    }
+
+    /** §6.5.2 minimal stub: getResource(class) instantiates through the no-arg constructor and
+     *  injects the fields, per request. */
+    private static jakarta.ws.rs.container.ResourceContext resourceContext(MatchResult match, CassiniHttpExchange request) {
+        return new jakarta.ws.rs.container.ResourceContext() {
+            @Override public <T> T getResource(Class<T> resourceClass) {
+                try {
+                    T r = resourceClass.getDeclaredConstructor().newInstance();
+                    FieldInjector.inject(r, match, request);
+                    return r;
+                } catch (ReflectiveOperationException _) {
+                    return null;
                 }
-                @Override public <T> T initResource(T resource) {
-                    FieldInjector.inject(resource, match, request);
-                    return resource;
-                }
-            };
-        }
-        if (type == jakarta.ws.rs.core.Configuration.class) {
-            // Stub minimal §10.1 : pas de Properties / Features dynamiques.
-            return new jakarta.ws.rs.core.Configuration() {
-                @Override public jakarta.ws.rs.RuntimeType getRuntimeType() {
-                    return jakarta.ws.rs.RuntimeType.SERVER;
-                }
-                @Override public java.util.Map<String, Object> getProperties() { return java.util.Map.of(); }
-                @Override public Object getProperty(String name) { return null; }
-                @Override public java.util.Collection<String> getPropertyNames() { return java.util.List.of(); }
-                @Override public boolean isEnabled(jakarta.ws.rs.core.Feature feature) { return false; }
-                @Override public boolean isEnabled(Class<? extends jakarta.ws.rs.core.Feature> featureClass) { return false; }
-                @Override public boolean isRegistered(Object component) { return false; }
-                @Override public boolean isRegistered(Class<?> componentClass) { return false; }
-                @Override public java.util.Map<Class<?>, Integer> getContracts(Class<?> componentClass) {
-                    return java.util.Map.of();
-                }
-                @Override public java.util.Set<Class<?>> getClasses() { return java.util.Set.of(); }
-                @Override public java.util.Set<Object> getInstances() { return java.util.Set.of(); }
-            };
-        }
-        return null;
+            }
+            @Override public <T> T initResource(T resource) {
+                FieldInjector.inject(resource, match, request);
+                return resource;
+            }
+        };
     }
 
     private static Object coerce(Field f, List<String> raws) {
@@ -246,8 +254,13 @@ public final class FieldInjector {
     }
 
     private static void setField(Object target, Field f, Object v) {
-        try { f.setAccessible(true); f.set(target, v); }
-        catch (IllegalAccessException e) { throw new RuntimeException(e); }
+        try {
+            // Injecting the declared, often private, fields of a resource is the point (§9.2).
+            f.setAccessible(true); // NOSONAR java:S3011 - field injection of the resource (§3.2, §9.2)
+            f.set(target, v); // NOSONAR java:S3011 - same field, made accessible above
+        } catch (IllegalAccessException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private static List<String> emptyOrDef(String def) { return def == null ? List.of() : List.of(def); }
@@ -259,7 +272,7 @@ public final class FieldInjector {
     private static String decodePath(String s) {
         if (s == null || s.indexOf('%') < 0) return s;
         try { return URLDecoder.decode(s.replace("+", "%2B"), StandardCharsets.UTF_8); }
-        catch (Exception e) { return s; }
+        catch (IllegalArgumentException _) { return s; }
     }
 
     private static Map<String, List<String>> parseQuery(String raw, boolean encoded) {
@@ -276,18 +289,20 @@ public final class FieldInjector {
     /** Internal: used by {@code InjectionSupportImpl}. */
     public static String cookie(CassiniHttpExchange request, String name) {
         for (String header : request.headers("Cookie")) {
-            if (header == null) continue;
-            for (String pair : header.split(";")) {
-                int eq = pair.indexOf('=');
-                if (eq < 0) continue;
-                String n = pair.substring(0, eq).trim();
-                if (n.equals(name)) {
-                    String v = pair.substring(eq + 1).trim();
-                    if (v.startsWith("\"") && v.endsWith("\"") && v.length() >= 2) {
-                        v = v.substring(1, v.length() - 1);
-                    }
-                    return v;
-                }
+            String value = header == null ? null : cookieIn(header, name);
+            if (value != null) return value;
+        }
+        return null;
+    }
+
+    /** The value of the cookie {@code name} in one Cookie header, unquoted, or null. */
+    private static String cookieIn(String header, String name) {
+        for (String pair : header.split(";")) {
+            int eq = pair.indexOf('=');
+            if (eq >= 0 && pair.substring(0, eq).trim().equals(name)) {
+                String v = pair.substring(eq + 1).trim();
+                boolean quoted = v.length() >= 2 && v.startsWith("\"") && v.endsWith("\"");
+                return quoted ? v.substring(1, v.length() - 1) : v;
             }
         }
         return null;
@@ -300,20 +315,21 @@ public final class FieldInjector {
         if (path == null) return out;
         for (String seg : path.split("/")) {
             int semi = seg.indexOf(';');
-            if (semi < 0) continue;
-            for (String pair : seg.substring(semi + 1).split(";")) {
-                int eq = pair.indexOf('=');
-                String n = eq < 0 ? pair : pair.substring(0, eq);
-                if (URLDecoder.decode(n, StandardCharsets.UTF_8).equals(name)) {
-                    if (eq < 0) out.add("");
-                    else {
-                        String v = pair.substring(eq + 1);
-                        out.add(encoded ? v : URLDecoder.decode(v, StandardCharsets.UTF_8));
-                    }
-                }
-            }
+            if (semi >= 0) addMatrixValues(seg.substring(semi + 1), name, encoded, out);
         }
         return out;
+    }
+
+    /** Adds the values of {@code name} found in the {@code ;}-separated parameters of one segment. */
+    private static void addMatrixValues(String parameters, String name, boolean encoded, List<String> out) {
+        for (String pair : parameters.split(";")) {
+            int eq = pair.indexOf('=');
+            String n = eq < 0 ? pair : pair.substring(0, eq);
+            if (URLDecoder.decode(n, StandardCharsets.UTF_8).equals(name)) {
+                String v = eq < 0 ? "" : pair.substring(eq + 1);
+                out.add(encoded || eq < 0 ? v : URLDecoder.decode(v, StandardCharsets.UTF_8));
+            }
+        }
     }
 
     // Exchange attribute keys for per-request caches (M2h — replaces ThreadLocals).
@@ -358,5 +374,7 @@ public final class FieldInjector {
     }
 
     /** No-op since M2h: caches live in the exchange attributes. */
-    public static void clearFormCache() {}
+    public static void clearFormCache() {
+        // Nothing to clear: the caches are exchange attributes, gone with the exchange.
+    }
 }
