@@ -210,3 +210,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: as above, with `Variant.VariantListBuilder b = Variant.VariantListBuilder.newInstance()`.
 - **Cause**: `StubVariantListBuilder.build()` copied the accumulated list without clearing it; the Javadoc says "After this method is called the builder is reset to an empty state".
 - **Fix**: clear the accumulated variants after copying them. Regression test: `CassiniRuntimeDelegateTest.variantListBuilder_is_reset_by_build`.
+
+## CASSINI-017 — `Request.evaluatePreconditions(EntityTag)` compares `If-Match` weakly
+- **Date**: 2026-10-27 — **Status**: OPEN (found while covering `CassiniRequest` with unit tests; not fixed: the conditional-request path deserves its own change, checked against the TCK)
+- **Severity**: low. A conditional update guarded by a weak tag goes through where it should be refused (lost-update protection weakened).
+- **Symptom**: `If-Match: W/"a"` against the current tag `W/"a"` (or `"a"`) meets the precondition; RFC 9110 §13.1.1 requires the strong comparison for `If-Match`, under which a weak tag never matches, so the answer must be 412.
+- **Minimal repro**: `PUT` with `If-Match: W/"a"`, resource calling `request.evaluatePreconditions(new EntityTag("a", true))` → `null` (precondition met), expected a 412 builder.
+- **Cause**: `CassiniRequest.matchesEtag` strips `W/` on both sides for every header ("ignore weak/strong distinction in MVP"); that is right for `If-None-Match` (weak comparison, §13.1.2) only.
+- **Fix to do**: give `matchesEtag` a `strong` flag; for `If-Match`, fail when either tag is weak or the opaque values differ. Add the case to `CassiniRequestTest` and run the REST TCK.
