@@ -63,7 +63,7 @@ final class DynamicLocatorDispatch {
                     new WebApplicationException("Cannot resolve root " + route.rootBeanClass().getName(), 500),
                     route, MediaType.WILDCARD_TYPE, null);
         }
-        host.injectFields(route.rootBeanClass(), host.injectionTarget(route.rootBeanClass(), root), match, request, true);
+        host.injectResourceFields(route.rootBeanClass(), root, match, request);
         java.util.List<Object> matched = new java.util.ArrayList<>();
         matched.add(root);
         Invoker.publishCurrent(match, request);

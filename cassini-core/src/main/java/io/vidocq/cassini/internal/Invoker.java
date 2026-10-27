@@ -440,7 +440,7 @@ public final class Invoker {
                 // Sub-resource locator §3.4.1: instantiate the root resource,
                 // walk the locator chain, inject fields at each step.
                 Object root = resolver.apply(route.rootBeanClass());
-                injectFields(route.rootBeanClass(), injectionTarget(route.rootBeanClass(), root), match, request, true);
+                injectResourceFields(route.rootBeanClass(), root, match, request);
                 matched.add(0, root);
                 Object intermediate = root;
                 for (java.lang.reflect.Method locStep : route.locatorChain()) {
@@ -470,7 +470,7 @@ public final class Invoker {
                 target = resolver.apply(route.beanClass());
                 // §9: inject @Context into the real contextual instance (de-proxied),
                 // but invoke the method on `target` (the CDI proxy delegates to that instance).
-                injectFields(route.beanClass(), injectionTarget(route.beanClass(), target), match, request, true);
+                injectResourceFields(route.beanClass(), target, match, request);
                 matched.add(target);
             }
         } catch (WebApplicationException wae) {
@@ -681,6 +681,17 @@ public final class Invoker {
      * @param request      the HTTP exchange
      * @param injectParams whether to inject @*Param fields (false for sub-resource roots per §3.4.1)
      */
+    /**
+     * Injects the {@code @Context}, {@code @BeanParam} and {@code @*Param} fields of a resource
+     * instance (§3.2, §9.2) into its contextual instance ({@link #injectionTarget}). A class that
+     * declares none, the common case, costs neither the injection nor the bean provider lookup.
+     */
+    void injectResourceFields(Class<?> beanClass, Object resolved, MatchResult match, CassiniHttpExchange request) {
+        if (resolved == null) return;
+        if (!InjectableFields.declaredBy(beanClass) && !InjectableFields.declaredBy(resolved.getClass())) return;
+        injectFields(beanClass, injectionTarget(beanClass, resolved), match, request, true);
+    }
+
     void injectFields(Class<?> beanClass, Object target,
                               MatchResult match, CassiniHttpExchange request, boolean injectParams) {
         var adapter = AdapterRegistry.lookup(beanClass);
