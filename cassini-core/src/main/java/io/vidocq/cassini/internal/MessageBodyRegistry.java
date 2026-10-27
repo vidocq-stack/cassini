@@ -118,8 +118,7 @@ public final class MessageBodyRegistry {
             String dSub = declared.getSubtype();
             String rSub = requested.getSubtype();
             if (dSub.startsWith("*+") && rSub.toLowerCase().endsWith(dSub.substring(1).toLowerCase())) return true;
-            if (rSub.startsWith("*+") && dSub.toLowerCase().endsWith(rSub.substring(1).toLowerCase())) return true;
-            return false;
+            return rSub.startsWith("*+") && dSub.toLowerCase().endsWith(rSub.substring(1).toLowerCase());
         }
 
         /**
