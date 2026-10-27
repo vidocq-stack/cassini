@@ -82,7 +82,34 @@ public final class MessageBodyRegistry {
         /** §4.2.1 then §4.2.4 step 1: the provider takes {@code boxed} and the requested media type. */
         boolean applies(Class<?> boxed, MediaType requested) {
             boolean typeApplies = entityType == null || entityType == Object.class || entityType.isAssignableFrom(boxed);
-            return typeApplies && declaredCompatible(declared, requested);
+            return typeApplies && declaredCompatible(requested);
+        }
+
+        /** §4.2.4 step 1 : @Consumes / @Produces absent → wildcard implicite ; sinon une des
+         *  valeurs déclarées doit être compatible avec le media type demandé. */
+        private boolean declaredCompatible(MediaType requested) {
+            if (requested == null) return true;
+            for (MediaType d : declared) {
+                if (mediaTypeCompatible(d, requested)) return true;
+            }
+            return false;
+        }
+
+        /**
+         * Parses the declared values once. No value declared means {@link #ANY}; an invalid value is
+         * skipped, as it was when the values were parsed on every call.
+         */
+        private static MediaType[] parseDeclared(String[] values) {
+            if (values == null || values.length == 0) return ANY;
+            List<MediaType> parsed = new ArrayList<>(values.length);
+            for (String s : values) {
+                try {
+                    parsed.add(MediaTypes.parse(s));
+                } catch (RuntimeException _) {
+                    // An invalid declared value matches no media type.
+                }
+            }
+            return parsed.toArray(MediaType[]::new);
         }
     }
 
@@ -112,23 +139,6 @@ public final class MessageBodyRegistry {
     private static Registered<MessageBodyWriter<?>> registeredWriter(MessageBodyWriter<?> w) {
         Produces produces = w.getClass().getAnnotation(Produces.class);
         return new Registered<>(w, MessageBodyWriter.class, produces == null ? null : produces.value());
-    }
-
-    /**
-     * Parses the declared values once. No value declared means {@link #ANY}; an invalid value is
-     * skipped, as it was when the values were parsed on every call.
-     */
-    private static MediaType[] parseDeclared(String[] values) {
-        if (values == null || values.length == 0) return ANY;
-        List<MediaType> parsed = new ArrayList<>(values.length);
-        for (String s : values) {
-            try {
-                parsed.add(MediaTypes.parse(s));
-            } catch (RuntimeException _) {
-                // An invalid declared value matches no media type.
-            }
-        }
-        return parsed.toArray(MediaType[]::new);
     }
 
     @SuppressWarnings("unchecked")
@@ -166,16 +176,6 @@ public final class MessageBodyRegistry {
                 (Registered<MessageBodyWriter<?>> reg) -> declaredSpecificity(reg.declared, mt)
         ).reversed());
         return Optional.of((MessageBodyWriter<T>) candidates.get(0).instance);
-    }
-
-    /** §4.2.4 step 1 : @Consumes / @Produces absent → wildcard implicite ; sinon une des
-     *  valeurs déclarées doit être compatible avec le media type demandé. */
-    private static boolean declaredCompatible(MediaType[] declared, MediaType requested) {
-        if (requested == null) return true;
-        for (MediaType d : declared) {
-            if (mediaTypeCompatible(d, requested)) return true;
-        }
-        return false;
     }
 
     /** RFC 6839 + §3.5 : étend {@link MediaType#isCompatible} pour traiter

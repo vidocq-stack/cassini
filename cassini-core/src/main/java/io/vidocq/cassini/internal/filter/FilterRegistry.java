@@ -45,9 +45,10 @@ public final class FilterRegistry {
 
     private final List<FilterEntry<ContainerRequestFilter>> requestFilters = new ArrayList<>();
     /** The pre-matching and post-matching request filters, read several times per request: rebuilt
-     *  when a request filter is registered, never on a read. */
-    private volatile List<FilterEntry<ContainerRequestFilter>> preMatchingView = List.of();
-    private volatile List<FilterEntry<ContainerRequestFilter>> postMatchingView = List.of();
+     *  when a request filter is registered, never on a read. Unmodifiable lists, written while the
+     *  stack is built, before it serves, like the lists they derive from. */
+    private List<FilterEntry<ContainerRequestFilter>> preMatchingView = List.of();
+    private List<FilterEntry<ContainerRequestFilter>> postMatchingView = List.of();
     private final List<FilterEntry<ContainerResponseFilter>> responseFilters = new ArrayList<>();
     private final List<FilterEntry<ReaderInterceptor>> readerInterceptors = new ArrayList<>();
     private final List<FilterEntry<WriterInterceptor>> writerInterceptors = new ArrayList<>();
