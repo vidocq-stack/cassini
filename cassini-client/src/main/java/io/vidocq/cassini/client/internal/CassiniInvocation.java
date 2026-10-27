@@ -25,8 +25,6 @@ import jakarta.ws.rs.client.InvocationCallback;
 import jakarta.ws.rs.core.GenericType;
 import jakarta.ws.rs.core.Response;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 final class CassiniInvocation implements Invocation {
@@ -55,26 +53,17 @@ final class CassiniInvocation implements Invocation {
     @Override
     public <T> T invoke(GenericType<T> responseType) { return CassiniInvocationBuilder.readTyped(invoke(), responseType); }
 
-    @Override
-    public Future<Response> submit() {
-        return CompletableFuture.supplyAsync(this::invoke,
-                Executors.newVirtualThreadPerTaskExecutor());
-    }
+    // The asynchronous paths share the async invoker: executor, OTel context, error contract.
 
     @Override
-    public <T> Future<T> submit(Class<T> responseType) {
-        return CompletableFuture.supplyAsync(() -> invoke(responseType),
-                Executors.newVirtualThreadPerTaskExecutor());
-    }
+    public Future<Response> submit() { return builder.async().method(method, entity); }
 
     @Override
-    public <T> Future<T> submit(GenericType<T> responseType) {
-        return CompletableFuture.supplyAsync(() -> invoke(responseType),
-                Executors.newVirtualThreadPerTaskExecutor());
-    }
+    public <T> Future<T> submit(Class<T> responseType) { return builder.async().method(method, entity, responseType); }
 
     @Override
-    public <T> Future<T> submit(InvocationCallback<T> callback) {
-        throw new UnsupportedOperationException("InvocationCallback not supported in Cassini Client MVP");
-    }
+    public <T> Future<T> submit(GenericType<T> responseType) { return builder.async().method(method, entity, responseType); }
+
+    @Override
+    public <T> Future<T> submit(InvocationCallback<T> callback) { return builder.async().method(method, entity, callback); }
 }

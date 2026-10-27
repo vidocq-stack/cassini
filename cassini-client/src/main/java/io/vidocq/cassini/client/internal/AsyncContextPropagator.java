@@ -64,22 +64,37 @@ final class AsyncContextPropagator {
         catch (Throwable t) { return null; }
     }
 
+    /** A scope whose {@code close()} throws no checked exception. */
+    @FunctionalInterface
+    interface Scope extends AutoCloseable {
+        @Override
+        void close();
+    }
+
     /**
-     * Re-activates a captured Context on the current thread. Returns an AutoCloseable
+     * Re-activates a captured Context on the current thread. Returns a {@link Scope}
      * to be closed in {@code try-with-resources} to restore the previous Context.
      * If {@code captured} is {@code null} or if OTel is not loaded, returns
-     * a no-op closeable.
+     * a no-op scope.
      */
-    static AutoCloseable activate(Object captured) {
+    static Scope activate(Object captured) {
         if (captured == null || CONTEXT_MAKE_CURRENT == null) return NOOP;
         try {
             Object scope = CONTEXT_MAKE_CURRENT.invoke(captured);
-            if (scope instanceof AutoCloseable ac) return ac;
+            if (scope instanceof AutoCloseable ac) return () -> closeQuietly(ac);
             return NOOP;
         } catch (Throwable t) {
             return NOOP;
         }
     }
 
-    private static final AutoCloseable NOOP = () -> {};
+    private static void closeQuietly(AutoCloseable scope) {
+        try {
+            scope.close();
+        } catch (Exception ignored) {
+            // restoring the previous OTel Context cannot fail in a way the invocation could act on
+        }
+    }
+
+    private static final Scope NOOP = () -> {};
 }

@@ -250,3 +250,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `ErrorStatusTest` (a server answering the status it is asked for).
 - **Cause**: the typed sync methods and `CassiniInvocation.invoke(Class)` called `readEntity` directly; `CassiniAsyncInvoker` had its own `≥ 400` check.
 - **Fix**: one `readTyped` for the three paths: `Response.class` passes the response through, a status outside 2xx throws the matching subclass (`NotFoundException`, `RedirectionException`, `ServerErrorException`…), as other implementations do.
+
+## CASSINI-022 — Async client invocations: wrapped failures, untyped callbacks, `Invocation.submit(InvocationCallback)` unsupported
+- **Date**: 2026-10-27 — **Status**: FIXED (found while covering `cassini-client` with unit tests)
+- **Severity**: medium. `AsyncInvoker` contract: `Future.get()` throws an `ExecutionException` whose cause is the `ProcessingException` (or `WebApplicationException`); an `InvocationCallback<T>` receives the entity read as `T` in `completed`, and the exception itself in `failed`.
+- **Symptom**: a connection failure reached `Future.get()` as `RuntimeException(ProcessingException)` and `failed(...)` as a `CompletionException`; an `InvocationCallback<String>` was handed the `Response` (a `ClassCastException` in user code) and never failed on an error status; `Invocation.submit(InvocationCallback)` threw `UnsupportedOperationException`.
+- **Minimal repro**: `AsyncInvokerTest.typed_callback_receives_the_entity_read_as_its_type`, `processing_failure_reaches_the_future_and_the_callback_unwrapped`; `InvocationTest.submitted_invocation_with_a_callback_completes_it`.
+- **Cause**: every async helper wrapped any exception in a `RuntimeException` (the `try`-with-resources on an `AutoCloseable` forced a `catch (Exception)`), and the callback path cast the `Response` to `T`.
+- **Fix**: `AsyncContextPropagator.activate` returns a `Scope` whose `close()` throws nothing, so exceptions pass through unwrapped; the callback's type argument is resolved from its class (`Response` when unresolved) and read through the same `readTyped` as the futures; `failed` gets the cause of the `CompletionException`. `Invocation.submit(...)` delegates to the async invoker.
