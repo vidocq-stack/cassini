@@ -81,6 +81,27 @@ class CassiniResponseContextTest {
     }
 
     @Test
+    void a_non_standard_status_still_has_a_status_info() {
+        // CASSINI-014. ContainerResponseContext#getStatusInfo: "The returned value is never null".
+        ContainerResponseContext c = new CassiniResponseContext(299, null, null, null);
+        assertEquals(299, c.getStatusInfo().getStatusCode());
+        assertEquals(Response.Status.Family.SUCCESSFUL, c.getStatusInfo().getFamily());
+        c.setStatus(599);
+        assertEquals(599, c.getStatusInfo().getStatusCode());
+        assertEquals(Response.Status.Family.SERVER_ERROR, c.getStatusInfo().getFamily());
+        assertEquals("", c.getStatusInfo().getReasonPhrase());
+    }
+
+    @Test
+    void header_strings_go_through_the_header_delegates() {
+        // CASSINI-014. ContainerResponseContext#getHeaderString / #getStringHeaders: each value is converted
+        // "using a RuntimeDelegate.HeaderDelegate if one is available".
+        ContainerResponseContext c = context("Expires", RFC_DATE);
+        assertEquals(DATE_TEXT, c.getHeaderString("Expires"));
+        assertEquals(DATE_TEXT, c.getStringHeaders().getFirst("Expires"));
+    }
+
+    @Test
     void the_entity_its_type_and_annotations_are_replaceable() throws NoSuchMethodException {
         Annotation[] anns = getClass().getDeclaredMethod("the_entity_its_type_and_annotations_are_replaceable")
                 .getAnnotations();

@@ -186,3 +186,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: as above; a non-standard code (`299`) already kept its phrase.
 - **Cause**: `CassiniResponse.getStatusInfo` returned `Status.fromStatusCode(status)` whenever the code was standard, ignoring the reason given to the builder.
 - **Fix**: the standard `Status` is returned only when no reason phrase, or the standard one, was given; otherwise a `StatusType` carrying the given phrase. Regression test: `CassiniResponseTest.a_custom_reason_phrase_wins_over_the_standard_one`.
+
+## CASSINI-014 — `ContainerResponseContext`: null status info for a non-standard code, header strings bypass the header delegates
+- **Date**: 2026-10-27 — **Status**: FIXED (found while covering `CassiniResponseContext` with unit tests)
+- **Severity**: low to medium. A response filter calling `getStatusInfo().getFamily()` on a `299`/`599` response failed with a `NullPointerException`; a filter reading a `Date` header as a string got `Date.toString()` (local time zone, not an HTTP date).
+- **Symptom**: `new CassiniResponseContext(599, …).getStatusInfo()` returned `null`; with a `Date` value in `Expires`, `getHeaderString("Expires")` returned `"Sun Nov 06 09:49:37 CET 1994"`.
+- **Minimal repro**: a `ContainerResponseFilter` on a resource answering `Response.status(599)`, calling `ctx.getStatusInfo().getFamily()`.
+- **Cause**: the status info came from `Response.Status.fromStatusCode`, null for an unknown code, although the Javadoc says it is never null; `getHeaderString`/`getStringHeaders` used `String.valueOf` where the Javadoc asks for the `HeaderDelegate` of the value's class.
+- **Fix**: a bare `StatusType` (code, family, empty reason) for a non-standard code; header values converted through `RuntimeDelegate.createHeaderDelegate`. Regression tests: `CassiniResponseContextTest.a_non_standard_status_still_has_a_status_info`, `header_strings_go_through_the_header_delegates`.

@@ -70,7 +70,7 @@ public final class CassiniResponseContext implements ContainerResponseContext {
     public CassiniResponseContext(int status, Object entity, Type entityType,
                                   Annotation[] annotations, MultivaluedMap<String, Object> headers) {
         this.status = status;
-        this.statusInfo = StatusCodes.of(status);
+        this.statusInfo = statusInfoOf(status);
         this.entity = entity;
         this.entityType = entityType;
         if (annotations != null) this.annotations = annotations;
@@ -78,7 +78,19 @@ public final class CassiniResponseContext implements ContainerResponseContext {
     }
 
     @Override public int getStatus() { return status; }
-    @Override public void setStatus(int code) { this.status = code; this.statusInfo = StatusCodes.of(code); }
+    @Override public void setStatus(int code) { this.status = code; this.statusInfo = statusInfoOf(code); }
+
+    /** The standard {@link Response.Status} of {@code code}, or a bare one for a non-standard code: the
+     *  status info is never null (CASSINI-014). */
+    private static Response.StatusType statusInfoOf(int code) {
+        Response.StatusType standard = StatusCodes.of(code);
+        if (standard != null) return standard;
+        return new Response.StatusType() {
+            @Override public int getStatusCode() { return code; }
+            @Override public Response.Status.Family getFamily() { return Response.Status.Family.familyOf(code); }
+            @Override public String getReasonPhrase() { return ""; }
+        };
+    }
     @Override public Response.StatusType getStatusInfo() { return statusInfo; }
     @Override public void setStatusInfo(Response.StatusType si) { this.statusInfo = si; this.status = si.getStatusCode(); }
 
@@ -86,7 +98,7 @@ public final class CassiniResponseContext implements ContainerResponseContext {
 
     @Override public MultivaluedMap<String, String> getStringHeaders() {
         MultivaluedMap<String, String> m = new MultivaluedHashMap<>();
-        for (var e : headers.entrySet()) for (Object v : e.getValue()) m.add(e.getKey(), String.valueOf(v));
+        for (var e : headers.entrySet()) for (Object v : e.getValue()) m.add(e.getKey(), headerToString(v));
         return m;
     }
 
@@ -94,8 +106,17 @@ public final class CassiniResponseContext implements ContainerResponseContext {
         java.util.List<Object> v = headers.get(name);
         if (v == null || v.isEmpty()) return null;
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < v.size(); i++) { if (i > 0) sb.append(','); sb.append(v.get(i)); }
+        for (int i = 0; i < v.size(); i++) { if (i > 0) sb.append(','); sb.append(headerToString(v.get(i))); }
         return sb.toString();
+    }
+
+    /** A header value as text, through its {@code HeaderDelegate} when there is one (CASSINI-014). */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static String headerToString(Object v) {
+        if (v == null || v instanceof String) return (String) v;
+        jakarta.ws.rs.ext.RuntimeDelegate.HeaderDelegate hd =
+                jakarta.ws.rs.ext.RuntimeDelegate.getInstance().createHeaderDelegate(v.getClass());
+        return hd == null ? v.toString() : hd.toString(v);
     }
 
     @Override public boolean containsHeaderString(String n, String sep, java.util.function.Predicate<String> p) {
