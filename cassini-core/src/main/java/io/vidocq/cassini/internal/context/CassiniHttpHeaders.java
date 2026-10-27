@@ -92,21 +92,27 @@ public final class CassiniHttpHeaders implements HttpHeaders {
             int semi = tok.indexOf(';');
             String tag = (semi < 0 ? tok : tok.substring(0, semi)).trim();
             if (tag.isEmpty()) continue;
-            double q = 1.0;
-            if (semi >= 0) {
-                for (String p : tok.substring(semi + 1).split(";")) {
-                    String pt = p.trim();
-                    if (pt.startsWith("q=")) {
-                        try { q = Double.parseDouble(pt.substring(2)); } catch (NumberFormatException ignored) {}
-                    }
-                }
-            }
+            double q = semi < 0 ? 1.0 : languageQ(tok.substring(semi + 1));
             entries.add(java.util.Map.entry(Locale.forLanguageTag(tag), q));
         }
         entries.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
         java.util.List<Locale> out = new java.util.ArrayList<>(entries.size());
         for (var e : entries) out.add(e.getKey());
         return out;
+    }
+
+    /** The {@code q} parameter among the {@code ;}-separated parameters of a language range, 1.0 if absent or malformed. */
+    private static double languageQ(String params) {
+        double q = 1.0;
+        for (String p : params.split(";")) {
+            String pt = p.trim();
+            if (pt.startsWith("q=")) {
+                try { q = Double.parseDouble(pt.substring(2)); } catch (NumberFormatException ignored) {
+                    // a malformed q keeps the previous value
+                }
+            }
+        }
+        return q;
     }
 
     private static double qValue(MediaType mt) {

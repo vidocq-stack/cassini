@@ -105,9 +105,9 @@ public final class CassiniResponseContext implements ContainerResponseContext {
     @Override public String getHeaderString(String name) {
         java.util.List<Object> v = headers.get(name);
         if (v == null || v.isEmpty()) return null;
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < v.size(); i++) { if (i > 0) sb.append(','); sb.append(headerToString(v.get(i))); }
-        return sb.toString();
+        java.util.StringJoiner joined = new java.util.StringJoiner(",");
+        for (Object o : v) joined.add(headerToString(o));
+        return joined.toString();
     }
 
     /** A header value as text, through its {@code HeaderDelegate} when there is one (CASSINI-014). */
