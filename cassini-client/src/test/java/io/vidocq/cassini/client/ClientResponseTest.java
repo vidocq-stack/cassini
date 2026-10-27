@@ -20,6 +20,7 @@
 package io.vidocq.cassini.client;
 
 import io.vidocq.cassini.client.support.RecordingServer;
+import jakarta.ws.rs.ProcessingException;
 import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.ClientBuilder;
 import jakarta.ws.rs.core.GenericType;
@@ -41,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The client-side {@link Response}: status, headers and entity reading. */
@@ -154,6 +156,21 @@ class ClientResponseTest {
     @Test
     void unknown_charset_falls_back_to_utf8() throws Exception {
         assertEquals("é", get(200, Map.of(CONTENT_TYPE, "text/plain;charset=x-unknown"), "é").readEntity(String.class));
+    }
+
+    @Test
+    void unreadable_entity_type_fails_with_a_processing_exception() throws Exception {
+        Response response = text();
+        assertThrows(ProcessingException.class, () -> response.readEntity(Locale.class));
+    }
+
+    @Test
+    void closed_response_cannot_be_read() throws Exception {
+        Response response = text();
+        response.close();
+        assertThrows(IllegalStateException.class, () -> response.readEntity(String.class));
+        assertThrows(IllegalStateException.class, response::hasEntity);
+        assertThrows(IllegalStateException.class, response::bufferEntity);
     }
 
     @Test

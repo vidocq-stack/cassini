@@ -19,6 +19,7 @@
  */
 package io.vidocq.cassini.client.internal;
 
+import jakarta.ws.rs.ProcessingException;
 import jakarta.ws.rs.core.AbstractMultivaluedMap;
 import jakarta.ws.rs.core.EntityTag;
 import jakarta.ws.rs.core.GenericType;
@@ -76,7 +77,7 @@ final class CassiniClientResponse extends Response {
                                    MultivaluedMap<String, Object> headers,
                                    MultivaluedMap<String, String> stringHeaders) {
         this.status = status;
-        this.body = body == null ? new byte[0] : body;
+        this.body = body;
         this.headers = headers;
         this.stringHeaders = stringHeaders;
     }
@@ -120,6 +121,7 @@ final class CassiniClientResponse extends Response {
     @Override
     @SuppressWarnings("unchecked")
     public <T> T readEntity(Class<T> type) {
+        checkOpen();
         if (type == String.class) return (T) new String(body, charset());
         if (type == byte[].class) return (T) body;
         if (type == InputStream.class) return (T) new ByteArrayInputStream(body);
@@ -131,7 +133,7 @@ final class CassiniClientResponse extends Response {
             var jsonb = ClientEntityJsonb.resolve(providers, type, mt);
             return (T) jsonb.fromJson(new ByteArrayInputStream(body), type);
         }
-        throw new UnsupportedOperationException(
+        throw new ProcessingException(
                 "Cassini Client: readEntity(" + type.getName() + ") needs a JSON media type or a "
                         + "String/byte[]/InputStream target (Content-Type was " + mt + ").");
     }
@@ -140,9 +142,14 @@ final class CassiniClientResponse extends Response {
     @Override public <T> T readEntity(Class<T> type, Annotation[] annotations) { return readEntity(type); }
     @Override public <T> T readEntity(GenericType<T> type, Annotation[] annotations) { return readEntity(type); }
 
-    @Override public boolean hasEntity() { return body != null && body.length > 0; }
-    @Override public boolean bufferEntity() { return true; /* déjà buffered */ }
+    @Override public boolean hasEntity() { checkOpen(); return body.length > 0; }
+    @Override public boolean bufferEntity() { checkOpen(); return true; /* already buffered */ }
     @Override public void close() { closed = true; }
+
+    /** §4.2.1 / {@link Response#close()}: a closed response can no longer be read (CASSINI-020). */
+    private void checkOpen() {
+        if (closed) throw new IllegalStateException("Response closed");
+    }
 
     @Override
     public MediaType getMediaType() {
@@ -156,7 +163,7 @@ final class CassiniClientResponse extends Response {
         return l == null ? null : Locale.forLanguageTag(l);
     }
 
-    @Override public int getLength() { return body == null ? -1 : body.length; }
+    @Override public int getLength() { return body.length; }
     @Override public Set<String> getAllowedMethods() { return Set.of(); }
     @Override public Map<String, NewCookie> getCookies() { return Map.of(); }
     @Override public EntityTag getEntityTag() { return null; }

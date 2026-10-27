@@ -234,3 +234,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `ClientResponseTest.response_headers_are_exposed` and `string_entity_is_decoded_with_the_charset_of_the_content_type` against the JDK `HttpServer`.
 - **Cause**: `CassiniClientResponseContext` and `CassiniClientResponse` copied the headers into `MultivaluedHashMap`s and looked them up with `getFirst("Content-Type")`; only the JSON path searched the names case-insensitively.
 - **Fix**: the response headers live in a map whose names compare case-insensitively, shared by the response context and the response; the unused `CassiniClientResponse.from(HttpResponse)` is removed.
+
+## CASSINI-020 — Client `Response.readEntity` breaks its contract: closed responses stay readable, unreadable types throw `UnsupportedOperationException`
+- **Date**: 2026-10-27 — **Status**: FIXED (found while covering `cassini-client` with unit tests)
+- **Severity**: low. `Response.readEntity` must throw `IllegalStateException` once the response is closed and `ProcessingException` when the entity cannot be mapped to the requested type; callers catching `ProcessingException` missed the failure.
+- **Symptom**: `response.close(); response.readEntity(String.class)` returned the body; `readEntity(Locale.class)` on a `text/plain` body threw `UnsupportedOperationException`. `hasEntity()` and `bufferEntity()` also ignored the close.
+- **Minimal repro**: `ClientResponseTest.closed_response_cannot_be_read` and `unreadable_entity_type_fails_with_a_processing_exception`.
+- **Cause**: `CassiniClientResponse.close()` set a flag nothing read; the fallback of `readEntity` threw `UnsupportedOperationException`.
+- **Fix**: `readEntity`, `hasEntity` and `bufferEntity` throw `IllegalStateException` on a closed response; an unreadable type throws `ProcessingException`.
