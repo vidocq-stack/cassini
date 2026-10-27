@@ -60,6 +60,9 @@
                         <id>default-test</id>
                         <configuration>
                             <excludedGroups>without-jsonb</excludedGroups>
+                            <!-- @{argLine} keeps the JaCoCo agent of the quality profile (vidocq-parent);
+                                 Champollion binds the POJOs of the tests. -->
+                            <argLine>@{argLine} --add-opens io.vidocq.cassini.client/io.vidocq.cassini.client=io.vidocq.champollion.jsonb</argLine>
                         </configuration>
                     </execution>
                     <!-- CASSINI-018: a client that never handles JSON must work without a JSON-B
