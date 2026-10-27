@@ -107,7 +107,7 @@ public final class CassiniHttpHeaders implements HttpHeaders {
         for (String p : params.split(";")) {
             String pt = p.trim();
             if (pt.startsWith("q=")) {
-                try { q = Double.parseDouble(pt.substring(2)); } catch (NumberFormatException ignored) {
+                try { q = Double.parseDouble(pt.substring(2)); } catch (NumberFormatException _) {
                     // a malformed q keeps the previous value
                 }
             }
