@@ -170,3 +170,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `UriBuilder.fromUri("http://h/{p}?q={v}#{f}")` (a template, parsed by `uri(String)`) `.build("1", "2", "3")` → `http://h/1?q=3#2`, expected `http://h/1?q=2#3`.
 - **Cause**: `buildInternal` substituted the path, then the fragment, then the query, consuming the positional values in that order. The `UriBuilder#build` Javadoc takes them in the order the templates appear in the URI.
 - **Fix**: substitute the query before the fragment. Regression test: `CassiniUriBuilderTest.build_substitutes_values_in_order_of_appearance`.
+
+## CASSINI-012 — `UriBuilder.queryParam` / `matrixParam` encode the braces of a template
+- **Date**: 2026-10-27 — **Status**: FIXED (found while covering `CassiniUriBuilder` with unit tests)
+- **Severity**: medium. A template put in a query or matrix parameter could never be substituted, and its braces leaked into the built URI as `%7B…%7D`.
+- **Symptom**: `UriBuilder.fromPath("/p").queryParam("q", "{v}").build("1")` gave `/p?q=%7Bv%7D` (the value `1` unused) instead of `/p?q=1`.
+- **Minimal repro**: `UriBuilder.fromPath("/p").matrixParam("m", "{a}").toTemplate()` → `/p;m=%7Ba%7D`, expected `/p;m={a}`.
+- **Cause**: `queryParam`, `replaceQueryParam`, `matrixParam` and `replaceMatrixParam` percent-encoded the whole name and value, braces included, while their Javadoc says both "may contain URI template parameters"; and `build*()` appended query parameter names as they were, never substituting them.
+- **Fix**: those methods encode around `{name}` templates (`encodeKeepingTemplates`), and `build*()` substitutes the query parameter names before their values. Regression test: `CassiniUriBuilderTest.query_and_matrix_parameters_may_hold_templates`.

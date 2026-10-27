@@ -320,8 +320,8 @@ public final class CassiniUriBuilder extends UriBuilder {
         if (values == null) throw new IllegalArgumentException("values is null");
         for (Object v : values) {
             if (v == null) throw new IllegalArgumentException("matrix value is null");
-            path.append(';').append(encode(name, Comp.MATRIX_PARAM, true, true))
-                .append('=').append(encode(String.valueOf(v), Comp.MATRIX_PARAM, true, true));
+            path.append(';').append(encodeKeepingTemplates(name, Comp.MATRIX_PARAM))
+                .append('=').append(encodeKeepingTemplates(String.valueOf(v), Comp.MATRIX_PARAM));
         }
         return this;
     }
@@ -335,7 +335,7 @@ public final class CassiniUriBuilder extends UriBuilder {
         String segment = path.substring(start);
         String[] parts = segment.split(";");
         boolean first = true;
-        String encName = encode(name, Comp.MATRIX_PARAM, true, true);
+        String encName = encodeKeepingTemplates(name, Comp.MATRIX_PARAM);
         for (String p : parts) {
             if (p.isEmpty()) continue;
             if (!first && (p.startsWith(encName + "=") || p.equals(encName))) continue;
@@ -367,15 +367,15 @@ public final class CassiniUriBuilder extends UriBuilder {
             // confirmed by TCK queryParamTest5). replaceQuery, by contrast,
             // keeps the raw value and encode-rebuilds it as %20.
             String formEncoded = String.valueOf(v).replace(" ", "+");
-            query.computeIfAbsent(encode(name, Comp.QUERY_PARAM, true, true), k -> new ArrayList<>())
-                 .add(encode(formEncoded, Comp.QUERY_PARAM, true, true));
+            query.computeIfAbsent(encodeKeepingTemplates(name, Comp.QUERY_PARAM), k -> new ArrayList<>())
+                 .add(encodeKeepingTemplates(formEncoded, Comp.QUERY_PARAM));
         }
         return this;
     }
 
     @Override public UriBuilder replaceQueryParam(String name, Object... values) {
         if (name == null) throw new IllegalArgumentException("name is null");
-        query.remove(encode(name, Comp.QUERY_PARAM, true, true));
+        query.remove(encodeKeepingTemplates(name, Comp.QUERY_PARAM));
         if (values != null && values.length > 0) queryParam(name, values);
         return this;
     }
@@ -472,7 +472,9 @@ public final class CassiniUriBuilder extends UriBuilder {
         for (var e : query.entrySet()) {
             for (String v : e.getValue()) {
                 if (!q.isEmpty()) q.append('&');
-                q.append(e.getKey());
+                // The name may hold templates too; it comes before its value in the URI.
+                q.append(substituteLiteralAndTemplates(e.getKey(), values, valueMap,
+                        seen, posIdx, Comp.QUERY_PARAM, true, valuesAlreadyEncoded));
                 if (v != null) {
                     String subst = substituteLiteralAndTemplates(v, values, valueMap,
                             seen, posIdx, Comp.QUERY_PARAM, true, valuesAlreadyEncoded);
@@ -640,6 +642,27 @@ public final class CassiniUriBuilder extends UriBuilder {
     }
 
     // --- Encoding helpers ---
+
+    /**
+     * Encodes {@code s} for {@code comp}, keeping its {@code {name}} templates as they are so that
+     * {@code build*()} can substitute them (CASSINI-012: query and matrix parameter names and values
+     * "may contain URI template parameters"). An unclosed brace is encoded like any other character.
+     */
+    private static String encodeKeepingTemplates(String s, Comp comp) {
+        int open = s.indexOf('{');
+        if (open < 0) return encode(s, comp, true, true);
+        StringBuilder out = new StringBuilder(s.length() + 8);
+        int from = 0;
+        while (open >= 0) {
+            int close = s.indexOf('}', open);
+            if (close < 0) break;
+            out.append(encode(s.substring(from, open), comp, true, true)).append(s, open, close + 1);
+            from = close + 1;
+            open = s.indexOf('{', from);
+        }
+        out.append(encode(s.substring(from), comp, true, true));
+        return out.toString();
+    }
 
     private static final String UNRESERVED_EXTRA = "-._~";
 

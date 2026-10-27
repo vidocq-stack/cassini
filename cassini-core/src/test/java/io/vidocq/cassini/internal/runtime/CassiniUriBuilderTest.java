@@ -424,6 +424,20 @@ class CassiniUriBuilderTest {
     }
 
     @Test
+    void query_and_matrix_parameters_may_hold_templates() {
+        // CASSINI-012. UriBuilder#queryParam / #matrixParam: the name "may contain URI template parameters"
+        // and "stringified values may contain template parameters".
+        UriBuilder b = UriBuilder.fromPath("/p").matrixParam("m", "{a}").queryParam("{n}", "x {b}");
+        assertEquals("/p;m={a}?{n}=x+{b}", b.toTemplate());
+        assertEquals("/p;m=1?k=x+2", b.build("1", "k", "2").toString());
+        assertEquals("/p?q=1", UriBuilder.fromPath("/p").queryParam("q", "{v}").replaceQueryParam("q", "{w}")
+                .build("1").toString());
+        assertEquals("/p;m=2", UriBuilder.fromPath("/p").matrixParam("m", "{v}").replaceMatrixParam("m", "{w}")
+                .build("2").toString());
+        assertEquals("/p?q=%7Bx", UriBuilder.fromPath("/p").queryParam("q", "{x").build().toString());
+    }
+
+    @Test
     void clone_is_independent_of_the_original() {
         UriBuilder original = UriBuilder.fromUri("http://h/a?q=1#f").resolveTemplate("t", "v");
         UriBuilder copy = original.clone();
