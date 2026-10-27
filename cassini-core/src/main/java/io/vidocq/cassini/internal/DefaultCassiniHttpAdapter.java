@@ -51,6 +51,11 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
     private static final System.Logger LOG =
             System.getLogger(DefaultCassiniHttpAdapter.class.getName());
 
+    private static final String HEAD = "HEAD";
+    private static final String OPTIONS = "OPTIONS";
+    private static final String ALLOW = "Allow";
+    private static final String CONTENT_TYPE = "Content-Type";
+
     private final UriRouter router;
     private final Invoker invoker;
     /** The counters of cassini#42, or {@code null} when the stack was built without them. */
@@ -109,105 +114,104 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
                 byte[] body = (e.getMessage() == null ? "Internal Server Error" : e.getMessage())
                         .getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 exchange.setStatus(500);
-                exchange.responseHeaders().put("Content-Type",
-                        java.util.List.of("text/plain;charset=utf-8"));
-                exchange.responseBody().write(body);
-            } catch (IOException ignored) {}
+                exchange.responseHeaders().put(CONTENT_TYPE, List.of("text/plain;charset=utf-8"));
+                exchange.writeResponseBody(body);
+            } catch (IOException _) {
+                // The transport cannot take the error either: it answers its own 500.
+            }
         }
         return CompletableFuture.completedFuture(null);
     }
 
     /** Routes and answers one request; returns the status written to the exchange. */
     private int dispatchInternal(CassiniHttpExchange exchange) throws Exception {
-        String verb = exchange.method();
-        if (verb == null) verb = "GET";
-
+        String method = exchange.method();
+        String verb = method == null ? "GET" : method;
         String path = exchange.routingPath();
 
         // §6.6.1: pre-matching filters run BEFORE routing → if one calls
         // abortWith(), return directly without attempting to match a route
         // (otherwise a non-existent path would 404 even if a filter would
         // have short-circuited).
-        var preMatchFilters = invoker.filters().preMatching();
-        if (!preMatchFilters.isEmpty()) {
-            Object[] holderPre = new Object[1];
-            try {
-                holderPre[0] = invoker.runPreMatching(exchange);
-            } catch (Exception e) {
-                holderPre[0] = e;
+        if (!invoker.filters().preMatching().isEmpty()) {
+            Invoker.PreMatchResult preMatched = invoker.runPreMatching(exchange);
+            CassiniHttpResponse aborted = preMatched.response();
+            if (aborted != null) {
+                applyResponse(aborted, exchange);
+                return aborted.status();
             }
-            if (holderPre[0] instanceof Exception ex) throw ex;
-            if (holderPre[0] instanceof Invoker.PreMatchResult pmr) {
-                if (pmr.response() != null) {
-                    applyResponse(pmr.response(), exchange);
-                    return pmr.response().status();
-                }
-                // §6.6.1: if a pre-matching filter called setMethod /
-                // setRequestUri, re-run routing on the mutated values.
-                if (pmr.ctx() != null) {
-                    CassiniRequestContext ctx = pmr.ctx();
-                    String mutMethod = ctx.currentMethod();
-                    if (mutMethod != null) verb = mutMethod;
-                    java.net.URI mutUri = ctx.currentRequestUri();
-                    if (mutUri != null) {
-                        String mutPath = mutUri.getRawPath();
-                        if (mutPath == null) mutPath = mutUri.getPath();
-                        if (mutPath == null) mutPath = "/";
-                        // Strip contextPath from the mutated absolute URI (§6.6.1 setRequestUri)
-                        String ctxPath = exchange.contextPath();
-                        if (ctxPath != null && !ctxPath.isEmpty() && !"/".equals(ctxPath)
-                                && mutPath.startsWith(ctxPath)) {
-                            mutPath = mutPath.substring(ctxPath.length());
-                            if (mutPath.isEmpty()) mutPath = "/";
-                        }
-                        path = mutPath;
-                    }
-                }
+            // §6.6.1: if a pre-matching filter called setMethod /
+            // setRequestUri, route the mutated values.
+            CassiniRequestContext ctx = preMatched.ctx();
+            if (ctx != null) {
+                if (ctx.currentMethod() != null) verb = ctx.currentMethod();
+                path = reroutedPath(ctx.currentRequestUri(), exchange.contextPath(), path);
             }
         }
 
-        List<MatchResult> candidates = router.matchAll(verb, path);
-
-        CassiniHttpResponse out;
-        if (candidates.isEmpty()) {
-            List<String> allowed = router.methodsAllowedFor(path);
-            if (!allowed.isEmpty()) {
-                // §3.3.5 : OPTIONS sans handler explicite → 200 + Allow header
-                if ("OPTIONS".equalsIgnoreCase(verb)) {
-                    if (!allowed.contains("OPTIONS")) allowed.add("OPTIONS");
-                    if (allowed.contains("GET") && !allowed.contains("HEAD")) allowed.add("HEAD");
-                    out = CassiniHttpResponse.builder()
-                            .status(200)
-                            .header("Allow", String.join(", ", allowed))
-                            .header("Content-Type", "application/vnd.sun.wadl+xml")
-                            .body(new byte[0])
-                            .build();
-                } else {
-                    // §3.7.2: 405 via WebApplicationException so the ExceptionMapper can intercept
-                    var r405 = jakarta.ws.rs.core.Response.status(405)
-                            .header("Allow", String.join(", ", allowed)).build();
-                    out = invoker.renderThrowable(
-                            new jakarta.ws.rs.WebApplicationException(r405), exchange);
-                }
-            } else {
-                out = invoker.renderThrowable(
-                        new jakarta.ws.rs.NotFoundException("No resource matches " + verb + " " + path),
-                        exchange);
-            }
-        } else {
-            MatchResult result = candidates.get(0);
-            out = invoker.invoke(candidates, exchange);
-            // §3.3.5: HEAD invoked on @GET method → return headers without body
-            if ("HEAD".equalsIgnoreCase(verb) && !"HEAD".equalsIgnoreCase(result.method().httpMethod())) {
-                var b = CassiniHttpResponse.builder().status(out.status()).body(new byte[0]);
-                for (var e : out.headers().entrySet())
-                    for (String v : e.getValue()) b.header(e.getKey(), v);
-                out = b.build();
-            }
-        }
-
+        CassiniHttpResponse out = respond(verb, path, exchange);
         applyResponse(out, exchange);
         return out.status();
+    }
+
+    /**
+     * §6.6.1: the routing path of a request URI that a pre-matching filter set, without the
+     * context path; {@code path} when no filter set one.
+     */
+    private static String reroutedPath(java.net.URI requestUri, String contextPath, String path) {
+        if (requestUri == null) return path;
+        String rerouted = requestUri.getRawPath() != null ? requestUri.getRawPath() : requestUri.getPath();
+        if (rerouted == null) return "/";
+        if (contextPath != null && !contextPath.isEmpty() && !"/".equals(contextPath)
+                && rerouted.startsWith(contextPath)) {
+            rerouted = rerouted.substring(contextPath.length());
+            return rerouted.isEmpty() ? "/" : rerouted;
+        }
+        return rerouted;
+    }
+
+    private CassiniHttpResponse respond(String verb, String path, CassiniHttpExchange exchange) throws Exception {
+        List<MatchResult> candidates = router.matchAll(verb, path);
+        if (candidates.isEmpty()) return noRoute(verb, path, exchange);
+        MatchResult first = candidates.get(0);
+        CassiniHttpResponse out = invoker.invoke(candidates, exchange);
+        // §3.3.5: HEAD invoked on a @GET method → the headers without the body.
+        if (HEAD.equalsIgnoreCase(verb) && !HEAD.equalsIgnoreCase(first.method().httpMethod())) {
+            return withoutBody(out);
+        }
+        return out;
+    }
+
+    /** No route for this verb and path: 404 when no verb has one, 405 otherwise (§3.7.2), through
+     *  a WebApplicationException so that an ExceptionMapper can intercept it; OPTIONS answers
+     *  200 with the Allow header (§3.3.5). */
+    private CassiniHttpResponse noRoute(String verb, String path, CassiniHttpExchange exchange) throws IOException {
+        List<String> allowed = router.methodsAllowedFor(path);
+        if (allowed.isEmpty()) {
+            return invoker.renderThrowable(
+                    new jakarta.ws.rs.NotFoundException("No resource matches " + verb + " " + path), exchange);
+        }
+        if (!OPTIONS.equalsIgnoreCase(verb)) {
+            var r405 = jakarta.ws.rs.core.Response.status(405)
+                    .header(ALLOW, String.join(", ", allowed)).build();
+            return invoker.renderThrowable(new jakarta.ws.rs.WebApplicationException(r405), exchange);
+        }
+        if (!allowed.contains(OPTIONS)) allowed.add(OPTIONS);
+        if (allowed.contains("GET") && !allowed.contains(HEAD)) allowed.add(HEAD);
+        return CassiniHttpResponse.builder()
+                .status(200)
+                .header(ALLOW, String.join(", ", allowed))
+                .header(CONTENT_TYPE, "application/vnd.sun.wadl+xml")
+                .body(new byte[0])
+                .build();
+    }
+
+    private static CassiniHttpResponse withoutBody(CassiniHttpResponse out) {
+        var b = CassiniHttpResponse.builder().status(out.status()).body(new byte[0]);
+        for (var e : out.headers().entrySet()) {
+            for (String v : e.getValue()) b.header(e.getKey(), v);
+        }
+        return b.build();
     }
 
     private static void applyResponse(CassiniHttpResponse out, CassiniHttpExchange exchange)
