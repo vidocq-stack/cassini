@@ -44,6 +44,10 @@ import java.util.Map;
 public final class FilterRegistry {
 
     private final List<FilterEntry<ContainerRequestFilter>> requestFilters = new ArrayList<>();
+    /** The pre-matching and post-matching request filters, read several times per request: rebuilt
+     *  when a request filter is registered, never on a read. */
+    private volatile List<FilterEntry<ContainerRequestFilter>> preMatchingView = List.of();
+    private volatile List<FilterEntry<ContainerRequestFilter>> postMatchingView = List.of();
     private final List<FilterEntry<ContainerResponseFilter>> responseFilters = new ArrayList<>();
     private final List<FilterEntry<ReaderInterceptor>> readerInterceptors = new ArrayList<>();
     private final List<FilterEntry<WriterInterceptor>> writerInterceptors = new ArrayList<>();
@@ -60,6 +64,7 @@ public final class FilterRegistry {
         if (instance instanceof ContainerRequestFilter r) {
             requestFilters.add(FilterEntry.dynamicFor(r, target));
             requestFilters.sort(Comparator.comparingInt(FilterEntry::priority));
+            splitRequestFilters();
         }
         if (instance instanceof ContainerResponseFilter r) {
             responseFilters.add(FilterEntry.dynamicFor(r, target));
@@ -78,6 +83,12 @@ public final class FilterRegistry {
     public void addRequest(ContainerRequestFilter filter) {
         requestFilters.add(FilterEntry.of(filter));
         requestFilters.sort(Comparator.comparingInt(FilterEntry::priority));
+        splitRequestFilters();
+    }
+
+    private void splitRequestFilters() {
+        preMatchingView = requestFilters.stream().filter(FilterEntry::preMatching).toList();
+        postMatchingView = requestFilters.stream().filter(f -> !f.preMatching()).toList();
     }
 
     public void addResponse(ContainerResponseFilter filter) {
@@ -159,12 +170,14 @@ public final class FilterRegistry {
     public List<FilterEntry<ContainerRequestFilter>> requestFilters() { return requestFilters; }
     public List<FilterEntry<ContainerResponseFilter>> responseFilters() { return responseFilters; }
 
+    /** The pre-matching request filters, in priority order (read-only). */
     public List<FilterEntry<ContainerRequestFilter>> preMatching() {
-        return requestFilters.stream().filter(FilterEntry::preMatching).toList();
+        return preMatchingView;
     }
 
+    /** The post-matching request filters, in priority order (read-only). */
     public List<FilterEntry<ContainerRequestFilter>> postMatching() {
-        return requestFilters.stream().filter(f -> !f.preMatching()).toList();
+        return postMatchingView;
     }
 
 }
