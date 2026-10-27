@@ -99,6 +99,14 @@ final class InMemoryExchange implements CassiniHttpExchange {
     @Override public void setStatus(int code) { this.status = code; }
     @Override public Map<String, List<String>> responseHeaders() { return responseHeaders; }
     @Override public OutputStream responseBody() { return responseBody; }
+
+    /** How many times the dispatch handed the whole response body at once. */
+    int wholeBodyWrites;
+
+    @Override public void writeResponseBody(byte[] body) throws java.io.IOException {
+        wholeBodyWrites++;
+        responseBody.write(body);
+    }
     @Override public SocketAddress remoteAddress() { return null; }
     @Override public boolean isSecure() { return false; }
     @Override public String authScheme() { return null; }

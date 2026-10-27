@@ -129,6 +129,18 @@ public interface CassiniHttpExchange {
 
     OutputStream responseBody();
 
+    /**
+     * Writes a whole response body at once, after anything already written to
+     * {@link #responseBody()}. The caller does not touch {@code body} afterwards, so a transport
+     * may keep the array instead of copying it. Default: writes it to {@link #responseBody()}.
+     *
+     * @param body the bytes of the response body
+     * @throws java.io.IOException when the transport cannot take them
+     */
+    default void writeResponseBody(byte[] body) throws java.io.IOException {
+        responseBody().write(body);
+    }
+
     SocketAddress remoteAddress();
 
     boolean isSecure();

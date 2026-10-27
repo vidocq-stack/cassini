@@ -223,7 +223,8 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
 
         byte[] body = out.body();
         if (body != null && body.length > 0) {
-            exchange.responseBody().write(body);
+            // In one call: the transport may keep the array rather than copy it.
+            exchange.writeResponseBody(body);
         }
     }
 }

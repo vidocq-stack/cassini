@@ -49,6 +49,8 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
     private int responseStatus = 200;
     private final Map<String, List<String>> responseHeaders = new LinkedHashMap<>();
     private final ByteArrayOutputStream responseBody = new ByteArrayOutputStream();
+    /** A response body handed over whole and kept as it is ({@link #writeResponseBody}), or null. */
+    private byte[] wholeBody;
     private final Map<String, Object> attributes = new java.util.HashMap<>();
 
     /** Immutable snapshot taken by {@link #openForStreaming} (M2i) — read by the
@@ -165,7 +167,12 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
 
     public Request chappeRequest() { return request; }
     public int collectedStatus() { return responseStatus; }
-    public byte[] collectedBody() { return responseBody.toByteArray(); }
+    /** The response body: the array handed over whole when nothing else was written, a copy of
+     *  what was written otherwise. */
+    public byte[] collectedBody() {
+        if (wholeBody != null) return wholeBody;
+        return responseBody.toByteArray();
+    }
     public Map<String, List<String>> collectedHeaders() { return responseHeaders; }
 
     @Override public String method() {
@@ -229,7 +236,29 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
 
     @Override public Map<String, List<String>> responseHeaders() { return responseHeaders; }
 
-    @Override public OutputStream responseBody() { return responseBody; }
+    @Override public OutputStream responseBody() {
+        spillWholeBody();
+        return responseBody;
+    }
+
+    /** Keeps the array, the usual case of a response written at once; appends it to what was
+     *  written before otherwise. */
+    @Override public void writeResponseBody(byte[] body) {
+        if (wholeBody == null && responseBody.size() == 0) {
+            wholeBody = body;
+        } else {
+            spillWholeBody();
+            responseBody.writeBytes(body);
+        }
+    }
+
+    /** Moves a kept array into the stream, before anything is written after it. */
+    private void spillWholeBody() {
+        if (wholeBody != null) {
+            responseBody.writeBytes(wholeBody);
+            wholeBody = null;
+        }
+    }
 
     @Override public SocketAddress remoteAddress() { return null; }
 
