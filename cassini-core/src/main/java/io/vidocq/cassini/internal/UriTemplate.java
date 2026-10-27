@@ -128,9 +128,13 @@ public final class UriTemplate {
 
     /** Returns multi-valued path params (multiple occurrences of the same name → List). */
     public Optional<Map<String, List<String>>> match(String path) {
+        if (paramNames.isEmpty()) {
+            // A template without parameter is its own literal, quoted character by character in
+            // the regex: a string comparison decides, without a Matcher per request.
+            return template.equals(path) ? Optional.of(Map.of()) : Optional.empty();
+        }
         Matcher m = pattern.matcher(path);
         if (!m.matches()) return Optional.empty();
-        if (paramNames.isEmpty()) return Optional.of(Map.of());
         Map<String, List<String>> params = new LinkedHashMap<>();
         for (int i = 0; i < paramNames.size(); i++) {
             String logicalName = paramNames.get(i);
