@@ -67,6 +67,11 @@ final class InMemoryExchange implements CassiniHttpExchange {
         return new InMemoryExchange("POST", path, contentType, body.getBytes(StandardCharsets.UTF_8));
     }
 
+    /** A {@code PUT} with the given {@code Content-Type} and UTF-8 body. */
+    static InMemoryExchange put(String path, String contentType, String body) {
+        return new InMemoryExchange("PUT", path, contentType, body.getBytes(StandardCharsets.UTF_8));
+    }
+
     /** A {@code GET} with no body. */
     static InMemoryExchange get(String path) {
         return new InMemoryExchange("GET", path, null, null);

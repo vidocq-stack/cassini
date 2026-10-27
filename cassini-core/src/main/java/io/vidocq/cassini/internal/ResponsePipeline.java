@@ -37,7 +37,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Map;
@@ -185,10 +184,10 @@ final class ResponsePipeline {
                 rctx.getEntityAnnotations(), mt, status, extra, route);
     }
 
-    Object readEntity(Parameter p, MediaType ct, CassiniHttpExchange request, ResourceMethod route) throws IOException {
-        Class<?> type = p.getType();
-        Type genericType = p.getParameterizedType();
-        Annotation[] anns = p.getAnnotations();
+    Object readEntity(MethodParameters.Param p, MediaType ct, CassiniHttpExchange request, ResourceMethod route) throws IOException {
+        Class<?> type = p.type();
+        Type genericType = p.genericType();
+        Annotation[] anns = p.annotations();
         MultivaluedMap<String, String> headers = MessageBodyRegistry.adaptExchangeHeaders(request.requestHeaders());
 
         @SuppressWarnings({"rawtypes", "unchecked"})

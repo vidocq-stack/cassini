@@ -234,7 +234,7 @@ final class DynamicLocatorDispatch {
             resolved = ParamExtractor.resolve(route, match, request);
             args = resolved.args();
             if (resolved.bodyIndex() >= 0) {
-                Parameter p = route.javaMethod().getParameters()[resolved.bodyIndex()];
+                MethodParameters.Param p = MethodParameters.of(route.javaMethod()).get(resolved.bodyIndex());
                 MediaType readMt = (ctHeader == null) ? MediaType.APPLICATION_OCTET_STREAM_TYPE : contentType;
                 args[resolved.bodyIndex()] = host.readEntity(p, readMt, request, route);
             }

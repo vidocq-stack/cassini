@@ -348,24 +348,21 @@ public final class Invoker {
         // §8.2: @Suspended AsyncResponse — create the impl BEFORE parameter extraction
         // so ParamExtractor can inject it through the exchange attribute.
         CassiniAsyncResponseImpl asyncResponse = null;
-        for (java.lang.reflect.Parameter p : route.javaMethod().getParameters()) {
-            if (p.getAnnotation(jakarta.ws.rs.container.Suspended.class) != null
-                    && jakarta.ws.rs.container.AsyncResponse.class.isAssignableFrom(p.getType())) {
-                asyncResponse = new CassiniAsyncResponseImpl();
-                request.setAttribute(CassiniAsyncResponseImpl.ATTR_KEY, asyncResponse);
-                // §8.2: if the transport can watch the connection, release the
-                // suspended response when the client goes away — fire the
-                // registered ConnectionCallbacks, then (if nothing resumed it)
-                // fail the completion so the waiting virtual thread is freed
-                // instead of working until its own timeout for a dead client.
-                final CassiniAsyncResponseImpl ar = asyncResponse;
-                request.onClientDisconnect(() -> {
-                    ar.fireDisconnect();
-                    ar.completionFuture().completeExceptionally(
-                            new java.io.IOException("Client disconnected"));
-                });
-                break;
-            }
+        MethodParameters declared = MethodParameters.of(route.javaMethod());
+        if (declared.suspended() >= 0) {
+            asyncResponse = new CassiniAsyncResponseImpl();
+            request.setAttribute(CassiniAsyncResponseImpl.ATTR_KEY, asyncResponse);
+            // §8.2: if the transport can watch the connection, release the
+            // suspended response when the client goes away — fire the
+            // registered ConnectionCallbacks, then (if nothing resumed it)
+            // fail the completion so the waiting virtual thread is freed
+            // instead of working until its own timeout for a dead client.
+            final CassiniAsyncResponseImpl ar = asyncResponse;
+            request.onClientDisconnect(() -> {
+                ar.fireDisconnect();
+                ar.completionFuture().completeExceptionally(
+                        new java.io.IOException("Client disconnected"));
+            });
         }
 
         // 2. Resolve args
@@ -375,7 +372,7 @@ public final class Invoker {
             resolved = ParamExtractor.resolve(route, match, request);
             args = resolved.args();
             if (resolved.bodyIndex() >= 0) {
-                Parameter p = route.javaMethod().getParameters()[resolved.bodyIndex()];
+                MethodParameters.Param p = declared.get(resolved.bodyIndex());
                 // §4.2.4: Standard providers MUST return a non-null object
                 // even for an empty body (String=="", byte[]=new byte[0],
                 // InputStream=empty stream, ...). So we always read through an MBR
@@ -491,20 +488,17 @@ public final class Invoker {
         // the arg with our instance (CassiniSseEventSink). In streaming mode
         // (JDK transport), events are written directly to the wire.
         io.vidocq.cassini.internal.sse.CassiniSseEventSink sseSink = null;
-        Parameter[] params = route.javaMethod().getParameters();
-        for (int pi = 0; pi < params.length; pi++) {
-            if (params[pi].getType() == jakarta.ws.rs.sse.SseEventSink.class) {
-                // Try to open chunked streaming (JDK transport).
-                var streamingHeaders = new java.util.LinkedHashMap<String, java.util.List<String>>();
-                streamingHeaders.put("Content-Type",
-                        java.util.List.of("text/event-stream;charset=utf-8"));
-                streamingHeaders.put("Cache-Control", java.util.List.of("no-cache"));
-                var streamingSink = request.openForStreaming(200, streamingHeaders);
-                sseSink = new io.vidocq.cassini.internal.sse.CassiniSseEventSink(registry, streamingSink);
-                args[pi] = sseSink;
-                ParamExtractor.setCurrentSink(sseSink);
-                break;
-            }
+        int pi = declared.sseSink();
+        if (pi >= 0) {
+            // Try to open chunked streaming (JDK transport).
+            var streamingHeaders = new java.util.LinkedHashMap<String, java.util.List<String>>();
+            streamingHeaders.put("Content-Type",
+                    java.util.List.of("text/event-stream;charset=utf-8"));
+            streamingHeaders.put("Cache-Control", java.util.List.of("no-cache"));
+            var streamingSink = request.openForStreaming(200, streamingHeaders);
+            sseSink = new io.vidocq.cassini.internal.sse.CassiniSseEventSink(registry, streamingSink);
+            args[pi] = sseSink;
+            ParamExtractor.setCurrentSink(sseSink);
         }
         // P1b: attempt direct typed dispatch via generated adapter; fall back to reflection.
         {
@@ -633,7 +627,7 @@ public final class Invoker {
         return pipeline.runResponseFiltersForResult(rctx, result, route, chosen);
     }
 
-    Object readEntity(Parameter p, MediaType ct, CassiniHttpExchange request, ResourceMethod route) throws IOException {
+    Object readEntity(MethodParameters.Param p, MediaType ct, CassiniHttpExchange request, ResourceMethod route) throws IOException {
         return pipeline.readEntity(p, ct, request, route);
     }
 

@@ -25,7 +25,6 @@ import io.vidocq.cassini.internal.context.CassiniProviders;
 import io.vidocq.cassini.internal.context.CassiniRequest;
 import io.vidocq.cassini.internal.context.CassiniSecurityContext;
 import io.vidocq.cassini.internal.context.CassiniUriInfo;
-import jakarta.ws.rs.BeanParam;
 import jakarta.ws.rs.CookieParam;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.FormParam;
@@ -34,16 +33,12 @@ import jakarta.ws.rs.MatrixParam;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.WebApplicationException;
-import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.ext.Providers;
 
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Parameter;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -112,170 +107,95 @@ public final class ParamExtractor {
     private ParamExtractor() {}
 
     /**
-     * Resolves the arguments of a resource constructor (§3.1.1).
+     * Resolves the arguments of a sub-resource locator (§3.4.1) or a resource constructor (§3.1.1).
      * Parameters without a JAX-RS annotation receive their default value
-     * (a constructor cannot consume the body).
+     * (neither can consume the body).
      */
     public static Object[] resolveConstructorArgs(Parameter[] params, MatchResult match, CassiniHttpExchange request) {
+        if (params.length == 0) return new Object[0];
+        MethodParameters declared = MethodParameters.of(params[0].getDeclaringExecutable());
         Object[] args = new Object[params.length];
         for (int i = 0; i < params.length; i++) {
-            args[i] = resolveInjectedParam(params[i], match, request);
+            MethodParameters.Param p = declared.get(i);
+            args[i] = resolveParam(p, p.encoded(), match, request, null);
         }
         return args;
     }
 
-    private static Object resolveInjectedParam(Parameter p, MatchResult match, CassiniHttpExchange request) {
-        String def = defaultValue(p);
-        boolean encoded = p.getAnnotation(jakarta.ws.rs.Encoded.class) != null;
-        Context context = p.getAnnotation(Context.class);
-        if (context != null) return resolveContext(p.getType(), match, request);
-
-        if (p.getAnnotation(jakarta.ws.rs.container.Suspended.class) != null) {
-            return request.getAttribute(CassiniAsyncResponseImpl.ATTR_KEY);
-        }
-
-        BeanParam beanParam = p.getAnnotation(BeanParam.class);
-        if (beanParam != null) return instantiateBeanParam(p.getType(), match, request);
-
-        PathParam pathParam = p.getAnnotation(PathParam.class);
-        if (pathParam != null) {
-            // PathSegment: we want segments with matrix params (rawPathParams).
-            boolean needsRaw = jakarta.ws.rs.core.PathSegment.class.isAssignableFrom(p.getType());
-            List<String> raws = (needsRaw ? match.rawPathParams() : match.pathParams())
-                    .getOrDefault(pathParam.value(), List.of());
-            if (raws.isEmpty()) return coerce(p, emptyOrDefault(def));
-            List<String> vals = encoded ? raws : raws.stream().map(ParamExtractor::decodePath).toList();
-            return coerce(p, vals);
-        }
-        QueryParam queryParam = p.getAnnotation(QueryParam.class);
-        if (queryParam != null) {
-            List<String> raws = parsedQueryFromRequest(request, encoded).getOrDefault(queryParam.value(), List.of());
-            return coerce(p, raws.isEmpty() ? emptyOrDefault(def) : raws);
-        }
-        HeaderParam headerParam = p.getAnnotation(HeaderParam.class);
-        if (headerParam != null) {
-            List<String> raws = request.headers(headerParam.value());
-            return coerce(p, raws.isEmpty() ? emptyOrDefault(def) : raws);
-        }
-        CookieParam cookieParam = p.getAnnotation(CookieParam.class);
-        if (cookieParam != null) {
-            String raw = cookie(request, cookieParam.value());
-            return coerce(p, raw == null ? emptyOrDefault(def) : List.of(raw));
-        }
-        MatrixParam matrixParam = p.getAnnotation(MatrixParam.class);
-        if (matrixParam != null) {
-            List<String> raws = matrix(request, matrixParam.value(), encoded);
-            return coerce(p, raws.isEmpty() ? emptyOrDefault(def) : raws);
-        }
-        FormParam formParam = p.getAnnotation(FormParam.class);
-        if (formParam != null) {
-            List<String> raws = readForm(request, encoded).getOrDefault(formParam.value(), List.of());
-            return coerce(p, raws.isEmpty() ? emptyOrDefault(def) : raws);
-        }
-        return ParamValueConverter.defaultForType(p.getType());
-    }
-
     public static ResolvedArgs resolve(ResourceMethod route, MatchResult match, CassiniHttpExchange request) {
-        Parameter[] params = route.javaMethod().getParameters();
-        Object[] args = new Object[params.length];
+        MethodParameters declared = MethodParameters.of(route.javaMethod());
+        Object[] args = new Object[declared.size()];
         int bodyIndex = -1;
-        Map<String, List<String>> formCache = null;
-        Map<String, List<String>> queryCache = null;
-        Map<String, List<String>> formCacheEncoded = null;
-        Map<String, List<String>> queryCacheEncoded = null;
         boolean methodEncoded = route.javaMethod().getAnnotation(jakarta.ws.rs.Encoded.class) != null
                 || route.beanClass().getAnnotation(jakarta.ws.rs.Encoded.class) != null;
+        RequestValues values = null;
 
-        for (int i = 0; i < params.length; i++) {
-            Parameter p = params[i];
-            String def = defaultValue(p);
-            boolean encoded = methodEncoded || p.getAnnotation(jakarta.ws.rs.Encoded.class) != null;
-
-            PathParam pathParam = p.getAnnotation(PathParam.class);
-            QueryParam queryParam = p.getAnnotation(QueryParam.class);
-            HeaderParam headerParam = p.getAnnotation(HeaderParam.class);
-            CookieParam cookieParam = p.getAnnotation(CookieParam.class);
-            FormParam formParam = p.getAnnotation(FormParam.class);
-            MatrixParam matrixParam = p.getAnnotation(MatrixParam.class);
-            Context context = p.getAnnotation(Context.class);
-            BeanParam beanParam = p.getAnnotation(BeanParam.class);
-
-            if (context != null) {
-                args[i] = resolveContext(p.getType(), match, request);
-                continue;
-            }
-            // §8.2: @Suspended AsyncResponse — injected from the exchange attribute
-            // set by the Invoker before parameter extraction.
-            if (p.getAnnotation(jakarta.ws.rs.container.Suspended.class) != null) {
-                args[i] = request.getAttribute(CassiniAsyncResponseImpl.ATTR_KEY);
-                continue;
-            }
-            if (beanParam != null) {
-                args[i] = instantiateBeanParam(p.getType(), match, request);
-                continue;
-            }
-            if (pathParam != null) {
-                boolean needsRaw = jakarta.ws.rs.core.PathSegment.class.isAssignableFrom(p.getType());
-                List<String> raws = (needsRaw ? match.rawPathParams() : match.pathParams())
-                        .getOrDefault(pathParam.value(), List.of());
-                if (raws.isEmpty()) { args[i] = coerce(p, emptyOrDefault(def)); }
-                else {
-                    List<String> vals = encoded ? raws : raws.stream().map(ParamExtractor::decodePath).toList();
-                    args[i] = coerce(p, vals);
-                }
-            } else if (queryParam != null) {
-                Map<String, List<String>> cache;
-                if (encoded) {
-                    if (queryCacheEncoded == null) queryCacheEncoded = parsedQueryFromRequest(request, true);
-                    cache = queryCacheEncoded;
-                } else {
-                    if (queryCache == null) queryCache = parsedQueryFromRequest(request, false);
-                    cache = queryCache;
-                }
-                List<String> raws = cache.getOrDefault(queryParam.value(), List.of());
-                args[i] = coerce(p, raws.isEmpty() ? emptyOrDefault(def) : raws);
-            } else if (headerParam != null) {
-                List<String> raws = request.headers(headerParam.value());
-                args[i] = coerce(p, raws.isEmpty() ? emptyOrDefault(def) : raws);
-            } else if (cookieParam != null) {
-                String raw = cookie(request, cookieParam.value());
-                args[i] = coerce(p, raw == null ? emptyOrDefault(def) : List.of(raw));
-            } else if (formParam != null) {
-                Map<String, List<String>> cache;
-                if (encoded) {
-                    if (formCacheEncoded == null) formCacheEncoded = readForm(request, true);
-                    cache = formCacheEncoded;
-                } else {
-                    if (formCache == null) formCache = readForm(request, false);
-                    cache = formCache;
-                }
-                List<String> raws = cache.getOrDefault(formParam.value(), List.of());
-                args[i] = coerce(p, raws.isEmpty() ? emptyOrDefault(def) : raws);
-            } else if (matrixParam != null) {
-                List<String> raws = matrix(request, matrixParam.value(), encoded);
-                args[i] = coerce(p, raws.isEmpty() ? emptyOrDefault(def) : raws);
-            } else if (isBodyCandidate(p)) {
-                if (bodyIndex < 0) bodyIndex = i;
-                args[i] = ParamValueConverter.defaultForType(p.getType());
-            } else {
-                args[i] = ParamValueConverter.defaultForType(p.getType());
-            }
+        for (int i = 0; i < args.length; i++) {
+            MethodParameters.Param p = declared.get(i);
+            MethodParameters.Source source = p.source();
+            if (source == MethodParameters.Source.ENTITY && bodyIndex < 0) bodyIndex = i;
+            if (source == MethodParameters.Source.QUERY && values == null) values = new RequestValues(request);
+            args[i] = resolveParam(p, methodEncoded || p.encoded(), match, request, values);
         }
         return new ResolvedArgs(args, bodyIndex);
     }
 
-    /** True if the parameter has no recognized JAX-RS annotation → body candidate. */
-    private static boolean isBodyCandidate(Parameter p) {
-        for (Annotation a : p.getAnnotations()) {
-            Class<? extends Annotation> t = a.annotationType();
-            if (t == PathParam.class || t == QueryParam.class || t == HeaderParam.class
-                    || t == CookieParam.class || t == FormParam.class || t == MatrixParam.class
-                    || t == DefaultValue.class || t == Context.class || t == BeanParam.class) {
-                return false;
+    /** The value of one parameter, from where its annotations say it comes from (§3.2). The query
+     *  is parsed at most once per request, through {@code values}: when it is null, it is parsed
+     *  for this parameter alone. The form is cached on the exchange by {@link #readForm}. */
+    private static Object resolveParam(MethodParameters.Param p, boolean encoded, MatchResult match,
+                                       CassiniHttpExchange request, RequestValues values) {
+        return switch (p.source()) {
+            case CONTEXT -> resolveContext(p.type(), match, request);
+            // §8.2: @Suspended AsyncResponse — injected from the exchange attribute
+            // set by the Invoker before parameter extraction.
+            case SUSPENDED -> request.getAttribute(CassiniAsyncResponseImpl.ATTR_KEY);
+            case BEAN -> instantiateBeanParam(p.type(), match, request);
+            case PATH -> pathValue(p, match, encoded);
+            case QUERY -> listValue(p, (values == null ? parsedQueryFromRequest(request, encoded) : values.query(encoded))
+                    .getOrDefault(p.name(), List.of()));
+            case HEADER -> listValue(p, request.headers(p.name()));
+            case COOKIE -> {
+                String raw = cookie(request, p.name());
+                yield coerce(p, raw == null ? emptyOrDefault(p.defaultValue()) : List.of(raw));
             }
-            if (t.getName().startsWith("jakarta.ws.rs.")) return false;
+            case FORM -> listValue(p, readForm(request, encoded).getOrDefault(p.name(), List.of()));
+            case MATRIX -> listValue(p, matrix(request, p.name(), encoded));
+            case ENTITY, NONE -> ParamValueConverter.defaultForType(p.type());
+        };
+    }
+
+    private static Object pathValue(MethodParameters.Param p, MatchResult match, boolean encoded) {
+        // PathSegment: we want segments with matrix params (rawPathParams).
+        List<String> raws = (p.wantsPathSegments() ? match.rawPathParams() : match.pathParams())
+                .getOrDefault(p.name(), List.of());
+        if (raws.isEmpty()) return coerce(p, emptyOrDefault(p.defaultValue()));
+        return coerce(p, encoded ? raws : decodePaths(raws));
+    }
+
+    /** {@code raws}, or the {@code @DefaultValue} when there is none, converted to the parameter type. */
+    private static Object listValue(MethodParameters.Param p, List<String> raws) {
+        return coerce(p, raws.isEmpty() ? emptyOrDefault(p.defaultValue()) : raws);
+    }
+
+    /** The query of one request, parsed on first use, decoded or not (§3.2 {@code @Encoded}). */
+    private static final class RequestValues {
+        private final CassiniHttpExchange request;
+        private Map<String, List<String>> query;
+        private Map<String, List<String>> queryEncoded;
+
+        RequestValues(CassiniHttpExchange request) {
+            this.request = request;
         }
-        return true;
+
+        Map<String, List<String>> query(boolean encoded) {
+            if (encoded) {
+                if (queryEncoded == null) queryEncoded = parsedQueryFromRequest(request, true);
+                return queryEncoded;
+            }
+            if (query == null) query = parsedQueryFromRequest(request, false);
+            return query;
+        }
     }
 
     private static Object instantiateBeanParam(Class<?> type, MatchResult match, CassiniHttpExchange request) {
@@ -379,14 +299,9 @@ public final class ParamExtractor {
         throw new WebApplicationException("Unsupported @Context type: " + type.getName(), 500);
     }
 
-    private static Object coerce(Parameter p, List<String> raws) {
-        Class<?> raw = p.getType();
-        Class<?> element = ParamValueConverter.isListLike(raw)
-                ? genericElementType(p.getParameterizedType())
-                : raw;
-        boolean notFoundParam = p.getAnnotation(PathParam.class) != null
-                || p.getAnnotation(MatrixParam.class) != null
-                || p.getAnnotation(QueryParam.class) != null;
+    private static Object coerce(MethodParameters.Param p, List<String> raws) {
+        Class<?> raw = p.type();
+        Class<?> element = p.element();
         // §6.1.4: let application ParamConverterProviders act on the
         // type before the ParamValueConverter fallback (constructors, valueOf, ...).
         Object userConverted = tryUserParamConverter(raw, element, p, raws);
@@ -395,14 +310,14 @@ public final class ParamExtractor {
             return ParamValueConverter.coerce(raw, element, raws);
         } catch (WebApplicationException w) {
             // §3.2 : @PathParam/@QueryParam/@MatrixParam → 404 ; @HeaderParam/@CookieParam → 400.
-            if (notFoundParam && w.getResponse() != null && w.getResponse().getStatus() == 400) {
+            if (p.notFoundWhenInvalid() && w.getResponse() != null && w.getResponse().getStatus() == 400) {
                 throw new WebApplicationException(w.getMessage(), w.getCause(), javax404Response(404));
             }
             throw w;
         } catch (RuntimeException e) {
             throw new WebApplicationException("Invalid value for parameter "
-                    + p.getName() + ": " + e.getMessage(), e,
-                    javax404Response(notFoundParam ? 404 : 400));
+                    + p.parameter().getName() + ": " + e.getMessage(), e,
+                    javax404Response(p.notFoundWhenInvalid() ? 404 : 400));
         }
     }
 
@@ -421,15 +336,15 @@ public final class ParamExtractor {
      *  Returns {@link #USE_FALLBACK} if no applicable converter exists, otherwise
      *  the converted object (or null if raws is empty and the converter accepts ""). */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private static Object tryUserParamConverter(Class<?> raw, Class<?> element, Parameter p, List<String> raws) {
+    private static Object tryUserParamConverter(Class<?> raw, Class<?> element, MethodParameters.Param p, List<String> raws) {
         var scope = RequestScope.current();
         java.util.List<jakarta.ws.rs.ext.ParamConverterProvider> pcps = scope == null ? null : scope.paramConverterProviders;
         if (pcps == null || pcps.isEmpty()) return USE_FALLBACK;
         // §6.1.4: we first offer the 'raw' type (collection or direct) then
         // the element type (for List<X> with a converter for X).
         Class<?> targetType = raw;
-        java.lang.reflect.Type targetGeneric = p.getParameterizedType();
-        java.lang.annotation.Annotation[] anns = p.getAnnotations();
+        java.lang.reflect.Type targetGeneric = p.genericType();
+        java.lang.annotation.Annotation[] anns = p.annotations();
         jakarta.ws.rs.ext.ParamConverter conv = null;
         for (var pcp : pcps) {
             try {
@@ -451,7 +366,7 @@ public final class ParamExtractor {
                     try { out.add(conv.fromString(r)); }
                     catch (RuntimeException e) {
                         throw new WebApplicationException("Invalid value for parameter "
-                                + p.getName() + ": " + e.getMessage(), e, javax404Response(400));
+                                + p.parameter().getName() + ": " + e.getMessage(), e, javax404Response(400));
                     }
                 }
                 if (raw == java.util.Set.class) return new java.util.LinkedHashSet<>(out);
@@ -466,25 +381,12 @@ public final class ParamExtractor {
             return conv.fromString(value);
         } catch (RuntimeException e) {
             throw new WebApplicationException("Invalid value for parameter "
-                    + p.getName() + ": " + e.getMessage(), e, javax404Response(400));
+                    + p.parameter().getName() + ": " + e.getMessage(), e, javax404Response(400));
         }
     }
 
     private static List<String> emptyOrDefault(String def) {
         return def == null ? List.of() : List.of(def);
-    }
-
-    private static String defaultValue(Parameter p) {
-        DefaultValue d = p.getAnnotation(DefaultValue.class);
-        return d == null ? null : d.value();
-    }
-
-    private static Class<?> genericElementType(Type t) {
-        if (t instanceof ParameterizedType pt && pt.getActualTypeArguments().length == 1
-                && pt.getActualTypeArguments()[0] instanceof Class<?> c) {
-            return c;
-        }
-        return String.class;
     }
 
     /** Decodes %XX in path params like {@link URLDecoder} but without replacing
@@ -493,6 +395,19 @@ public final class ParamExtractor {
         if (s == null || s.indexOf('%') < 0) return s;
         try { return URLDecoder.decode(s.replace("+", "%2B"), StandardCharsets.UTF_8); }
         catch (Exception e) { return s; }
+    }
+
+    /** {@code raws} decoded with {@link #decodePath}: the same list when none needs it. */
+    private static List<String> decodePaths(List<String> raws) {
+        for (int i = 0; i < raws.size(); i++) {
+            String raw = raws.get(i);
+            if (raw != null && raw.indexOf('%') >= 0) {
+                List<String> decoded = new ArrayList<>(raws.size());
+                for (String r : raws) decoded.add(decodePath(r));
+                return decoded;
+            }
+        }
+        return raws;
     }
 
     private static Map<String, List<String>> parseQuery(String raw, boolean encoded) {
