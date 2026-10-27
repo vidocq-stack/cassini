@@ -390,6 +390,18 @@ class CassiniUriBuilderTest {
     }
 
     @Test
+    void path_after_an_authority_starts_with_a_slash() {
+        // CASSINI-009. UriBuilder#path: "Existing '/' characters are preserved"; a path following an
+        // authority must begin with '/' (RFC 3986 §3.3), otherwise the host and the path run together.
+        assertEquals("http://h/a", UriBuilder.fromUri(HOST_URI).path("a").build().toString());
+        assertEquals("http://h/a/b", UriBuilder.fromUri(HOST_URI).path("a").path("b").build().toString());
+        assertEquals("http://h/a", UriBuilder.fromUri(HOST_URI).segment("a").build().toString());
+        assertEquals("http://h:81/x", UriBuilder.newInstance().scheme("http").host("h").port(81).path("x")
+                .build().toString());
+        assertEquals("http://h/{a}", UriBuilder.fromUri(HOST_URI).path("{a}").toTemplate());
+    }
+
+    @Test
     void clone_is_independent_of_the_original() {
         UriBuilder original = UriBuilder.fromUri("http://h/a?q=1#f").resolveTemplate("t", "v");
         UriBuilder copy = original.clone();

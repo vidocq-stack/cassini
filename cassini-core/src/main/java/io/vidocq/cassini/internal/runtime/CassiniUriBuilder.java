@@ -490,12 +490,19 @@ public final class CassiniUriBuilder extends UriBuilder {
             sb.append(ssp);
         } else {
             appendAuthority(sb);
-            if (pathOut != null) sb.append(pathOut);
+            appendPath(sb, pathOut);
             if (queryOut != null) sb.append('?').append(queryOut);
         }
         if (fragmentOut != null) sb.append('#').append(fragmentOut);
         try { return new URI(sb.toString()); }
         catch (URISyntaxException e) { throw new jakarta.ws.rs.core.UriBuilderException(e); }
+    }
+
+    /** The path, led by a '/' when it follows an authority (RFC 3986 §3.3) — CASSINI-009. */
+    private void appendPath(StringBuilder sb, String pathOut) {
+        if (pathOut == null || pathOut.isEmpty()) return;
+        if (host != null && !host.isEmpty() && pathOut.charAt(0) != '/') sb.append('/');
+        sb.append(pathOut);
     }
 
     /** {@code //userInfo@host:port} when there is a host. */
@@ -589,7 +596,7 @@ public final class CassiniUriBuilder extends UriBuilder {
             sb.append(host);
             if (port >= 0) sb.append(':').append(port);
         }
-        sb.append(resolveStoredTemplates(path.toString()));
+        appendPath(sb, resolveStoredTemplates(path.toString()));
         if (!query.isEmpty()) {
             sb.append('?');
             boolean first = true;
