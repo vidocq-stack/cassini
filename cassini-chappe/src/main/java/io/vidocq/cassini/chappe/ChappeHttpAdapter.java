@@ -31,6 +31,7 @@ import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
 
@@ -73,13 +74,18 @@ public final class ChappeHttpAdapter implements Handler {
         this.engine = engine;
         this.scoped = scoped == null ? Scoped.IDENTITY : scoped;
         this.builders = builders;
+        this.inline = !engine.mayStream() && this.scoped != Scoped.IDENTITY;
     }
 
+    /** Whether requests are dispatched on the calling thread, see {@link #handleHere}. */
+    private final boolean inline;
+
     /**
-     * Each request is handled on a dedicated virtual thread (M2h).
-     * This guarantees: (1) isolation of request-scope ScopedValues,
-     * (2) no platform-thread starvation if the resource method blocks
-     * on I/O or waits for a CompletionStage.
+     * When the engine may stream ({@link CassiniHttpAdapter#mayStream}) or no {@link Scoped} hook
+     * bounds the request scope, each request is handled on a dedicated virtual thread (M2h);
+     * otherwise on the thread Chappe called the handler on, itself a virtual thread, so blocking
+     * I/O or a wait on a CompletionStage starves no platform thread either way, and the
+     * request-scope ScopedValues end with the dispatch.
      *
      * <p>M2i (SSE streaming): the caller does not wait for dispatch
      * completion unconditionally any more. A latch is released either by
@@ -90,6 +96,34 @@ public final class ChappeHttpAdapter implements Handler {
      */
     @Override
     public Response handle(Request request) throws Exception {
+        return inline ? handleHere(request) : handleOnItsOwnThread(request);
+    }
+
+    /**
+     * The dispatch of an engine that never streams, on the thread that received the request: no
+     * thread to start, no hand-off to wait for. Only with a {@link Scoped} hook, which enters and
+     * leaves the request scope around the call: without one, a CDI container may keep the request
+     * context on the thread (a {@code RequestContextController} activated by a request filter), and
+     * the thread started per request is what discards it. Failures end the request as on the
+     * dispatch thread: logged, then thrown to Chappe, which answers 500.
+     */
+    private Response handleHere(Request request) throws Exception {
+        var exchange = new ChappeHttpExchange(request);
+        try {
+            scoped.runInScope(() -> engine.dispatch(exchange).toCompletableFuture().join());
+        } catch (RuntimeException e) {
+            Throwable failure = e instanceof CompletionException ce && ce.getCause() != null ? ce.getCause() : e;
+            // Never let a request die silently: Chappe answers a generic 500, so this log line is
+            // the only trace.
+            LOG.log(System.Logger.Level.ERROR,
+                    "Request failed: " + exchange.method() + " " + exchange.routingPath(), failure);
+            if (failure instanceof Exception ex) throw ex;
+            throw e;
+        }
+        return buildChappeResponse(exchange);
+    }
+
+    private Response handleOnItsOwnThread(Request request) throws Exception {
         var exchange = new ChappeHttpExchange(request);
         var streamingReady = new java.util.concurrent.CountDownLatch(1);
         exchange.setStreamingLatch(streamingReady);

@@ -193,6 +193,7 @@ It reuses `MessageBodyRegistry`, `CassiniResponse`, `CassiniUriBuilder` and `Cas
 == Virtual threads and async
 
 * All blocking I/O (body read, backend wait, SSE) runs on a virtual thread created by `Executors.newVirtualThreadPerTaskExecutor()`.
+* [.tag-new]#NEW# On Chappe, when a request scope hook (`ChappeHttpAdapter.Scoped`, which the Vidocq runtime installs) bounds the request scope by the dispatch, a request is dispatched on the virtual thread of its connection, unless the deployment may stream: a resource method with an `SseEventSink`, or a sub-resource locator resolved at run time (`CassiniHttpAdapter.mayStream()`). Otherwise `ChappeHttpAdapter` starts a virtual thread per request, as every request did until 0.4.0-RC1: Chappe can then send a stream while the method goes on writing events, and a CDI request context that a filter left on the thread ends with it.
 * `@Suspended AsyncResponse` immediately releases the carrier thread; resolution is posted by user code on a VT.
 * A `CompletionStage` returned by a resource method is propagated down to the transport via `CassiniAsyncContext`.
 

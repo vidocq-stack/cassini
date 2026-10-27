@@ -64,6 +64,27 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
         this.router = router;
         this.invoker = invoker;
         this.statistics = statistics;
+        this.mayStream = router.routes().stream().anyMatch(DefaultCassiniHttpAdapter::mayStream);
+    }
+
+    /** Whether some route may open a streaming response; resolved once, from the routes. */
+    private final boolean mayStream;
+
+    /**
+     * §11.1: a resource method with an {@code SseEventSink} parameter streams its events; a
+     * sub-resource locator resolved at run time (§3.4.1) may lead to one.
+     */
+    private static boolean mayStream(ResourceMethod route) {
+        if (route.dynamicLocator()) return true;
+        for (Class<?> type : route.javaMethod().getParameterTypes()) {
+            if (type == jakarta.ws.rs.sse.SseEventSink.class) return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean mayStream() {
+        return mayStream;
     }
 
     @Override

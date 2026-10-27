@@ -41,4 +41,17 @@ public interface CassiniHttpAdapter {
      *         (or when the connection is closed on error)
      */
     CompletionStage<Void> dispatch(CassiniHttpExchange exchange);
+
+    /**
+     * Whether a dispatch may hand its response to the transport as a stream before it ends
+     * ({@link CassiniHttpExchange#openForStreaming}, a resource method writing Server-Sent
+     * Events). A transport must then run the dispatch on a thread of its own, so that it can send
+     * the stream while the dispatch goes on. When {@code false}, no dispatch ever streams, and
+     * the transport may run it on the thread that received the request.
+     *
+     * @return {@code true} by default: a transport must not assume an adapter never streams
+     */
+    default boolean mayStream() {
+        return true;
+    }
 }
