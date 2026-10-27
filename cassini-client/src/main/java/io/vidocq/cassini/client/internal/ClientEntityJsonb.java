@@ -21,6 +21,8 @@ package io.vidocq.cassini.client.internal;
 
 import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
+import jakarta.json.bind.JsonbException;
+import jakarta.ws.rs.ProcessingException;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.ext.ContextResolver;
@@ -28,6 +30,7 @@ import jakarta.ws.rs.ext.ContextResolver;
 import java.lang.reflect.ParameterizedType;
 import java.util.Collection;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Client-side JSON-B entity (de)serialisation, honouring a registered
@@ -44,7 +47,12 @@ import java.util.Locale;
  */
 final class ClientEntityJsonb {
 
-    private static final Jsonb DEFAULT = JsonbBuilder.create();
+    /**
+     * Created on the first JSON (de)serialisation only, so that a client which never handles
+     * JSON works without a JSON-B provider (CASSINI-018). A benign race may create two
+     * instances; one wins.
+     */
+    private static final AtomicReference<Jsonb> DEFAULT = new AtomicReference<>();
 
     private ClientEntityJsonb() {
     }
@@ -96,7 +104,21 @@ final class ClientEntityJsonb {
                 }
             }
         }
-        return DEFAULT;
+        return defaultJsonb();
+    }
+
+    private static Jsonb defaultJsonb() {
+        Jsonb jsonb = DEFAULT.get();
+        if (jsonb != null) {
+            return jsonb;
+        }
+        try {
+            jsonb = JsonbBuilder.create();
+        } catch (JsonbException e) {
+            throw new ProcessingException("No JSON-B provider to (de)serialise a JSON entity", e);
+        }
+        DEFAULT.compareAndSet(null, jsonb);
+        return DEFAULT.get();
     }
 
     private static boolean producesMatches(Class<?> crClass, MediaType mt) {

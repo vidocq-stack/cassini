@@ -30,11 +30,55 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- The JSON-B implementation comes from the application or its runtime; the tests use
+             Champollion to round-trip JSON entities. -->
+        <dependency>
+            <groupId>io.vidocq.champollion</groupId>
+            <artifactId>champollion-jsonb</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.vidocq.champollion</groupId>
+            <artifactId>champollion-jsonp</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>default-test</id>
+                        <configuration>
+                            <excludedGroups>without-jsonb</excludedGroups>
+                        </configuration>
+                    </execution>
+                    <!-- CASSINI-018: a client that never handles JSON must work without a JSON-B
+                         provider, so these tests run with Champollion's JSON-B left out. -->
+                    <execution>
+                        <id>without-jsonb</id>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                        <configuration>
+                            <groups>without-jsonb</groups>
+                            <classpathDependencyExcludes>
+                                <classpathDependencyExclude>io.vidocq.champollion:champollion-jsonb</classpathDependencyExclude>
+                            </classpathDependencyExcludes>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

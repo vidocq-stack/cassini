@@ -218,3 +218,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `PUT` with `If-Match: W/"a"`, resource calling `request.evaluatePreconditions(new EntityTag("a", true))` → `null` (precondition met), expected a 412 builder.
 - **Cause**: `CassiniRequest.matchesEtag` strips `W/` on both sides for every header ("ignore weak/strong distinction in MVP"); that is right for `If-None-Match` (weak comparison, §13.1.2) only.
 - **Fix to do**: give `matchesEtag` a `strong` flag; for `If-Match`, fail when either tag is weak or the opaque values differ. Add the case to `CassiniRequestTest` and run the REST TCK.
+
+## CASSINI-018 — The client needs a JSON-B provider for any entity that is not a `String` or a `byte[]`
+- **Date**: 2026-10-27 — **Status**: FIXED (found while covering `cassini-client` with unit tests)
+- **Severity**: medium. `cassini-client` depends on the JSON-B API only and the implementation comes from the application; without one, sending `Entity.text(42)` failed, although no JSON is involved.
+- **Symptom**: the first entity whose value is neither a `String` nor a `byte[]` (any media type) threw `ExceptionInInitializerError`, and every later one `NoClassDefFoundError: Could not initialize class ClientEntityJsonb`. Reading a JSON body into a POJO without a provider failed the same way instead of with a `ProcessingException`.
+- **Minimal repro**: no JSON-B implementation on the module path, then `client.target(url).request().post(Entity.entity(42, MediaType.TEXT_PLAIN_TYPE))`.
+- **Cause**: `ClientEntityJsonb` created its default `Jsonb` in a static initialiser, run by its first use, the `isJson(mediaType)` check.
+- **Fix**: the default `Jsonb` is created on the first JSON (de)serialisation; a missing provider then fails with a `ProcessingException`. Regression tests: `WithoutJsonbProviderTest`, run by the `without-jsonb` surefire execution of `cassini-client`, which leaves Champollion's JSON-B out.
