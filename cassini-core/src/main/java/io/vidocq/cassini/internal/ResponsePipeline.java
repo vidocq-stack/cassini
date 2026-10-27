@@ -211,7 +211,7 @@ final class ResponsePipeline {
         if (cached != null) {
             src = new java.io.ByteArrayInputStream(cached);
         } else {
-            byte[] all = request.requestBody() == null ? new byte[0] : request.requestBody().readAllBytes();
+            byte[] all = readWhole(request);
             request.setAttribute(FieldInjector.ATTR_BODY_CACHE, all);
             src = new java.io.ByteArrayInputStream(all);
         }
@@ -237,6 +237,27 @@ final class ResponsePipeline {
             // body buffering above), which keeps its own rules.
             throw new EntityReadException(failure);
         }
+    }
+
+    /**
+     * The whole entity, read with a buffer of its {@code Content-Length} when the transport knows
+     * it: {@code readAllBytes} asks for 16 KB chunks and allocates them, for bodies of a few dozen
+     * bytes. A transport that announces a length shorter than what it delivers (a chunked body
+     * behind a stale header) still hands over everything: the stream is read to its end.
+     */
+    private static byte[] readWhole(CassiniHttpExchange request) throws IOException {
+        InputStream body = request.requestBody();
+        if (body == null) return new byte[0];
+        long length = request.contentLength();
+        if (length < 0 || length > Integer.MAX_VALUE - 16) return body.readAllBytes();
+        byte[] sized = body.readNBytes((int) length);
+        int more = body.read();
+        if (more < 0) return sized;
+        byte[] rest = body.readAllBytes();
+        byte[] all = java.util.Arrays.copyOf(sized, sized.length + 1 + rest.length);
+        all[sized.length] = (byte) more;
+        System.arraycopy(rest, 0, all, sized.length + 1, rest.length);
+        return all;
     }
 
     CassiniHttpResponse marshal(Object result, ResourceMethod route, MediaType chosen) throws IOException {
