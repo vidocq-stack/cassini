@@ -64,7 +64,7 @@ public final class CassiniResponse extends Response {
     @Override public int getStatus() { return status; }
 
     @Override public StatusType getStatusInfo() {
-        StatusType s = Status.fromStatusCode(status);
+        StatusType s = StatusCodes.of(status);
         if (s != null) return s;
         final String r = reason == null ? "" : reason;
         return new StatusType() {

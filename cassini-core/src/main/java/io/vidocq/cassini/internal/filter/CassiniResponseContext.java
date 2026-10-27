@@ -20,6 +20,7 @@
 package io.vidocq.cassini.internal.filter;
 
 import io.vidocq.cassini.internal.MediaTypes;
+import io.vidocq.cassini.internal.runtime.StatusCodes;
 import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.core.EntityTag;
 import jakarta.ws.rs.core.Link;
@@ -69,7 +70,7 @@ public final class CassiniResponseContext implements ContainerResponseContext {
     public CassiniResponseContext(int status, Object entity, Type entityType,
                                   Annotation[] annotations, MultivaluedMap<String, Object> headers) {
         this.status = status;
-        this.statusInfo = Response.Status.fromStatusCode(status);
+        this.statusInfo = StatusCodes.of(status);
         this.entity = entity;
         this.entityType = entityType;
         if (annotations != null) this.annotations = annotations;
@@ -77,7 +78,7 @@ public final class CassiniResponseContext implements ContainerResponseContext {
     }
 
     @Override public int getStatus() { return status; }
-    @Override public void setStatus(int code) { this.status = code; this.statusInfo = Response.Status.fromStatusCode(code); }
+    @Override public void setStatus(int code) { this.status = code; this.statusInfo = StatusCodes.of(code); }
     @Override public Response.StatusType getStatusInfo() { return statusInfo; }
     @Override public void setStatusInfo(Response.StatusType si) { this.statusInfo = si; this.status = si.getStatusCode(); }
 
