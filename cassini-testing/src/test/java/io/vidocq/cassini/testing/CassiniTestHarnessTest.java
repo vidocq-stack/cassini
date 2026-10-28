@@ -48,8 +48,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The harness other bricks drive their TCK runners with: it mounts the resources, providers and
@@ -274,7 +274,7 @@ class CassiniTestHarnessTest {
     void buildHandlerExposesTheBridgeAndTheContextPrefix() {
         var atRoot = CassiniTestHarness.builder().resourceClass(PlainResource.class).contextPath(null).buildHandler();
         assertEquals("", atRoot.prefix());
-        assertTrue(atRoot.bridgeHandler() != null);
+        assertNotNull(atRoot.bridgeHandler());
 
         var underApp = CassiniTestHarness.builder().resourceClass(PlainResource.class).contextPath("/app").buildHandler();
         assertEquals("/app", underApp.prefix());

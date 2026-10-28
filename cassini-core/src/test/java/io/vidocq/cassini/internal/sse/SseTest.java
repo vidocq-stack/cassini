@@ -123,8 +123,19 @@ class SseTest {
                 .data("line 1\nline 2").build()).toCompletableFuture().get(5, TimeUnit.SECONDS);
         sink.send(sse.newEventBuilder().comment("keep-alive").build());
 
-        assertEquals(": first\n: second\nid: 1\nevent: tick\nretry: 3000\ndata: line 1\ndata: line 2\n\n"
-                + ": keep-alive\n\n", new String(sink.toByteArray(), StandardCharsets.UTF_8));
+        String expected = """
+                : first
+                : second
+                id: 1
+                event: tick
+                retry: 3000
+                data: line 1
+                data: line 2
+
+                : keep-alive
+
+                """;
+        assertEquals(expected, new String(sink.toByteArray(), StandardCharsets.UTF_8));
     }
 
     @Test

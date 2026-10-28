@@ -49,7 +49,7 @@ final class AsyncContextPropagator {
             Class<?> ctxClass = Class.forName("io.opentelemetry.context.Context");
             current = ctxClass.getMethod("current");
             makeCurrent = ctxClass.getMethod("makeCurrent");
-        } catch (Throwable _) {
+        } catch (ReflectiveOperationException | LinkageError _) {
             // OTel context not available — propagation no-op
         }
         CONTEXT_CURRENT = current;
@@ -62,7 +62,7 @@ final class AsyncContextPropagator {
     static Object capture() {
         if (CONTEXT_CURRENT == null) return null;
         try { return CONTEXT_CURRENT.invoke(null); }
-        catch (Throwable _) { return null; }
+        catch (ReflectiveOperationException | RuntimeException _) { return null; }
     }
 
     /** A scope whose {@code close()} throws no checked exception. */
@@ -84,7 +84,7 @@ final class AsyncContextPropagator {
             Object scope = CONTEXT_MAKE_CURRENT.invoke(captured);
             if (scope instanceof AutoCloseable ac) return () -> closeQuietly(ac);
             return NOOP;
-        } catch (Throwable _) {
+        } catch (ReflectiveOperationException | RuntimeException _) {
             return NOOP;
         }
     }

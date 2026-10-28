@@ -31,7 +31,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.net.URI;
 import java.security.Principal;
 import java.util.List;
@@ -59,7 +58,6 @@ class CassiniRequestContextTest {
     private static final String V2_ITEM = "http://example.org/v2/items/9";
 
     private static final String PATH = "/api/things/7";
-    private static final String TEXT = "text/plain";
 
     @BeforeAll
     static void runtimeDelegate() {
@@ -122,7 +120,7 @@ class CassiniRequestContextTest {
     }
 
     @Test
-    void preMatchingFiltersMayChangeTheMethodUriEntityAndSecurity() throws IOException {
+    void preMatchingFiltersMayChangeTheMethodUriEntityAndSecurity() {
         var exchange = get();
         var context = context(exchange);
         assertEquals("GET", context.getMethod());
