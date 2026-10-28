@@ -25,7 +25,6 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -35,32 +34,34 @@ public final class CassiniEntityPartBuilder implements EntityPart.Builder {
 
     private final String name;
     private String fileName;
-    private MediaType mediaType = MediaType.TEXT_PLAIN_TYPE;
+    /** The media type given to {@link #mediaType}, or {@code null} for the default. */
+    private MediaType mediaType;
     private final MultivaluedMap<String, String> headers = new MultivaluedHashMap<>();
     private byte[] content;
 
     public CassiniEntityPartBuilder(String name) {
-        if (name == null) throw new IllegalArgumentException("name must not be null");
-        this.name = name;
+        this.name = requireArgument(name, "name");
     }
 
-    @Override public EntityPart.Builder mediaType(MediaType mt) { this.mediaType = mt; return this; }
-    @Override public EntityPart.Builder mediaType(String mt) {
-        this.mediaType = MediaType.valueOf(mt); return this;
+    @Override public EntityPart.Builder mediaType(MediaType mt) {
+        this.mediaType = requireArgument(mt, "mediaType");
+        return this;
     }
+    @Override public EntityPart.Builder mediaType(String mt) {
+        this.mediaType = MediaType.valueOf(requireArgument(mt, "mediaType"));
+        return this;
+    }
+    /** Replaces any value previously added under {@code n} (EntityPart.Builder contract). */
     @Override public EntityPart.Builder header(String n, String... v) {
-        for (String s : v) headers.add(n, s);
+        headers.put(requireArgument(n, "headerName"), new java.util.ArrayList<>(java.util.Arrays.asList(v)));
         return this;
     }
     @Override public EntityPart.Builder headers(MultivaluedMap<String, String> h) {
-        if (h != null) headers.putAll(h);
+        requireArgument(h, "headers").forEach((n, v) -> header(n, v.toArray(String[]::new)));
         return this;
     }
     @Override public EntityPart.Builder fileName(String fn) {
-        this.fileName = fn;
-        if (mediaType == null || mediaType.equals(MediaType.TEXT_PLAIN_TYPE)) {
-            mediaType = MediaType.APPLICATION_OCTET_STREAM_TYPE;
-        }
+        this.fileName = requireArgument(fn, "fileName");
         return this;
     }
 
@@ -72,6 +73,7 @@ public final class CassiniEntityPartBuilder implements EntityPart.Builder {
     }
 
     @Override public EntityPart.Builder content(String fileName, InputStream is) throws IllegalArgumentException {
+        requireArgument(is, "content");
         return fileName(fileName).content(is);
     }
 
@@ -104,14 +106,26 @@ public final class CassiniEntityPartBuilder implements EntityPart.Builder {
             return this;
         }
         // Fallback: toString → bytes
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        try { bos.write(value.toString().getBytes(StandardCharsets.UTF_8)); }
-        catch (IOException e) { throw new IllegalArgumentException(e); }
-        this.content = bos.toByteArray();
+        this.content = value.toString().getBytes(StandardCharsets.UTF_8);
         return this;
     }
 
+    /**
+     * @throws IllegalStateException when no content was given (EntityPart.Builder contract)
+     */
     @Override public EntityPart build() {
-        return new CassiniEntityPart(name, fileName, mediaType, headers, content == null ? new byte[0] : content);
+        if (content == null) throw new IllegalStateException("EntityPart '" + name + "' has no content");
+        return new CassiniEntityPart(name, fileName, effectiveMediaType(), headers, content);
+    }
+
+    /** text/plain by default, application/octet-stream once a file name is set (CASSINI-027). */
+    private MediaType effectiveMediaType() {
+        if (mediaType != null) return mediaType;
+        return fileName == null ? MediaType.TEXT_PLAIN_TYPE : MediaType.APPLICATION_OCTET_STREAM_TYPE;
+    }
+
+    private static <T> T requireArgument(T value, String what) {
+        if (value == null) throw new IllegalArgumentException(what + " must not be null");
+        return value;
     }
 }

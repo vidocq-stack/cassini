@@ -79,6 +79,48 @@ class CassiniEntityPartTest {
         assertEquals(MediaType.APPLICATION_JSON_TYPE, json.getMediaType(), "an explicit media type stays");
     }
 
+    /** CASSINI-027: "application/octet-stream if not otherwise specified" — an explicit text/plain stays. */
+    @Test
+    void anExplicitTextPlainMediaTypeSurvivesAFileName() throws IOException {
+        EntityPart before = builder().mediaType(MediaType.TEXT_PLAIN_TYPE).fileName("notes.txt").content(TEXT).build();
+        assertEquals(MediaType.TEXT_PLAIN_TYPE, before.getMediaType());
+        EntityPart asString = builder().mediaType("text/plain").fileName("notes.txt").content(TEXT).build();
+        assertEquals(MediaType.TEXT_PLAIN_TYPE, asString.getMediaType());
+    }
+
+    /** CASSINI-027: the builder methods reject null arguments with IllegalArgumentException. */
+    @Test
+    void nullArgumentsAreRejected() {
+        var builder = builder();
+        var stream = stream(TEXT);
+        assertThrows(IllegalArgumentException.class, () -> builder.mediaType((MediaType) null));
+        assertThrows(IllegalArgumentException.class, () -> builder.headers(null));
+        assertThrows(IllegalArgumentException.class, () -> builder.header(null, "v"));
+        assertThrows(IllegalArgumentException.class, () -> builder.fileName(null));
+        assertThrows(IllegalArgumentException.class, () -> builder.content(null, stream));
+        assertThrows(IllegalArgumentException.class, () -> builder.content("a.txt", (InputStream) null));
+    }
+
+    /** CASSINI-027: header(...) "adds a new header or replaces a previously added header". */
+    @Test
+    void aHeaderReplacesTheValuesOfAPreviousOneOfTheSameName() throws IOException {
+        var map = new MultivaluedHashMap<String, String>();
+        map.add("X-A", "from the map");
+        EntityPart part = builder().header("X-A", "1", "2").header("X-A", "3").header("X-B", "b").headers(map)
+                .content(TEXT).build();
+        assertEquals(List.of("from the map"), part.getHeaders().get("X-A"));
+        assertEquals(List.of("b"), part.getHeaders().get("X-B"));
+        EntityPart replaced = builder().header("X-A", "1", "2").header("X-A", "3").content(TEXT).build();
+        assertEquals(List.of("3"), replaced.getHeaders().get("X-A"));
+    }
+
+    /** CASSINI-027: build() throws IllegalStateException "if the content was not specified". */
+    @Test
+    void buildingAPartWithoutContentIsAnIllegalState() {
+        var builder = builder().fileName("empty.bin");
+        assertThrows(IllegalStateException.class, builder::build);
+    }
+
     @Test
     void headersAreAddedOneByOneOrAsAMap() throws IOException {
         var map = new MultivaluedHashMap<String, String>();

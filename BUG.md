@@ -297,3 +297,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `MultipartFormDataProvider.readFrom` on a body with the header above (boundary `XyZ`).
 - **Cause**: `MultipartFormDataProvider.paramValue` looked up `name=` with a plain `indexOf`, which matched inside `filename=`.
 - **Fix**: a parameter only matches at the start of the header value or after a `;`. Regression test: `MultipartFormDataProviderTest.theNameIsFoundWhenTheFileNameComesFirst`.
+
+## CASSINI-027 — `EntityPart.Builder` departs from its contract
+- **Date**: 2026-10-28 — **Status**: FIXED
+- **Severity**: low. The official TCK does not exercise these cases (2670 run, 0 failures, 131 skipped before and after).
+- **Symptom**: four departures from the `jakarta.ws.rs.core.EntityPart.Builder` Javadoc: (1) `mediaType(TEXT_PLAIN).fileName("a.txt")` built an `application/octet-stream` part, while octet-stream is only the default "if not otherwise specified"; (2) `mediaType(null)`, `headers(null)`, `header(null, …)`, `fileName(null)`, `content(null, stream)` were accepted instead of throwing `IllegalArgumentException`; (3) `header(name, …)` appended to the previous values instead of replacing them; (4) `build()` without content returned an empty part instead of throwing `IllegalStateException`.
+- **Minimal repro**: `EntityPart.withName("p").mediaType(MediaType.TEXT_PLAIN_TYPE).fileName("a.txt").content("x").build().getMediaType()` gives `application/octet-stream`.
+- **Cause**: `CassiniEntityPartBuilder` stored `text/plain` as an initial value and overwrote it when a file name was set, delegated `header` to `MultivaluedMap.add`, and had no argument or content checks.
+- **Fix**: the media type is resolved at `build()` (the explicit one, else octet-stream with a file name, else text/plain); null arguments throw `IllegalArgumentException`; `header` replaces, `headers` calls it per entry; `build()` without content throws `IllegalStateException`. Regression tests: `CassiniEntityPartTest.anExplicitTextPlainMediaTypeSurvivesAFileName`, `nullArgumentsAreRejected`, `aHeaderReplacesTheValuesOfAPreviousOneOfTheSameName`, `buildingAPartWithoutContentIsAnIllegalState`.
