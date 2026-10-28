@@ -20,6 +20,7 @@
 package io.vidocq.cassini.internal.filter;
 
 import io.vidocq.cassini.internal.MediaTypes;
+import io.vidocq.cassini.internal.runtime.HeaderValues;
 import io.vidocq.cassini.internal.runtime.StatusCodes;
 import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.core.EntityTag;
@@ -122,7 +123,6 @@ public final class CassiniResponseContext implements ContainerResponseContext {
     @Override public boolean containsHeaderString(String n, String sep, java.util.function.Predicate<String> p) {
         // §6.7.4 : recherche d'header case-insensitive (RFC 7230).
         java.util.List<Object> vs = caseInsensitiveLookup(n);
-        if (vs == null) return false;
         for (Object v : vs) for (String tok : v.toString().split(sep)) if (p.test(tok.trim())) return true;
         return false;
     }
@@ -133,7 +133,7 @@ public final class CassiniResponseContext implements ContainerResponseContext {
         for (var e : headers.entrySet()) {
             if (e.getKey().equalsIgnoreCase(n)) return e.getValue();
         }
-        return null;
+        return java.util.List.of();
     }
 
     @Override public boolean containsHeaderString(String n, java.util.function.Predicate<String> p) {
@@ -147,16 +147,9 @@ public final class CassiniResponseContext implements ContainerResponseContext {
         for (String tok : v.toString().split(",")) out.add(tok.trim().toUpperCase(Locale.ROOT));
         return out;
     }
-    @Override public Date getDate() { return parseHttpDate(headers.getFirst("Date")); }
-    @Override public Locale getLanguage() {
-        Object v = headers.getFirst("Content-Language");
-        return v == null ? null : Locale.forLanguageTag(v.toString());
-    }
-    @Override public int getLength() {
-        Object v = headers.getFirst("Content-Length");
-        if (v == null) return -1;
-        try { return Integer.parseInt(v.toString()); } catch (NumberFormatException e) { return -1; }
-    }
+    @Override public Date getDate() { return HeaderValues.httpDate(headers.getFirst("Date")); }
+    @Override public Locale getLanguage() { return HeaderValues.language(headers); }
+    @Override public int getLength() { return HeaderValues.length(headers); }
     @Override public MediaType getMediaType() {
         Object v = headers.getFirst("Content-Type");
         if (v == null) return null;
@@ -168,60 +161,30 @@ public final class CassiniResponseContext implements ContainerResponseContext {
         if (vs == null) return out;
         for (Object v : vs) {
             if (v instanceof NewCookie nc) out.put(nc.getName(), nc);
-            else try {
-                NewCookie nc = NewCookie.valueOf(v.toString());
-                out.put(nc.getName(), nc);
-            } catch (Exception ignored) {}
+            else {
+                NewCookie nc = parseCookie(v.toString());
+                if (nc != null) out.put(nc.getName(), nc);
+            }
         }
         return out;
     }
-    @Override public EntityTag getEntityTag() {
-        Object v = headers.getFirst("ETag");
-        if (v == null) return null;
-        if (v instanceof EntityTag et) return et;
-        try { return EntityTag.valueOf(v.toString()); } catch (Exception e) { return null; }
-    }
-    @Override public Date getLastModified() { return parseHttpDate(headers.getFirst("Last-Modified")); }
-    @Override public URI getLocation() {
-        Object v = headers.getFirst("Location");
-        return v == null ? null : URI.create(v.toString());
-    }
-    @Override public Set<Link> getLinks() {
-        java.util.List<Object> vs = headers.get("Link");
-        if (vs == null || vs.isEmpty()) return Set.of();
-        Set<Link> out = new java.util.LinkedHashSet<>();
-        for (Object v : vs) {
-            if (v instanceof Link l) { out.add(l); continue; }
-            try { out.add(Link.valueOf(v.toString())); } catch (Exception ignored) {}
+
+    private static NewCookie parseCookie(String raw) {
+        try {
+            return jakarta.ws.rs.ext.RuntimeDelegate.getInstance().createHeaderDelegate(NewCookie.class).fromString(raw);
+        } catch (RuntimeException _) {
+            return null; // malformed Set-Cookie value: not exposed as a cookie
         }
-        return out;
     }
-    @Override public boolean hasLink(String relation) {
-        for (Link l : getLinks()) if (relation != null && relation.equals(l.getRel())) return true;
-        return false;
-    }
-    @Override public Link getLink(String relation) {
-        for (Link l : getLinks()) if (relation != null && relation.equals(l.getRel())) return l;
-        return null;
-    }
+    @Override public EntityTag getEntityTag() { return HeaderValues.entityTag(headers); }
+    @Override public Date getLastModified() { return HeaderValues.httpDate(headers.getFirst("Last-Modified")); }
+    @Override public URI getLocation() { return HeaderValues.location(headers); }
+    @Override public Set<Link> getLinks() { return HeaderValues.links(headers); }
+    @Override public boolean hasLink(String relation) { return getLink(relation) != null; }
+    @Override public Link getLink(String relation) { return HeaderValues.link(getLinks(), relation); }
     @Override public Link.Builder getLinkBuilder(String relation) {
         Link l = getLink(relation);
         return l == null ? null : Link.fromLink(l);
-    }
-
-    private static Date parseHttpDate(Object v) {
-        if (v == null) return null;
-        if (v instanceof Date d) return d;
-        String s = v.toString();
-        for (String fmt : new String[] {
-                "EEE, dd MMM yyyy HH:mm:ss zzz",
-                "EEEE, dd-MMM-yy HH:mm:ss zzz",
-                "EEE MMM d HH:mm:ss yyyy"}) {
-            try {
-                return new java.text.SimpleDateFormat(fmt, Locale.US).parse(s);
-            } catch (java.text.ParseException ignored) {}
-        }
-        return null;
     }
 
     @Override public boolean hasEntity() { return entity != null; }
