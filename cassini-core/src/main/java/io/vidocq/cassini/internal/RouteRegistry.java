@@ -62,6 +62,7 @@ public final class RouteRegistry {
 
     private static final Logger LOG = Logger.getLogger(RouteRegistry.class.getName());
     private static final String ROUTES_SUFFIX = "$$CassiniRoutes";
+    private static final String LOG_PREFIX = "RouteRegistry: ";
 
     /** Classes that used generated routes (pre-generated path). */
     private static final AtomicInteger PRE_GENERATED_HITS = new AtomicInteger();
@@ -103,7 +104,7 @@ public final class RouteRegistry {
         //    The module system instantiates it even from a CLOSED package — no `opens`/`exports`.
         RouteProvider svc = serviceProviders().get(cls);
         if (svc != null) {
-            LOG.fine("RouteRegistry: " + cls.getName() + " used ServiceLoader-registered routes");
+            LOG.fine(() -> LOG_PREFIX + cls.getName() + " used ServiceLoader-registered routes");
             return fromProvider(svc, cls);
         }
 
@@ -116,13 +117,13 @@ public final class RouteRegistry {
         } catch (ClassNotFoundException _) {
             // No pre-generated provider — fall through to scanner
         } catch (Exception e) {
-            LOG.log(Level.WARNING, "RouteRegistry: failed to use generated routes for "
-                    + cls.getName() + " — falling back to ResourceScanner: " + e.getMessage(), e);
+            LOG.log(Level.WARNING, e, () -> LOG_PREFIX + "failed to use generated routes for "
+                    + cls.getName() + " — falling back to ResourceScanner: " + e.getMessage());
         }
 
         // 3. Fallback: ResourceScanner
         SCANNER_FALLBACK_HITS.incrementAndGet();
-        LOG.fine("RouteRegistry: " + cls.getName() + " used ResourceScanner (no generated provider)");
+        LOG.fine(() -> LOG_PREFIX + cls.getName() + " used ResourceScanner (no generated provider)");
         return ResourceScanner.discover(cls);
     }
 
@@ -134,13 +135,13 @@ public final class RouteRegistry {
     private static List<ResourceMethod> fromProvider(RouteProvider provider, Class<?> cls) {
         if (provider.hasLocators()) {
             // Class has locators — fall back to full scanner for correctness
-            LOG.fine("RouteRegistry: " + cls.getName() + " has locators, falling back to ResourceScanner");
+            LOG.fine(() -> LOG_PREFIX + cls.getName() + " has locators, falling back to ResourceScanner");
             SCANNER_FALLBACK_HITS.incrementAndGet();
             return ResourceScanner.discover(cls);
         }
         List<ResourceMethod> routes = convertDescriptors(provider.routes(), cls);
         PRE_GENERATED_HITS.incrementAndGet();
-        LOG.fine("RouteRegistry: " + cls.getName() + " used generated routes (" + routes.size() + " methods)");
+        LOG.fine(() -> LOG_PREFIX + cls.getName() + " used generated routes (" + routes.size() + " methods)");
         return routes;
     }
 
@@ -166,31 +167,38 @@ public final class RouteRegistry {
     private static Map<Class<?>, RouteProvider> loadServiceProviders() {
         Map<Class<?>, RouteProvider> map = new HashMap<>();
         Iterator<RouteProvider> it = ServiceLoader.load(RouteProvider.class).iterator();
-        while (true) {
-            RouteProvider p;
-            try {
-                if (!it.hasNext()) break;
-                p = it.next();
-            } catch (java.util.ServiceConfigurationError e) {
-                LOG.log(Level.FINE, "RouteProvider ServiceLoader scan stopped early: " + e.getMessage(), e);
-                break;
-            }
-            Class<?> rc;
-            try {
-                rc = p.resourceClass();
-            } catch (Throwable t) {
-                LOG.log(Level.FINE, "Skipping RouteProvider " + p.getClass().getName()
-                        + " (resourceClass() failed): " + t.getMessage(), t);
-                continue;
-            }
+        for (RouteProvider p = nextProvider(it); p != null; p = nextProvider(it)) {
+            Class<?> rc = resourceClassOf(p);
             if (rc != null) {
                 map.putIfAbsent(rc, p);
             }
         }
         if (!map.isEmpty()) {
-            LOG.fine("RouteRegistry: " + map.size() + " ServiceLoader-registered route provider(s)");
+            LOG.fine(() -> LOG_PREFIX + map.size() + " ServiceLoader-registered route provider(s)");
         }
         return map;
+    }
+
+    /** The next provider, or {@code null} at the end of the scan or when a provider fails to load:
+     *  the iterator state is undefined after a load error, so the scan stops there. */
+    private static RouteProvider nextProvider(Iterator<RouteProvider> it) {
+        try {
+            return it.hasNext() ? it.next() : null;
+        } catch (java.util.ServiceConfigurationError e) {
+            LOG.log(Level.FINE, e, () -> "RouteProvider ServiceLoader scan stopped early: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** The resource class {@code p} serves, or {@code null} when it cannot tell (the provider is skipped). */
+    private static Class<?> resourceClassOf(RouteProvider p) {
+        try {
+            return p.resourceClass();
+        } catch (RuntimeException | LinkageError t) {
+            LOG.log(Level.FINE, t, () -> "Skipping RouteProvider " + p.getClass().getName()
+                    + " (resourceClass() failed): " + t.getMessage());
+            return null;
+        }
     }
 
     /** Discards the cached ServiceLoader provider map so the next discover rebuilds it (tests). */
@@ -220,11 +228,8 @@ public final class RouteRegistry {
                 // Best-effort: a CLOSED resource package (zero-export Java Modules app) rejects setAccessible,
                 // but the generated adapter's invoke() handles dispatch, so reflective access is not
                 // required. Only the reflective-fallback path (methodId == -1) would need it.
-                try {
-                    m.setAccessible(true);
-                } catch (RuntimeException _) {
-                    // InaccessibleObjectException — encapsulated package; adapter.invoke() covers it.
-                }
+                // false for an encapsulated package (InaccessibleObjectException): adapter.invoke() covers it.
+                m.trySetAccessible();
                 Set<String> produces = toSet(d.produces());
                 Set<String> consumes = toSet(d.consumes());
                 routes.add(new ResourceMethod(
@@ -233,9 +238,9 @@ public final class RouteRegistry {
                         produces, consumes,
                         null, null, d.classPathLiterals()));
             } catch (Exception e) {
-                LOG.log(Level.WARNING, "RouteRegistry: failed to resolve method "
+                LOG.log(Level.WARNING, e, () -> LOG_PREFIX + "failed to resolve method "
                         + d.beanClass().getName() + "." + d.methodName()
-                        + " — falling back to ResourceScanner for class " + rootCls.getName(), e);
+                        + " — falling back to ResourceScanner for class " + rootCls.getName());
                 // If any method fails, fall back to the scanner for the whole class
                 SCANNER_FALLBACK_HITS.incrementAndGet();
                 if (PRE_GENERATED_HITS.get() > 0) PRE_GENERATED_HITS.decrementAndGet();
@@ -246,7 +251,7 @@ public final class RouteRegistry {
     }
 
     private static Method resolveMethod(Class<?> beanClass, String methodName, String[] paramTypeNames)
-            throws Exception {
+            throws ReflectiveOperationException {
         Class<?>[] paramTypes = new Class<?>[paramTypeNames.length];
         for (int i = 0; i < paramTypeNames.length; i++) {
             paramTypes[i] = resolveType(paramTypeNames[i], beanClass.getClassLoader());
@@ -280,8 +285,6 @@ public final class RouteRegistry {
 
     private static Set<String> toSet(String[] arr) {
         if (arr == null || arr.length == 0) return Set.of();
-        Set<String> set = new LinkedHashSet<>();
-        for (String s : arr) set.add(s);
-        return set;
+        return new LinkedHashSet<>(java.util.Arrays.asList(arr));
     }
 }

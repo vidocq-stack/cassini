@@ -61,7 +61,7 @@ public final class ExceptionMapperRegistry {
     private static final ScopedValue<Boolean> MAPPING = ScopedValue.newInstance();
 
     public Optional<Response> map(Throwable t) {
-        if (MAPPING.orElse(false)) return Optional.empty();
+        if (MAPPING.isBound()) return Optional.empty(); // only ever bound to true, while a mapper runs
         Registration<?> best = null;
         for (Registration<?> r : mappers) {
             if (r.exceptionType().isInstance(t)) {
@@ -89,10 +89,9 @@ public final class ExceptionMapperRegistry {
     public <T extends Throwable> ExceptionMapper<T> findMapper(Class<T> type) {
         Registration<?> best = null;
         for (Registration<?> r : mappers) {
-            if (r.exceptionType().isAssignableFrom(type)) {
-                if (best == null || best.exceptionType().isAssignableFrom(r.exceptionType())) {
-                    best = r;
-                }
+            if (r.exceptionType().isAssignableFrom(type)
+                    && (best == null || best.exceptionType().isAssignableFrom(r.exceptionType()))) {
+                best = r;
             }
         }
         return best == null ? null : (ExceptionMapper<T>) best.mapper();

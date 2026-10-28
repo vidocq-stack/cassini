@@ -164,8 +164,8 @@ public final class AdapterRegistry {
         } catch (ClassNotFoundException _) {
             // No pre-generated adapter; fall through to runtime generator.
         } catch (Exception e) {
-            LOG.log(Level.WARNING, "Pre-generated adapter found but failed to instantiate for "
-                    + beanClass.getName() + ": " + e.getMessage(), e);
+            LOG.log(Level.WARNING, e, () -> "Pre-generated adapter found but failed to instantiate for "
+                    + beanClass.getName() + ": " + e.getMessage());
             // fall through to runtime generation
         }
 
@@ -182,8 +182,8 @@ public final class AdapterRegistry {
             // full stack trace only when FINE is enabled.
             LOG.warning("Runtime adapter generation failed for " + beanClass.getName()
                     + " — using reflective fallback: " + rootMessage(e));
-            LOG.log(Level.FINE, "Runtime adapter generation failure details for "
-                    + beanClass.getName(), e);
+            LOG.log(Level.FINE, e, () -> "Runtime adapter generation failure details for "
+                    + beanClass.getName());
             CACHE.putIfAbsent(beanClass, SENTINEL);
             return Optional.empty();
         }
@@ -273,33 +273,39 @@ public final class AdapterRegistry {
     private static Map<Class<?>, ResourceAdapter> loadServiceAdapters() {
         Map<Class<?>, ResourceAdapter> map = new HashMap<>();
         Iterator<ResourceAdapter> it = ServiceLoader.load(ResourceAdapter.class).iterator();
-        while (true) {
-            ResourceAdapter a;
-            try {
-                if (!it.hasNext()) break;
-                a = it.next();
-            } catch (java.util.ServiceConfigurationError e) {
-                // Iterator state is undefined after a load error — stop scanning; the remaining
-                // classes resolve through the Class.forName / runtime-generator fallback.
-                LOG.log(Level.FINE, "ResourceAdapter ServiceLoader scan stopped early: " + e.getMessage(), e);
-                break;
-            }
-            Class<?> rc;
-            try {
-                rc = a.resourceClass();
-            } catch (Throwable t) {
-                LOG.log(Level.FINE, "Skipping ResourceAdapter " + a.getClass().getName()
-                        + " (resourceClass() failed): " + t.getMessage(), t);
-                continue;
-            }
+        for (ResourceAdapter a = nextAdapter(it); a != null; a = nextAdapter(it)) {
+            Class<?> rc = resourceClassOf(a);
             if (rc != null) {
                 map.putIfAbsent(rc, a);
             }
         }
         if (!map.isEmpty()) {
-            LOG.fine("AdapterRegistry: " + map.size() + " ServiceLoader-registered adapter(s)");
+            LOG.fine(() -> "AdapterRegistry: " + map.size() + " ServiceLoader-registered adapter(s)");
         }
         return map;
+    }
+
+    /** The next adapter, or {@code null} at the end of the scan or when an adapter fails to load. */
+    private static ResourceAdapter nextAdapter(Iterator<ResourceAdapter> it) {
+        try {
+            return it.hasNext() ? it.next() : null;
+        } catch (java.util.ServiceConfigurationError e) {
+            // Iterator state is undefined after a load error — stop scanning; the remaining
+            // classes resolve through the Class.forName / runtime-generator fallback.
+            LOG.log(Level.FINE, e, () -> "ResourceAdapter ServiceLoader scan stopped early: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** The resource class {@code a} serves, or {@code null} when it cannot tell (the adapter is skipped). */
+    private static Class<?> resourceClassOf(ResourceAdapter a) {
+        try {
+            return a.resourceClass();
+        } catch (RuntimeException | LinkageError t) {
+            LOG.log(Level.FINE, t, () -> "Skipping ResourceAdapter " + a.getClass().getName()
+                    + " (resourceClass() failed): " + t.getMessage());
+            return null;
+        }
     }
 
     /**

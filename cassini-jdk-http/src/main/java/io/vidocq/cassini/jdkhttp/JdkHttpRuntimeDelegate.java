@@ -70,13 +70,13 @@ public final class JdkHttpRuntimeDelegate extends CassiniRuntimeDelegate {
                 try (var ss = new java.net.ServerSocket(0,
                         50, java.net.InetAddress.getByName("127.0.0.1"))) {
                     port = ss.getLocalPort();
-                } catch (java.io.IOException e) { throw new RuntimeException(e); }
+                } catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
             }
             try {
                 var stack = CassiniStack.builder().application(application).build();
                 this.server = new JdkHttpAdapter(stack.adapter()).serve(port);
             } catch (java.io.IOException e) {
-                throw new RuntimeException(e);
+                throw new java.io.UncheckedIOException(e);
             }
             int actualPort = server.getAddress().getPort();
             java.util.Map<String, Object> effective = new java.util.HashMap<>();
