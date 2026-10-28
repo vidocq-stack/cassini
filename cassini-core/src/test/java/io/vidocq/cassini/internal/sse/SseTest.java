@@ -288,6 +288,36 @@ class SseTest {
         assertSame(stubborn, closes.get(0));
     }
 
+    /** CASSINI-030: close(false) releases the broadcaster but leaves the sinks open. */
+    @Test
+    void aNonCascadingCloseLeavesTheSinksOpen() {
+        SseBroadcaster broadcaster = sse.newBroadcaster();
+        var sink = new CassiniSseEventSink(new MessageBodyRegistry());
+        broadcaster.register(sink);
+
+        broadcaster.close(false);
+
+        assertFalse(sink.isClosed());
+    }
+
+    /** CASSINI-030: once closed, every other method throws IllegalStateException; a second close is ignored. */
+    @Test
+    void aClosedBroadcasterRefusesEveryOtherCallAndIgnoresAnotherClose() {
+        SseBroadcaster broadcaster = sse.newBroadcaster();
+        List<SseEventSink> closes = new ArrayList<>();
+        broadcaster.onClose(closes::add);
+        broadcaster.register(new CassiniSseEventSink(new MessageBodyRegistry()));
+        broadcaster.close();
+        broadcaster.close();
+        broadcaster.close(true);
+
+        assertEquals(1, closes.size(), "the close listeners run once");
+        var event = sse.newEvent(HELLO);
+        assertThrows(IllegalStateException.class, () -> broadcaster.broadcast(event));
+        assertThrows(IllegalStateException.class, () -> broadcaster.onClose(closes::add));
+        assertThrows(IllegalStateException.class, () -> broadcaster.onError((sink, cause) -> { }));
+    }
+
     private static void closeQuietly(SseEventSink sink) {
         try {
             sink.close();

@@ -321,3 +321,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `new CassiniUriInfo(InMemoryExchange.get("/cars;color=red/x"), "", Map.of()).getPathSegments().get(0).getPath()`.
 - **Cause**: `CassiniUriInfo` decoded paths with `URLDecoder`, a form decoder that turns `+` into a space, and built each segment from the decoded text without parsing its matrix parameters (a stub `SimpleSegment` with an empty map).
 - **Fix**: path decoding only decodes escaped octets (`+` is kept, as `getPathParameters` already did); segments are split on the raw path, parsed with `ParamValueConverter.parsePathSegment`, then decoded part by part. Regression tests: `UriInfoTest.aPlusSignInThePathIsKeptByTheDecoding`, `UriInfoTest.pathSegmentsSeparateTheirMatrixParameters`.
+
+## CASSINI-030 — `SseBroadcaster.close(false)` closes the sinks, and a closed broadcaster keeps accepting calls
+- **Date**: 2026-10-28 — **Status**: FIXED
+- **Severity**: low. An application that hands its sinks over to another broadcaster lost them on `close(false)`.
+- **Symptom**: (1) `close(false)` closed every registered `SseEventSink`; (2) once closed, `broadcast`, `onClose` and `onError` were silently accepted instead of throwing `IllegalStateException`; (3) a second `close()` ran the close listeners again over the (empty) sink list — harmless, but not "no effect".
+- **Minimal repro**: `var b = new CassiniSse().newBroadcaster(); b.register(sink); b.close(false); sink.isClosed()` is `true`.
+- **Cause**: `CassiniSseBroadcaster.close(boolean)` delegated to `close()` whatever the flag, and only `register` checked the closed state.
+- **Fix**: `close()` is `close(true)`; the sinks are closed only when cascading; the first close wins (`AtomicBoolean`) and every other method throws `IllegalStateException` afterwards, as the `SseBroadcaster` Javadoc specifies. Regression tests: `SseTest.aNonCascadingCloseLeavesTheSinksOpen`, `SseTest.aClosedBroadcasterRefusesEveryOtherCallAndIgnoresAnotherClose`.

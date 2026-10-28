@@ -37,17 +37,22 @@ public final class CassiniSseBroadcaster implements SseBroadcaster {
     private final CopyOnWriteArrayList<SseEventSink> sinks = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<Consumer<SseEventSink>> closeListeners = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<BiConsumer<SseEventSink, Throwable>> errorListeners = new CopyOnWriteArrayList<>();
-    private volatile boolean closed = false;
+    private final java.util.concurrent.atomic.AtomicBoolean closed = new java.util.concurrent.atomic.AtomicBoolean();
+
+    /** Once closed, every method but close throws IllegalStateException (SseBroadcaster contract). */
+    private void requireOpen() {
+        if (closed.get()) throw new IllegalStateException("Broadcaster closed");
+    }
 
     @Override
     public void register(SseEventSink subscriber) {
-        if (closed) throw new IllegalStateException("Broadcaster closed");
+        requireOpen();
         sinks.add(subscriber);
     }
 
     @Override
     public CompletionStage<?> broadcast(OutboundSseEvent event) {
-        if (closed) return CompletableFuture.completedFuture(null);
+        requireOpen();
         for (SseEventSink sink : sinks) {
             try {
                 sink.send(event);
@@ -63,23 +68,36 @@ public final class CassiniSseBroadcaster implements SseBroadcaster {
     }
 
     @Override
-    public void onClose(Consumer<SseEventSink> onClose) { closeListeners.add(onClose); }
-
-    @Override
-    public void onError(BiConsumer<SseEventSink, Throwable> onError) { errorListeners.add(onError); }
-
-    @Override
-    public void close() {
-        closed = true;
-        for (SseEventSink sink : sinks) {
-            try { sink.close(); } catch (Exception ignored) {}
-            for (var l : closeListeners) l.accept(sink);
-        }
-        sinks.clear();
+    public void onClose(Consumer<SseEventSink> onClose) {
+        requireOpen();
+        closeListeners.add(onClose);
     }
 
     @Override
+    public void onError(BiConsumer<SseEventSink, Throwable> onError) {
+        requireOpen();
+        errorListeners.add(onError);
+    }
+
+    /** Equivalent to {@code close(true)}. */
+    @Override
+    public void close() {
+        close(true);
+    }
+
+    /**
+     * Closes the broadcaster; the registered sinks are closed only when {@code cascading}
+     * (CASSINI-030). A second call has no effect.
+     */
+    @Override
     public void close(boolean cascading) {
-        close();
+        if (!closed.compareAndSet(false, true)) return;
+        if (cascading) {
+            for (SseEventSink sink : sinks) {
+                try { sink.close(); } catch (Exception _) { /* a sink that fails to close is dropped all the same */ }
+                for (var l : closeListeners) l.accept(sink);
+            }
+        }
+        sinks.clear();
     }
 }
