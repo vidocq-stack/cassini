@@ -52,6 +52,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** §9.x / §11 server-sent events: the event builder, the sink and the broadcaster. */
 class SseTest {
 
+    private static final String HELLO_EVENT = "data: hello\n\n";
+
     private static final String HELLO = "hello";
 
     private final CassiniSse sse = new CassiniSse();
@@ -178,7 +180,7 @@ class SseTest {
 
         sink.send(sse.newEvent(HELLO)).toCompletableFuture().get(5, TimeUnit.SECONDS);
 
-        assertEquals(List.of("data: hello\n\n"), stream.chunks);
+        assertEquals(List.of(HELLO_EVENT), stream.chunks);
         assertEquals(1, stream.flushes);
         assertEquals(0, sink.toByteArray().length, "nothing is buffered");
         sink.commitStreaming();
@@ -228,8 +230,8 @@ class SseTest {
 
         broadcaster.broadcast(sse.newEvent(HELLO)).toCompletableFuture().get(5, TimeUnit.SECONDS);
 
-        assertEquals("data: hello\n\n", new String(first.toByteArray(), StandardCharsets.UTF_8));
-        assertEquals("data: hello\n\n", new String(second.toByteArray(), StandardCharsets.UTF_8));
+        assertEquals(HELLO_EVENT, new String(first.toByteArray(), StandardCharsets.UTF_8));
+        assertEquals(HELLO_EVENT, new String(second.toByteArray(), StandardCharsets.UTF_8));
     }
 
     @Test
@@ -315,7 +317,7 @@ class SseTest {
         var event = sse.newEvent(HELLO);
         assertThrows(IllegalStateException.class, () -> broadcaster.broadcast(event));
         assertThrows(IllegalStateException.class, () -> broadcaster.onClose(closes::add));
-        assertThrows(IllegalStateException.class, () -> broadcaster.onError((sink, cause) -> { }));
+        assertThrows(IllegalStateException.class, () -> broadcaster.onError((_, _) -> { }));
     }
 
     private static void closeQuietly(SseEventSink sink) {

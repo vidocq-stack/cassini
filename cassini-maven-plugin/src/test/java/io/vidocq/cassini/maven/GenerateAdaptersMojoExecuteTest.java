@@ -69,6 +69,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class GenerateAdaptersMojoExecuteTest {
 
+    private static final String CLASSES = "classes";
+    private static final String LIB_JAR = "lib.jar";
+    private static final String SCOPE = "scope";
+    private static final String DEPENDENCIES_SCOPE = "dependencies";
+    private static final String REPACKAGE = "repackageModularDependencies";
+    private static final String REPACKAGED_JAR = "target/cassini-repackaged/lib-1.0-cassini.jar";
+    private static final String API_PACKAGE = "com/acme/api";
+    private static final String PROJECT = "project";
+
     private static final String GROUP = "com.acme";
     private static final String LIB = "lib";
     private static final String FIXTURE_PACKAGE = "io/vidocq/cassini/maven/fixture";
@@ -79,7 +88,7 @@ class GenerateAdaptersMojoExecuteTest {
 
     @Test
     void generatesAnAdapterForEachResourceOfTheProjectAndKeepsExistingOnes(@TempDir File dir) throws Exception {
-        File classes = new File(dir, "classes");
+        File classes = new File(dir, CLASSES);
         copyClass(PlainJarResource.class, classes);
         copyClass(RichJarResource.class, classes);
         copyClass(NotAResource.class, classes);
@@ -114,20 +123,20 @@ class GenerateAdaptersMojoExecuteTest {
 
     @Test
     void theProjectScopeIgnoresTheDependencies(@TempDir File dir) throws Exception {
-        File classes = mkdirs(new File(dir, "classes"));
+        File classes = mkdirs(new File(dir, CLASSES));
         var mojo = newMojo(dir, classes, Map.of());
-        project(mojo).setArtifacts(Set.of(artifact(LIB, plainJar(new File(dir, "lib.jar"), RichJarResource.class))));
+        project(mojo).setArtifacts(Set.of(artifact(LIB, plainJar(new File(dir, LIB_JAR), RichJarResource.class))));
         mojo.execute();
         assertFalse(adapterFile(classes, RichJarResource.class).exists());
     }
 
     @Test
     void includeArtifactsLimitsTheScannedDependencies(@TempDir File dir) throws Exception {
-        File classes = mkdirs(new File(dir, "classes"));
-        var mojo = newMojo(dir, classes, Map.of("scope", "dependencies",
+        File classes = mkdirs(new File(dir, CLASSES));
+        var mojo = newMojo(dir, classes, Map.of(SCOPE, DEPENDENCIES_SCOPE,
                 "includeArtifacts", List.of(GROUP + ":" + LIB)));
         project(mojo).setArtifacts(artifacts(
-                artifact(LIB, plainJar(new File(dir, "lib.jar"), RichJarResource.class)),
+                artifact(LIB, plainJar(new File(dir, LIB_JAR), RichJarResource.class)),
                 artifact("other", plainJar(new File(dir, "other.jar"), PlainJarResource.class))));
 
         mojo.execute();
@@ -138,13 +147,13 @@ class GenerateAdaptersMojoExecuteTest {
 
     @Test
     void excludedUnresolvedAndNonJarDependenciesAreSkipped(@TempDir File dir) throws Exception {
-        File classes = mkdirs(new File(dir, "classes"));
-        var mojo = newMojo(dir, classes, Map.of("scope", "DEPENDENCIES",
+        File classes = mkdirs(new File(dir, CLASSES));
+        var mojo = newMojo(dir, classes, Map.of(SCOPE, "DEPENDENCIES",
                 "excludeArtifacts", List.of(GROUP + ":other")));
         File pom = new File(dir, "parent.pom");
         Files.writeString(pom.toPath(), "<project/>");
         project(mojo).setArtifacts(artifacts(
-                artifact(LIB, plainJar(new File(dir, "lib.jar"), RichJarResource.class)),
+                artifact(LIB, plainJar(new File(dir, LIB_JAR), RichJarResource.class)),
                 artifact("other", plainJar(new File(dir, "other.jar"), PlainJarResource.class)),
                 artifact("unresolved", null),
                 artifact("parent", pom),
@@ -158,7 +167,7 @@ class GenerateAdaptersMojoExecuteTest {
 
     @Test
     void aJarThatIsNotAZipOrHoldsNoResourceYieldsNoAdapter(@TempDir File dir) throws Exception {
-        var mojo = newMojo(dir, mkdirs(new File(dir, "classes")), Map.of());
+        var mojo = newMojo(dir, mkdirs(new File(dir, CLASSES)), Map.of());
         File corrupt = new File(dir, "corrupt.jar");
         Files.writeString(corrupt.toPath(), "not a zip");
         File plainOnly = plainJar(new File(dir, "plain.jar"), NotAResource.class);
@@ -172,27 +181,27 @@ class GenerateAdaptersMojoExecuteTest {
 
     @Test
     void aNamedModuleDependencyWithResourcesFailsTheBuildByDefault(@TempDir File dir) throws Exception {
-        var mojo = newMojo(dir, mkdirs(new File(dir, "classes")), Map.of("scope", "dependencies"));
+        var mojo = newMojo(dir, mkdirs(new File(dir, CLASSES)), Map.of(SCOPE, DEPENDENCIES_SCOPE));
         project(mojo).setArtifacts(artifacts(artifact(LIB,
-                modularJar(new File(dir, "lib.jar"), moduleInfo(false), RichJarResource.class))));
+                modularJar(new File(dir, LIB_JAR), moduleInfo(false), RichJarResource.class))));
 
         var failure = assertThrows(MojoExecutionException.class, mojo::execute);
 
         assertTrue(failure.getMessage().contains("named Java module '" + MODULE + "'"), failure.getMessage());
-        assertTrue(failure.getMessage().contains("repackageModularDependencies"), failure.getMessage());
+        assertTrue(failure.getMessage().contains(REPACKAGE), failure.getMessage());
         assertTrue(failure.getMessage().contains(GROUP + ":" + LIB + ":1.0"), failure.getMessage());
     }
 
     @Test
     void aRepackagedNamedModuleCarriesItsAdaptersRoutesAndReadsCassiniApi(@TempDir File dir) throws Exception {
-        var mojo = newMojo(dir, mkdirs(new File(dir, "classes")), Map.of("scope", "dependencies",
-                "repackageModularDependencies", true));
-        project(mojo).setArtifacts(artifacts(artifact(LIB, modularJar(new File(dir, "lib.jar"), moduleInfo(false),
+        var mojo = newMojo(dir, mkdirs(new File(dir, CLASSES)), Map.of(SCOPE, DEPENDENCIES_SCOPE,
+                REPACKAGE, true));
+        project(mojo).setArtifacts(artifacts(artifact(LIB, modularJar(new File(dir, LIB_JAR), moduleInfo(false),
                 RichJarResource.class, LocatorJarResource.class, NotAResource.class))));
 
         mojo.execute();
 
-        File repackaged = new File(dir, "target/cassini-repackaged/lib-1.0-cassini.jar");
+        File repackaged = new File(dir, REPACKAGED_JAR);
         assertTrue(repackaged.isFile());
         Set<String> entries = entries(repackaged);
         assertTrue(entries.contains(classEntry(NotAResource.class)), "original classes are kept");
@@ -203,7 +212,7 @@ class GenerateAdaptersMojoExecuteTest {
 
         ModuleAttribute module = moduleOf(repackaged);
         assertEquals(1, countRequires(module, CASSINI_API));
-        assertEquals(Set.of(FIXTURE_PACKAGE, "com/acme/api"), exportedPackages(module));
+        assertEquals(Set.of(FIXTURE_PACKAGE, API_PACKAGE), exportedPackages(module));
         assertTrue(module.provides().isEmpty(), "an unsealed module publishes no provider");
 
         try (var cl = loader(repackaged)) {
@@ -230,32 +239,32 @@ class GenerateAdaptersMojoExecuteTest {
 
     @Test
     void aModuleThatAlreadyReadsCassiniApiIsNotGivenASecondRequires(@TempDir File dir) throws Exception {
-        var mojo = newMojo(dir, mkdirs(new File(dir, "classes")), Map.of("scope", "dependencies",
-                "repackageModularDependencies", true));
+        var mojo = newMojo(dir, mkdirs(new File(dir, CLASSES)), Map.of(SCOPE, DEPENDENCIES_SCOPE,
+                REPACKAGE, true));
         project(mojo).setArtifacts(artifacts(artifact(LIB,
-                modularJar(new File(dir, "lib.jar"), moduleInfo(true), RichJarResource.class))));
+                modularJar(new File(dir, LIB_JAR), moduleInfo(true), RichJarResource.class))));
 
         mojo.execute();
 
-        assertEquals(1, countRequires(moduleOf(new File(dir, "target/cassini-repackaged/lib-1.0-cassini.jar")),
+        assertEquals(1, countRequires(moduleOf(new File(dir, REPACKAGED_JAR)),
                 CASSINI_API));
     }
 
     @Test
     void aSealedModuleClosesItsResourcePackageAndProvidesTheWovenClasses(@TempDir File dir) throws Exception {
-        var mojo = newMojo(dir, mkdirs(new File(dir, "classes")), Map.of("scope", "dependencies",
-                "repackageModularDependencies", true, "sealModules", true));
-        project(mojo).setArtifacts(artifacts(artifact(LIB, modularJar(new File(dir, "lib.jar"), moduleInfo(false),
+        var mojo = newMojo(dir, mkdirs(new File(dir, CLASSES)), Map.of(SCOPE, DEPENDENCIES_SCOPE,
+                REPACKAGE, true, "sealModules", true));
+        project(mojo).setArtifacts(artifacts(artifact(LIB, modularJar(new File(dir, LIB_JAR), moduleInfo(false),
                 RichJarResource.class, PlainJarResource.class))));
 
         mojo.execute();
 
-        ModuleAttribute module = moduleOf(new File(dir, "target/cassini-repackaged/lib-1.0-cassini.jar"));
+        ModuleAttribute module = moduleOf(new File(dir, REPACKAGED_JAR));
         assertEquals(1, countRequires(module, CASSINI_API));
-        assertEquals(Set.of("com/acme/api"), exportedPackages(module), "the resource package is no longer exported");
+        assertEquals(Set.of(API_PACKAGE), exportedPackages(module), "the resource package is no longer exported");
         Map<String, Set<String>> provides = module.provides().stream().collect(Collectors.toMap(
                 p -> p.provides().asInternalName(),
-                p -> p.providesWith().stream().map(c -> c.asInternalName()).collect(Collectors.toSet())));
+                p -> p.providesWith().stream().map(java.lang.classfile.constantpool.ClassEntry::asInternalName).collect(Collectors.toSet())));
         assertEquals(Set.of(
                         internal(RichJarResource.class.getName() + RuntimeAdapterGenerator.ADAPTER_SUFFIX),
                         internal(PlainJarResource.class.getName() + RuntimeAdapterGenerator.ADAPTER_SUFFIX)),
@@ -268,11 +277,11 @@ class GenerateAdaptersMojoExecuteTest {
 
     @Test
     void sealingSkipsCassiniInfrastructureModules(@TempDir File dir) throws Exception {
-        File classes = mkdirs(new File(dir, "classes"));
-        var mojo = newMojo(dir, classes, Map.of("scope", "dependencies",
-                "repackageModularDependencies", true, "sealModules", true));
+        File classes = mkdirs(new File(dir, CLASSES));
+        var mojo = newMojo(dir, classes, Map.of(SCOPE, DEPENDENCIES_SCOPE,
+                REPACKAGE, true, "sealModules", true));
         project(mojo).setArtifacts(artifacts(artifact(LIB,
-                modularJar(new File(dir, "lib.jar"), moduleInfo(true), RichJarResource.class))));
+                modularJar(new File(dir, LIB_JAR), moduleInfo(true), RichJarResource.class))));
 
         mojo.execute();
 
@@ -287,9 +296,9 @@ class GenerateAdaptersMojoExecuteTest {
         var project = new MavenProject();
         project.getBuild().setDirectory(new File(dir, "target").getAbsolutePath());
         project.setArtifacts(Set.of());
-        set(mojo, "project", project);
+        set(mojo, PROJECT, project);
         set(mojo, "outputDirectory", classes);
-        set(mojo, "scope", "project");
+        set(mojo, SCOPE, PROJECT);
         for (var setting : settings.entrySet()) {
             set(mojo, setting.getKey(), setting.getValue());
         }
@@ -303,7 +312,7 @@ class GenerateAdaptersMojoExecuteTest {
     }
 
     private static MavenProject project(GenerateAdaptersMojo mojo) throws Exception {
-        var field = GenerateAdaptersMojo.class.getDeclaredField("project");
+        var field = GenerateAdaptersMojo.class.getDeclaredField(PROJECT);
         field.setAccessible(true);
         return (MavenProject) field.get(mojo);
     }
@@ -382,7 +391,7 @@ class GenerateAdaptersMojoExecuteTest {
                 b.requires(ModuleDesc.of(CASSINI_API), 0, null);
             }
             b.exports(PackageDesc.ofInternalName(FIXTURE_PACKAGE), 0);
-            b.exports(PackageDesc.ofInternalName("com/acme/api"), 0);
+            b.exports(PackageDesc.ofInternalName(API_PACKAGE), 0);
         }));
     }
 

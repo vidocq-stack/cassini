@@ -51,12 +51,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class MultipartFormDataProviderTest {
 
+    private static final String BOUNDARY_PARAM = "boundary";
+    private static final String DELIMITER = "--XyZ";
+    private static final String HELLO = "Hello";
+    private static final String CLOSE_DELIMITER = "--XyZ--";
+    private static final String A_JSON = "a.json";
+    private static final String X_EXTRA = "X-Extra";
+    private static final String CONTENT_TYPE = "Content-Type";
+
     private static final String BOUNDARY = "XyZ";
     private static final Annotation[] NONE = new Annotation[0];
     private static final Type LIST_OF_PARTS = new GenericType<List<EntityPart>>() { }.getType();
     private static final MediaType FORM_DATA = MediaType.MULTIPART_FORM_DATA_TYPE;
     private static final MediaType FORM_DATA_WITH_BOUNDARY =
-            new MediaType("multipart", "form-data", Map.of("boundary", BOUNDARY));
+            new MediaType("multipart", "form-data", Map.of(BOUNDARY_PARAM, BOUNDARY));
     private static final String CRLF = "\r\n";
 
     private final MultipartFormDataProvider provider = new MultipartFormDataProvider();
@@ -99,27 +107,27 @@ class MultipartFormDataProviderTest {
     @Test
     void readsEveryNamedPartWithItsHeadersFileNameAndMediaType() throws IOException {
         String body = "preamble to ignore" + CRLF
-                + "--XyZ" + CRLF
+                + DELIMITER + CRLF
                 + "Content-Disposition: form-data; name=\"title\"" + CRLF
                 + CRLF
-                + "Hello" + CRLF
-                + "--XyZ" + CRLF
+                + HELLO + CRLF
+                + DELIMITER + CRLF
                 + "Content-Disposition: form-data; name=\"doc\"; filename=\"a.json\"" + CRLF
                 + "Content-Type: application/json" + CRLF
                 + "X-Extra: 1" + CRLF
                 + "a header line without colon" + CRLF
                 + CRLF
                 + "{\"a\":1}" + CRLF
-                + "--XyZ" + CRLF
+                + DELIMITER + CRLF
                 + "Content-Disposition: form-data; name=bare; other=x" + CRLF
                 + "Content-Type: not a media type" + CRLF
                 + CRLF
                 + "unquoted" + CRLF
-                + "--XyZ" + CRLF
+                + DELIMITER + CRLF
                 + "Content-Disposition: form-data" + CRLF
                 + CRLF
                 + "anonymous parts are dropped" + CRLF
-                + "--XyZ--" + CRLF;
+                + CLOSE_DELIMITER + CRLF;
 
         List<EntityPart> parts = read(body);
 
@@ -128,13 +136,13 @@ class MultipartFormDataProviderTest {
         assertEquals("title", title.getName());
         assertEquals(Optional.empty(), title.getFileName());
         assertEquals(MediaType.TEXT_PLAIN_TYPE, title.getMediaType());
-        assertEquals("Hello", title.getContent(String.class));
+        assertEquals(HELLO, title.getContent(String.class));
 
         EntityPart doc = parts.get(1);
         assertEquals("doc", doc.getName());
-        assertEquals(Optional.of("a.json"), doc.getFileName());
+        assertEquals(Optional.of(A_JSON), doc.getFileName());
         assertEquals(MediaType.APPLICATION_JSON_TYPE, doc.getMediaType());
-        assertEquals("1", doc.getHeaders().getFirst("X-Extra"));
+        assertEquals("1", doc.getHeaders().getFirst(X_EXTRA));
         assertEquals("{\"a\":1}", new String(doc.getContent().readAllBytes(), StandardCharsets.UTF_8));
 
         EntityPart bare = parts.get(2);
@@ -146,11 +154,11 @@ class MultipartFormDataProviderTest {
     /** CASSINI-026: RFC 7578 does not order the parameters; "name=" must not match inside "filename=". */
     @Test
     void theNameIsFoundWhenTheFileNameComesFirst() throws IOException {
-        String body = "--XyZ" + CRLF
+        String body = DELIMITER + CRLF
                 + "Content-Disposition: form-data; filename=\"photo.png\"; name=\"upload\"" + CRLF
                 + CRLF
                 + "bytes" + CRLF
-                + "--XyZ--" + CRLF;
+                + CLOSE_DELIMITER + CRLF;
 
         EntityPart part = read(body).get(0);
 
@@ -161,9 +169,9 @@ class MultipartFormDataProviderTest {
     @Test
     void aBodyWithoutTheBoundaryOrWithATruncatedPartHasNoPart() throws IOException {
         assertTrue(read("no boundary here").isEmpty());
-        assertTrue(read("--XyZ" + CRLF + "Content-Disposition: form-data; name=\"a\"" + CRLF + CRLF + "never closed")
+        assertTrue(read(DELIMITER + CRLF + "Content-Disposition: form-data; name=\"a\"" + CRLF + CRLF + "never closed")
                 .isEmpty());
-        assertTrue(read("--XyZ" + CRLF + "Content-Disposition: form-data; name=\"a\"").isEmpty(),
+        assertTrue(read(DELIMITER + CRLF + "Content-Disposition: form-data; name=\"a\"").isEmpty(),
                 "headers never ended");
     }
 
@@ -172,7 +180,7 @@ class MultipartFormDataProviderTest {
         var in = new ByteArrayInputStream(new byte[0]);
         var noBoundary = assertThrows(WebApplicationException.class, () -> readFrom(FORM_DATA, in));
         assertEquals(400, noBoundary.getResponse().getStatus());
-        var empty = new MediaType("multipart", "form-data", Map.of("boundary", ""));
+        var empty = new MediaType("multipart", "form-data", Map.of(BOUNDARY_PARAM, ""));
         var emptyBoundary = assertThrows(WebApplicationException.class, () -> readFrom(empty, in));
         assertEquals(400, emptyBoundary.getResponse().getStatus());
     }
@@ -182,9 +190,9 @@ class MultipartFormDataProviderTest {
     @Test
     void writesPartsThatReadBackIdentically() throws IOException {
         List<EntityPart> parts = List.of(
-                new CassiniEntityPartBuilder("title").content("Hello").build(),
-                new CassiniEntityPartBuilder("doc").fileName("a.json").mediaType(MediaType.APPLICATION_JSON_TYPE)
-                        .header("X-Extra", "1", "2").header("Content-Type", "ignored/duplicate")
+                new CassiniEntityPartBuilder("title").content(HELLO).build(),
+                new CassiniEntityPartBuilder("doc").fileName(A_JSON).mediaType(MediaType.APPLICATION_JSON_TYPE)
+                        .header(X_EXTRA, "1", "2").header(CONTENT_TYPE, "ignored/duplicate")
                         .content("{}").build(),
                 new ForeignPart("foreign", "from another implementation"));
         MultivaluedMap<String, Object> headers = new MultivaluedHashMap<>();
@@ -192,16 +200,16 @@ class MultipartFormDataProviderTest {
 
         provider.writeTo(parts, List.class, LIST_OF_PARTS, NONE, FORM_DATA_WITH_BOUNDARY, headers, out);
 
-        assertEquals("multipart/form-data; boundary=" + BOUNDARY, headers.getFirst("Content-Type"));
+        assertEquals("multipart/form-data; boundary=" + BOUNDARY, headers.getFirst(CONTENT_TYPE));
         String wire = out.toString(StandardCharsets.UTF_8);
-        assertTrue(wire.endsWith("--XyZ--" + CRLF), wire);
+        assertTrue(wire.endsWith(CLOSE_DELIMITER + CRLF), wire);
         assertFalse(wire.contains("ignored/duplicate"), "Content-Type is written once, from the media type");
         List<EntityPart> back = MultipartFormDataProvider.parse(out.toByteArray(), BOUNDARY);
         assertEquals(3, back.size());
-        assertEquals("Hello", back.get(0).getContent(String.class));
-        assertEquals(Optional.of("a.json"), back.get(1).getFileName());
+        assertEquals(HELLO, back.get(0).getContent(String.class));
+        assertEquals(Optional.of(A_JSON), back.get(1).getFileName());
         assertEquals(MediaType.APPLICATION_JSON_TYPE, back.get(1).getMediaType());
-        assertEquals(List.of("1", "2"), back.get(1).getHeaders().get("X-Extra"));
+        assertEquals(List.of("1", "2"), back.get(1).getHeaders().get(X_EXTRA));
         assertEquals("from another implementation", back.get(2).getContent(String.class));
     }
 
@@ -213,8 +221,8 @@ class MultipartFormDataProviderTest {
         provider.writeTo(List.of(new CassiniEntityPartBuilder("a").content("x").build()), List.class,
                 LIST_OF_PARTS, NONE, FORM_DATA, headers, out);
 
-        String contentType = (String) headers.getFirst("Content-Type");
-        String boundary = MediaType.valueOf(contentType).getParameters().get("boundary");
+        String contentType = (String) headers.getFirst(CONTENT_TYPE);
+        String boundary = MediaType.valueOf(contentType).getParameters().get(BOUNDARY_PARAM);
         assertTrue(boundary.startsWith("Boundary_"), contentType);
         assertEquals("x", MultipartFormDataProvider.parse(out.toByteArray(), boundary).get(0).getContent(String.class));
     }

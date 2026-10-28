@@ -49,6 +49,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** §9.2.1 / §10.2: the {@link UriInfo} of a request. */
 class UriInfoTest {
 
+    private static final String PLUS_DECODED = "a+b c";
+    private static final String PLUS_PATH = "/a+b%20c";
+    private static final String PLAIN = "plain";
+
     private static final String API = "/api";
     private static final String ITEM = "/r/{id}";
 
@@ -85,9 +89,9 @@ class UriInfoTest {
     /** CASSINI-029: '+' is not an escaped octet in a path, it stays a '+' once decoded. */
     @Test
     void aPlusSignInThePathIsKeptByTheDecoding() {
-        assertEquals("a+b c", info("/a+b%20c", "").getPath());
-        assertEquals(List.of("a+b c"), info("/a+b%20c", "").getPathSegments().stream().map(PathSegment::getPath).toList());
-        assertEquals(List.of("a+b c"), info("/a+b%20c", "").getMatchedURIs());
+        assertEquals(PLUS_DECODED, info(PLUS_PATH, "").getPath());
+        assertEquals(List.of(PLUS_DECODED), info(PLUS_PATH, "").getPathSegments().stream().map(PathSegment::getPath).toList());
+        assertEquals(List.of(PLUS_DECODED), info(PLUS_PATH, "").getMatchedURIs());
     }
 
     /** CASSINI-029: a path segment carries its matrix parameters apart from its path. */
@@ -157,9 +161,9 @@ class UriInfoTest {
     @Test
     void pathParametersAreDecodedOnDemandKeepingThePlusSign() {
         var info = new CassiniUriInfo(InMemoryExchange.get("/x"), "",
-                Map.of("id", List.of("a%20b", "x+y%21", "plain")));
-        assertEquals(List.of("a b", "x+y!", "plain"), info.getPathParameters().get("id"));
-        assertEquals(List.of("a%20b", "x+y%21", "plain"), info.getPathParameters(false).get("id"));
+                Map.of("id", List.of("a%20b", "x+y%21", PLAIN)));
+        assertEquals(List.of("a b", "x+y!", PLAIN), info.getPathParameters().get("id"));
+        assertEquals(List.of("a%20b", "x+y%21", PLAIN), info.getPathParameters(false).get("id"));
         var bad = new CassiniUriInfo(InMemoryExchange.get("/x"), "", Map.of("id", List.of("%zz")));
         assertEquals("%zz", bad.getPathParameters().getFirst("id"), "an undecodable value is kept");
     }

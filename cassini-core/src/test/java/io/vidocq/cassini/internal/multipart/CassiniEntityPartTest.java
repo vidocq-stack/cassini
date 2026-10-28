@@ -156,7 +156,8 @@ class CassiniEntityPartTest {
         var builder = builder();
         assertThrows(IllegalArgumentException.class, () -> builder.content((InputStream) null));
         assertThrows(IllegalArgumentException.class, () -> builder.content((Object) null));
-        assertThrows(IllegalArgumentException.class, () -> builder.content(new FailingStream()));
+        InputStream failingStream = new FailingStream();
+        assertThrows(IllegalArgumentException.class, () -> builder.content(failingStream));
         Object failing = new FailingStream();
         assertThrows(IllegalArgumentException.class, () -> builder.content(failing));
         File missing = new File(dir, "missing.txt");

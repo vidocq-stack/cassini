@@ -57,11 +57,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class CassiniTestHarnessTest {
 
+    private static final String SINGLETON = "/singleton";
+    private static final String PLAIN_PATH = "/plain";
+    private static final String PLAIN = "plain";
+    private static final String UNREACHABLE = "unreachable";
+    private static final String LOCALHOST = "http://127.0.0.1:";
+
     private static final String TEXT = "text/plain";
     private static final String GREETING_PATH = "/greeting/";
 
     /** A singleton resource handed over as an instance. */
-    @Path("/singleton")
+    @Path(SINGLETON)
     public static class SingletonResource {
         private int calls;
 
@@ -95,12 +101,12 @@ class CassiniTestHarnessTest {
     }
 
     /** A per-request resource with only a no-argument constructor. */
-    @Path("/plain")
+    @Path(PLAIN_PATH)
     public static class PlainResource {
         @GET
         @Produces(TEXT)
         public String plain() {
-            return "plain";
+            return PLAIN;
         }
 
         @GET
@@ -127,7 +133,7 @@ class CassiniTestHarnessTest {
 
         @GET
         public String get() {
-            return "unreachable";
+            return UNREACHABLE;
         }
     }
 
@@ -136,7 +142,7 @@ class CassiniTestHarnessTest {
     public abstract static class AbstractResource {
         @GET
         public String get() {
-            return "unreachable";
+            return UNREACHABLE;
         }
     }
 
@@ -145,7 +151,7 @@ class CassiniTestHarnessTest {
     static class HiddenResource {
         @GET
         public String get() {
-            return "unreachable";
+            return UNREACHABLE;
         }
     }
 
@@ -206,17 +212,17 @@ class CassiniTestHarnessTest {
     @Test
     void servesResourcesProvidersAndTheApplicationAtTheRoot() throws IOException {
         try (var harness = fullBuilder().contextPath("").start()) {
-            assertEquals("http://127.0.0.1:" + harness.port(), harness.baseUrl());
+            assertEquals(LOCALHOST + harness.port(), harness.baseUrl());
 
-            assertEquals("call 1", get(harness, "/singleton").body());
-            assertEquals("call 2", get(harness, "/singleton").body(), "a resource instance is a singleton");
+            assertEquals("call 1", get(harness, SINGLETON).body());
+            assertEquals("call 2", get(harness, SINGLETON).body(), "a resource instance is a singleton");
 
             var greeting = get(harness, GREETING_PATH + "ada?punctuation=!");
             assertEquals(200, greeting.status());
             assertEquals("hello ada! from the harness", greeting.body());
             assertEquals("harness", greeting.stamp());
 
-            assertEquals("plain", get(harness, "/plain").body());
+            assertEquals(PLAIN, get(harness, PLAIN_PATH).body());
             var mapped = get(harness, "/plain/fail");
             assertEquals(418, mapped.status());
             assertEquals("mapped broken", mapped.body());
@@ -236,8 +242,8 @@ class CassiniTestHarnessTest {
     @Test
     void aContextPathIsStrippedBeforeRoutingAndAnythingOutsideItIsNotFound() throws IOException {
         try (var harness = fullBuilder().contextPath("/app").start()) {
-            assertEquals("http://127.0.0.1:" + harness.port() + "/app", harness.baseUrl());
-            assertEquals("plain", get(harness, "/app/plain").body());
+            assertEquals(LOCALHOST + harness.port() + "/app", harness.baseUrl());
+            assertEquals(PLAIN, get(harness, "/app/plain").body());
             assertEquals("hello bob from the harness", get(harness, "/app" + GREETING_PATH + "bob").body());
             assertEquals(404, get(harness, "/elsewhere/plain").status());
             assertEquals(404, get(harness, "/app").status(), "the context root maps to /, which has no resource");
@@ -252,7 +258,7 @@ class CassiniTestHarnessTest {
         }
         try (var harness = CassiniTestHarness.builder().resourceClass(PlainResource.class).port(port).start()) {
             assertEquals(port, harness.port());
-            assertEquals("plain", get(harness, "/plain").body());
+            assertEquals(PLAIN, get(harness, PLAIN_PATH).body());
         }
     }
 
@@ -279,13 +285,13 @@ class CassiniTestHarnessTest {
         var harness = CassiniTestHarness.builder().resourceClass(PlainResource.class).start();
         harness.close();
         harness.close();
-        assertThrows(IOException.class, () -> get(harness, "/plain"));
+        assertThrows(IOException.class, () -> get(harness, PLAIN_PATH));
     }
 
     private record Reply(int status, String body, String stamp) { }
 
     private static Reply get(CassiniTestHarness harness, String path) throws IOException {
-        var connection = (HttpURLConnection) URI.create("http://127.0.0.1:" + harness.port() + path)
+        var connection = (HttpURLConnection) URI.create(LOCALHOST + harness.port() + path)
                 .toURL().openConnection();
         try {
             int status = connection.getResponseCode();
