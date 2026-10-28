@@ -60,9 +60,10 @@ import java.util.Set;
  * <ul>
  *   <li>{@code injectFields}: VarHandle-based field injection (same semantics as
  *       {@code RuntimeAdapterGenerator}).</li>
- *   <li>{@code invoke}: direct typed dispatch switch over methods canonically ordered by
- *       {@code (declaringClassName, methodName, jvmDescriptor)} — identical to
- *       {@code RuntimeAdapterGenerator.collectMethods}.</li>
+ *   <li>{@code invoke}: direct typed dispatch switch over methods ordered by
+ *       {@code (declaringClassName, methodName, jvmDescriptor)};</li>
+ *   <li>{@code methodKeys}: the method each id calls, from which {@code AdapterRegistry} reads the ids,
+ *       so they need not match the ones {@code RuntimeAdapterGenerator} would number.</li>
  * </ul>
  *
  * <p>Each {@code Application} subclass annotated with {@code @ApplicationPath} gets a
@@ -717,8 +718,27 @@ public class CassiniResourceProcessor extends AbstractProcessor {
 
         // resourceClass() — ServiceLoader keying (zero-export Java Modules apps)
         emitResourceClass(w, resourceBinaryName);
+        w.println();
+
+        // methodKeys() — the method each id of invoke() calls, read by AdapterRegistry
+        emitMethodKeys(w, methods);
 
         w.println("}");
+    }
+
+    /**
+     * Emits the {@code methodKeys()} override: the key of each method {@code invoke} calls, in id order. The
+     * registry reads the ids from it, so its numbering of the resource's methods never has to match this one.
+     */
+    private void emitMethodKeys(PrintWriter w, List<MethodModel> methods) {
+        w.println(OVERRIDE);
+        w.println("    public String[] methodKeys() {");
+        w.println("        return new String[] {");
+        for (MethodModel m : methods) {
+            w.println(INDENT_16 + "\"" + escapeString(m.methodName + m.jvmParamDescriptor) + "\",");
+        }
+        w.println("        };");
+        w.println(CLOSE_METHOD);
     }
 
     /**
@@ -1138,7 +1158,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
     }
 
     // -------------------------------------------------------------------------
-    // Method model collection — canonical order matches RuntimeAdapterGenerator
+    // Method model collection — a stable order; methodKeys() carries the ids
     // -------------------------------------------------------------------------
 
     private List<MethodModel> collectMethods(TypeElement resourceType) {
@@ -1147,8 +1167,8 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         // methods visible on the type (including inherited), excluding Object methods.
         collectPublicMethods(resourceType, new HashSet<>(), eligible);
 
-        // Canonical sort: (declaringClassName, methodName, jvmParamDescriptor) — same as
-        // RuntimeAdapterGenerator.collectMethods to ensure methodId alignment.
+        // Stable sort: (declaringClassName, methodName, jvmParamDescriptor). The registry reads the
+        // ids from methodKeys(), so they need not match RuntimeAdapterGenerator.collectMethods.
         eligible.sort(Comparator
                 .comparing((MethodModel m) -> m.declaringBinaryName)
                 .thenComparing(m -> m.methodName)

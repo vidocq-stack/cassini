@@ -49,10 +49,10 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.util.ArrayList;
+import java.util.ArrayList; import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Map; import java.util.Set;
 /**
  * Generates {@link ResourceAdapter} implementations at runtime using the JDK 25 Class-File API.
  *
@@ -202,6 +202,8 @@ public final class RuntimeAdapterGenerator {
 
             // invoke(int, Object, Object[]) — P1b: direct typed dispatch
             generateInvoke(clb, methodIds);
+            // methodKeys() — the method each id calls, read by AdapterRegistry
+            generateMethodKeys(clb, methodIds);
 
             // newInstance() — M6a: direct new Foo() if accessible no-arg ctor exists
             if (hasNoArgCtor) {
@@ -212,6 +214,24 @@ public final class RuntimeAdapterGenerator {
             // resourceClass() — ServiceLoader keying (zero-export Java Modules apps), parity with the APT.
             generateResourceClass(clb, resourceCD);
         });
+    }
+
+    /** Emits {@code public String[] methodKeys()}: a new array of the {@link #methodKey keys}, by method id. */
+    private static void generateMethodKeys(java.lang.classfile.ClassBuilder clb, Map<Method, Integer> methodIds) {
+        clb.withMethodBody("methodKeys",
+                MethodTypeDesc.of(CD_String.arrayType()),
+                ClassFile.ACC_PUBLIC,
+                cob -> {
+                    cob.loadConstant(methodIds.size());
+                    cob.anewarray(CD_String);
+                    for (var entry : methodIds.entrySet()) {
+                        cob.dup();
+                        cob.loadConstant(entry.getValue());
+                        cob.loadConstant(methodKey(entry.getKey()));
+                        cob.aastore();
+                    }
+                    cob.areturn();
+                });
     }
 
     /** Emits {@code public Class<?> resourceClass() { return Resource.class; }} (ldc + areturn). */
@@ -238,8 +258,6 @@ public final class RuntimeAdapterGenerator {
      */
     public static Class<?> generate(Class<?> resourceClass)
             throws AdapterGenerationException, ReflectiveOperationException {
-        Map<Method, Integer> methodIds = collectMethods(resourceClass);
-
         String adapterName = adapterClassName(resourceClass);
 
         byte[] bytecode = toBytecode(resourceClass);
@@ -323,9 +341,6 @@ public final class RuntimeAdapterGenerator {
             throw new AdapterGenerationException("VarHandle <clinit> failed for " + resourceClass.getName()
                     + " (module not open?): " + eiie.getCause(), eiie.getCause());
         }
-
-        // Register method-id map so AdapterRegistry.methodId() can resolve quickly.
-        AdapterRegistry.registerMethodIds(resourceClass, methodIds);
 
         return defined;
     }
@@ -1020,21 +1035,34 @@ public final class RuntimeAdapterGenerator {
     /**
      * Collects all eligible resource methods from the class hierarchy, assigning a stable
      * integer methodId to each. Eligibility: public, non-static, non-bridge, non-synthetic,
-     * not declared on {@code Object}. All such methods are eligible because args are pre-resolved
-     * by the Invoker.
+     * not declared on {@code Object}, plus each bridge no such method of the same parameters stands for.
+     * All such methods are eligible because args are pre-resolved by the Invoker.
      *
-     * <p><b>Canonical ordering (P2 contract):</b> methods are sorted by
-     * {@code (declaringClassName, methodName, jvmDescriptor)} so that the APT processor
-     * (which uses {@code javax.lang.model}) and this runtime path (which uses reflection)
-     * assign identical methodIds across JVM runs and across build/runtime JVMs.</p>
+     * <p><b>Ordering:</b> methods are sorted by {@code (declaringClassName, methodName, jvmDescriptor)},
+     * stable across JVM runs. The generated {@code methodKeys()} names the method of each id and
+     * {@code AdapterRegistry} reads the ids from it, so this numbering need not match the annotation
+     * processor's: an adapter is consistent with itself, whichever path generated it.</p>
      *
      * @param resourceClass the JAX-RS resource class
      * @return ordered map of Method → methodId (0-based, canonical insertion order)
      */
     public static Map<Method, Integer> collectMethods(Class<?> resourceClass) {
         List<Method> eligible = new ArrayList<>();
+        Set<String> declared = new HashSet<>();
         for (Method m : resourceClass.getMethods()) {
-            if (isAdaptable(m)) eligible.add(m);
+            if (isAdaptable(m)) {
+                eligible.add(m);
+                declared.add(methodKey(m));
+            }
+        }
+        // A bridge no method of the same parameters stands for is the only public form of its method: a public
+        // method of a package-private superclass is listed as the bridge the class gets, and an override
+        // through a type argument leaves the erased signature to its bridge. Calling it calls the method.
+        for (Method m : resourceClass.getMethods()) {
+            if (m.isBridge() && m.getDeclaringClass() != Object.class && !Modifier.isStatic(m.getModifiers())
+                    && declared.add(methodKey(m))) {
+                eligible.add(m);
+            }
         }
         // Canonical sort: (declaringClassName, methodName, JVM descriptor) — lexicographic.
         // The JVM descriptor is built from parameter types in declared order, giving a unique
@@ -1053,6 +1081,14 @@ public final class RuntimeAdapterGenerator {
             result.put(m, id++);
         }
         return result;
+    }
+
+    /**
+     * The key of {@code m} in an adapter's {@code methodKeys()}: its name and JVM parameter descriptor, e.g.
+     * {@code put(Ljava/lang/String;)}. The annotation processor writes the same keys.
+     */
+    public static String methodKey(Method m) {
+        return m.getName() + jvmDescriptor(m);
     }
 
     /**

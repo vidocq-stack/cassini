@@ -71,5 +71,11 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- The processor's adapters are checked against the ids this module dispatches with. -->
+        <dependency>
+            <groupId>io.vidocq.cassini</groupId>
+            <artifactId>cassini-processor</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>

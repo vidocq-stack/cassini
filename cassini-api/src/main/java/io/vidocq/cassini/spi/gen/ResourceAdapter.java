@@ -107,4 +107,20 @@ public interface ResourceAdapter {
     default Class<?> resourceClass() {
         return null;
     }
+
+    /**
+     * Returns the key of the method each {@code methodId} of {@link #invoke} calls, the id being the index: the
+     * method name followed by its JVM parameter descriptor, e.g. {@code put(Ljava/lang/String;)}.
+     *
+     * <p>The adapter numbers its methods itself; {@code AdapterRegistry} reads the ids from this table rather
+     * than numbering the resource's methods again, so a path that lists the inherited methods differently (a
+     * generic override, a public method of a package-private superclass) cannot shift them. The default
+     * returns {@code null}: an adapter generated before this method existed keeps the ids the registry numbers
+     * itself.</p>
+     *
+     * @return the method keys, by method id, or {@code null} if not advertised
+     */
+    default String[] methodKeys() {
+        return null;
+    }
 }

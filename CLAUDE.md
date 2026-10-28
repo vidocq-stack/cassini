@@ -62,20 +62,22 @@ classpath `META-INF/services`), keyed by `ResourceAdapter.resourceClass()`; (1) 
 (APT/plugin path); (2) the runtime generator; (3) the SENTINEL (reflective fallback). The
 ServiceLoader step is what lets a strict Java Modules app keep its resource package **closed** (neither
 `opens` nor `exports`): the module system instantiates the provider from the encapsulated package,
-so cassini-core never reflects into it. That step also populates the per-class `methodId` map (via
-`RuntimeAdapterGenerator.collectMethods`, public-method enumeration — no `setAccessible`), so
-`adapter.invoke()` does the typed dispatch instead of a reflective `Method.invoke`. On the classpath
-and for the TCK no provider is registered, so the map is empty and lookup falls through to
-`Class.forName` exactly as before (zero behaviour change). cassini-core `uses` both SPIs.
+so cassini-core never reflects into it. On every route the registry reads the per-class `methodId` map
+from the adapter's own `methodKeys()` (the method each id of its `invoke` switch calls: name plus JVM
+parameter descriptor), so `adapter.invoke()` does the typed dispatch instead of a reflective
+`Method.invoke`, and the ids cannot drift from the switch whichever generator numbered it (CASSINI-032).
+Only a provider generated before `methodKeys()` existed is numbered by `RuntimeAdapterGenerator.collectMethods`.
+On the classpath and for the TCK no provider is registered and lookup falls through to `Class.forName`.
+cassini-core `uses` both SPIs.
 
 > **Zero-export proof:** `cassini-examples-jdkhttp` (pure Mode A) keeps its `resource` package fully
 > encapsulated — `java --describe-module` shows `contains …resource` (no `opens`, no `exports`), only
 > `provides ResourceAdapter/RouteProvider with …$$CassiniAdapter/$$CassiniRoutes`. All HTTP dispatch
 > tests pass on the module-path. (Mode-B Vauban apps additionally need Vauban to instantiate the
 > normal-scoped client proxy in-module — the separate BCE-static-metadata chantier — before they can
-> drop `exports` too.) Follow-up: `cassini-maven-plugin`/`RuntimeAdapterGenerator.toBytecode` do **not**
-> yet emit `resourceClass()`, so plugin-pre-generated external module-path jars still need `Class.forName`
-> (i.e. an `exports`); only APT-generated adapters are ServiceLoader-keyable today.
+> drop `exports` too.) `RuntimeAdapterGenerator.toBytecode`, which the Maven plugin calls, emits
+> `resourceClass()` and `methodKeys()` like the processor, so a plugin-generated adapter is ServiceLoader-keyable
+> too.
 
 **Generated route table (M5b):** in addition to the adapter, each `@Path` class without a sub-resource
 locator gets a `<Class>$$CassiniRoutes` (SPI `RouteProvider`) exposing the route table as
