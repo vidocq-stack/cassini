@@ -83,63 +83,29 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
     public CassiniStack build() {
         Set<Class<?>> resourceClasses = new LinkedHashSet<>();
         Map<Class<?>, Object> resourceSingletons = new LinkedHashMap<>();
-
-        if (application != null) {
-            if (application.getClasses() != null) resourceClasses.addAll(application.getClasses());
-            if (application.getSingletons() != null) {
-                for (Object o : application.getSingletons()) {
-                    Class<?> jaxrsClass = jaxrsAnnotatedClass(o.getClass());
-                    resourceClasses.add(jaxrsClass);
-                    resourceSingletons.put(jaxrsClass, o);
-                }
-            }
-        }
+        collectApplication(resourceClasses, resourceSingletons);
 
         // Merge the classes known to the BeanProvider (annotated @Path/@Provider).
         if (beanProvider != null) {
-            for (Class<?> c : beanProvider.getResourceClasses()) {
-                resourceClasses.add(jaxrsAnnotatedClass(c));
-            }
+            beanProvider.getResourceClasses().forEach(c -> resourceClasses.add(jaxrsAnnotatedClass(c)));
         }
 
         Set<Class<?>> pathClasses = new LinkedHashSet<>();
-        FilterRegistry filters = new FilterRegistry();
-        MessageBodyRegistry bodies = new MessageBodyRegistry();
-        ExceptionMapperRegistry mappers = new ExceptionMapperRegistry();
+        Registries providers = new Registries(new FilterRegistry(), new MessageBodyRegistry(),
+                new ExceptionMapperRegistry());
 
         for (Class<?> c : resourceClasses) {
             if (c.isAnnotationPresent(jakarta.ws.rs.Path.class)) pathClasses.add(c);
             if (c.isAnnotationPresent(jakarta.ws.rs.ext.Provider.class)) {
-                Object inst = resourceSingletons.computeIfAbsent(c, k -> {
-                    // Prefer the BeanProvider if the class is managed there.
-                    if (beanProvider != null) {
-                        try {
-                            return beanProvider.getBean(k);
-                        } catch (IllegalArgumentException ignored) {
-                            // fallback ci-dessous
-                        }
-                    }
-                    try { return k.getDeclaredConstructor().newInstance(); }
-                    catch (ReflectiveOperationException e) { return null; }
-                });
-                if (inst == null) continue;
-                filters.register(inst);
-                if (inst instanceof jakarta.ws.rs.ext.MessageBodyReader<?> r) bodies.addReader(r);
-                if (inst instanceof jakarta.ws.rs.ext.MessageBodyWriter<?> w) bodies.addWriter(w);
-                mappers.register(inst);
+                Object inst = resourceSingletons.computeIfAbsent(c, this::instantiateProvider);
+                if (inst != null) providers.register(inst);
             }
         }
 
         // Extra providers passed explicitly via builder.provider()
         for (Object inst : extraProviders) {
-            Class<?> jaxrsClass = jaxrsAnnotatedClass(inst.getClass());
-            if (!resourceSingletons.containsKey(jaxrsClass)) {
-                resourceSingletons.put(jaxrsClass, inst);
-            }
-            filters.register(inst);
-            if (inst instanceof jakarta.ws.rs.ext.MessageBodyReader<?> r) bodies.addReader(r);
-            if (inst instanceof jakarta.ws.rs.ext.MessageBodyWriter<?> w) bodies.addWriter(w);
-            mappers.register(inst);
+            resourceSingletons.putIfAbsent(jaxrsAnnotatedClass(inst.getClass()), inst);
+            providers.register(inst);
         }
 
         var routes = RouteRegistry.discover(pathClasses.toArray(Class<?>[]::new));
@@ -147,46 +113,14 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
         // their per-method filters/interceptors (e.g. RolesAllowedDynamicFeature →
         // @RolesAllowed/@DenyAll/@PermitAll). Without this call, features were collected
         // but never applied: authorisation was not wired up.
-        filters.applyDynamicFeatures(routes);
+        providers.filters().applyDynamicFeatures(routes);
         var router = new UriRouter(routes);
 
-        final Map<Class<?>, Object> singletons = Map.copyOf(resourceSingletons);
-        final ResourceFactory factory = resourceFactory;
-        final BeanProvider bp = beanProvider;
-
-        Function<Class<?>, Object> resolver = cls -> {
-            Object fixed = singletons.get(cls);
-            if (fixed != null) return fixed;
-            if (bp != null) {
-                try {
-                    return bp.getBean(cls);
-                } catch (IllegalArgumentException ignored) {
-                    // fallback : factory ou newInstance
-                }
-            }
-            if (factory != null) {
-                return factory.create(cls);
-            }
-            // M6a: prefer generated adapter newInstance() over reflection
-            var adapterM6a = AdapterRegistry.lookup(cls);
-            if (adapterM6a.isPresent()) {
-                try {
-                    return adapterM6a.get().newInstance();
-                } catch (UnsupportedOperationException ignored) {
-                    // no no-arg ctor — fall through to reflective path
-                }
-            }
-            try { return cls.getDeclaredConstructor().newInstance(); }
-            catch (ReflectiveOperationException e) {
-                throw new RuntimeException("Failed to instantiate " + cls, e);
-            }
-        };
-
-        var invoker = new Invoker(resolver, bodies, mappers);
-        invoker.setFilters(filters);
+        var invoker = new Invoker(resolver(Map.copyOf(resourceSingletons)), providers.bodies(), providers.mappers());
+        invoker.setFilters(providers.filters());
         // §9: allows the Invoker to de-proxy a CDI bean (actual contextual instance)
         // for @Context injection into @RequestScoped resources (cf. BeanProvider).
-        invoker.setBeanProvider(bp);
+        invoker.setBeanProvider(beanProvider);
         // §9.2.1 / §10.2: @Context Application and the @ApplicationPath of the matched
         // resource template come from the deployment's Application (CASSINI-028).
         if (application != null) invoker.setApplication(application);
@@ -194,6 +128,83 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
         RequestStatistics counters = statistics ? new RequestStatistics() : null;
         var adapter = new DefaultCassiniHttpAdapter(router, invoker, counters);
         return new CassiniStackImpl(adapter, router.routes(), counters);
+    }
+
+    /** The registries a provider instance is added to. */
+    private record Registries(FilterRegistry filters, MessageBodyRegistry bodies, ExceptionMapperRegistry mappers) {
+        void register(Object inst) {
+            filters.register(inst);
+            if (inst instanceof jakarta.ws.rs.ext.MessageBodyReader<?> r) bodies.addReader(r);
+            if (inst instanceof jakarta.ws.rs.ext.MessageBodyWriter<?> w) bodies.addWriter(w);
+            mappers.register(inst);
+        }
+    }
+
+    /** The classes and singletons of the {@link Application}, singletons keyed by their JAX-RS class. */
+    private void collectApplication(Set<Class<?>> resourceClasses, Map<Class<?>, Object> resourceSingletons) {
+        if (application == null) return;
+        if (application.getClasses() != null) resourceClasses.addAll(application.getClasses());
+        if (application.getSingletons() != null) {
+            for (Object o : application.getSingletons()) {
+                Class<?> jaxrsClass = jaxrsAnnotatedClass(o.getClass());
+                resourceClasses.add(jaxrsClass);
+                resourceSingletons.put(jaxrsClass, o);
+            }
+        }
+    }
+
+    /** A {@code @Provider} class instance: from the BeanProvider when it manages it, else its no-arg constructor. */
+    private Object instantiateProvider(Class<?> k) {
+        if (beanProvider != null) {
+            try {
+                return beanProvider.getBean(k);
+            } catch (IllegalArgumentException _) {
+                // not managed by the BeanProvider: no-arg constructor below
+            }
+        }
+        try {
+            return k.getDeclaredConstructor().newInstance();
+        } catch (ReflectiveOperationException _) {
+            return null;
+        }
+    }
+
+    /** Resolves a resource instance: singleton, BeanProvider, ResourceFactory, generated adapter, reflection. */
+    private Function<Class<?>, Object> resolver(Map<Class<?>, Object> singletons) {
+        final ResourceFactory factory = resourceFactory;
+        final BeanProvider bp = beanProvider;
+        return cls -> {
+            Object fixed = singletons.get(cls);
+            if (fixed != null) return fixed;
+            if (bp != null) {
+                try {
+                    return bp.getBean(cls);
+                } catch (IllegalArgumentException _) {
+                    // fallback: factory or newInstance
+                }
+            }
+            if (factory != null) {
+                return factory.create(cls);
+            }
+            return newResource(cls);
+        };
+    }
+
+    /** M6a: prefers the generated adapter's newInstance() over reflection. */
+    private static Object newResource(Class<?> cls) {
+        var adapter = AdapterRegistry.lookup(cls);
+        if (adapter.isPresent()) {
+            try {
+                return adapter.get().newInstance();
+            } catch (UnsupportedOperationException _) {
+                // no no-arg ctor — fall through to the reflective path
+            }
+        }
+        try {
+            return cls.getDeclaredConstructor().newInstance();
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Failed to instantiate " + cls, e);
+        }
     }
 
     /**
