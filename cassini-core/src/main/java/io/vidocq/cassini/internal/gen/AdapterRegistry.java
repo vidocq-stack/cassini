@@ -196,14 +196,14 @@ public final class AdapterRegistry {
     }
 
     /**
-     * Caches {@code adapter} for {@code beanClass} with the method ids its key table gives; without one, numbers
+     * Caches {@code adapter} for {@code beanClass} with the method ids its key table gives; when it is empty, numbers
      * the methods here when {@code numberWithoutKeys}, else leaves every method to the reflective dispatch.
      */
     private static ResourceAdapter adopt(Class<?> beanClass, ResourceAdapter adapter, boolean numberWithoutKeys) {
         ResourceAdapter existing = CACHE.putIfAbsent(beanClass, adapter);
         ResourceAdapter adopted = existing != null ? existing : adapter;
         String[] keys = adopted.methodKeys();
-        if (keys != null) {
+        if (keys.length > 0) {
             METHOD_IDS.computeIfAbsent(beanClass, c -> MethodIds.of(c, keys));
         } else if (numberWithoutKeys) {
             METHOD_IDS.computeIfAbsent(beanClass, c -> new MethodIds(RuntimeAdapterGenerator.collectMethods(c)));

@@ -115,12 +115,12 @@ public interface ResourceAdapter {
      * <p>The adapter numbers its methods itself; {@code AdapterRegistry} reads the ids from this table rather
      * than numbering the resource's methods again, so a path that lists the inherited methods differently (a
      * generic override, a public method of a package-private superclass) cannot shift them. The default
-     * returns {@code null}: an adapter generated before this method existed keeps the ids the registry numbers
-     * itself.</p>
+     * returns an empty table: an adapter generated before this method existed keeps the ids the registry numbers
+     * itself, which for an adapter without methods is none either.</p>
      *
-     * @return the method keys, by method id, or {@code null} if not advertised
+     * @return the method keys, by method id; empty if not advertised
      */
     default String[] methodKeys() {
-        return null;
+        return new String[0];
     }
 }
