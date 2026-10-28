@@ -289,3 +289,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `@Path("/ctl") class R { @QueryParam("q") @DefaultValue("a\nb") public String q; @GET public String get() { return q; } }` compiled with `cassini-processor` on the processor path.
 - **Cause**: `CassiniResourceProcessor.escapeString` escaped only `\` and `"` when rendering values into generated string literals. The Maven-plugin and runtime generators write Class-File constants directly and are not affected.
 - **Fix**: escape `\n`, `\r`, `\t`, `\b`, `\f` by name and any other character below 0x20, 0x7f, U+2028 and U+2029 as a Unicode escape, like grimm/dirac `lit` and foy `literal`. Regression test: `CassiniResourceProcessorTest.controlCharactersInAnnotationValuesSurviveTheGeneratedSource`.
+
+## CASSINI-026 — A multipart part whose `filename` comes before `name` gets the file name as its name
+- **Date**: 2026-10-28 — **Status**: FIXED
+- **Severity**: medium. RFC 7578 does not order the `Content-Disposition` parameters; a client that writes `filename` first had every file part delivered under the wrong name (an `@FormParam` lookup by name then missed it).
+- **Symptom**: `Content-Disposition: form-data; filename="photo.png"; name="upload"` was read as a part named `photo.png`.
+- **Minimal repro**: `MultipartFormDataProvider.readFrom` on a body with the header above (boundary `XyZ`).
+- **Cause**: `MultipartFormDataProvider.paramValue` looked up `name=` with a plain `indexOf`, which matched inside `filename=`.
+- **Fix**: a parameter only matches at the start of the header value or after a `;`. Regression test: `MultipartFormDataProviderTest.theNameIsFoundWhenTheFileNameComesFirst`.

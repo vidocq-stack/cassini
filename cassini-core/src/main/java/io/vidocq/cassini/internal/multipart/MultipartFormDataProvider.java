@@ -199,7 +199,7 @@ public final class MultipartFormDataProvider
     private static String paramValue(String header, String name) {
         // simplistic : name="value" or name=value
         String search = name + "=";
-        int i = header.indexOf(search);
+        int i = parameterStart(header, search);
         if (i < 0) return null;
         i += search.length();
         if (i < header.length() && header.charAt(i) == '"') {
@@ -209,6 +209,20 @@ public final class MultipartFormDataProvider
         int end = header.indexOf(';', i);
         if (end < 0) end = header.length();
         return header.substring(i, end).trim();
+    }
+
+    /**
+     * Index of the parameter {@code search} ({@code name=}) in a header value, or -1. A match
+     * must start the value or follow a {@code ;} (whitespace allowed): {@code name=} inside
+     * {@code filename=} is not the {@code name} parameter (CASSINI-026).
+     */
+    private static int parameterStart(String header, String search) {
+        for (int i = header.indexOf(search); i >= 0; i = header.indexOf(search, i + 1)) {
+            int before = i - 1;
+            while (before >= 0 && Character.isWhitespace(header.charAt(before))) before--;
+            if (before < 0 || header.charAt(before) == ';') return i;
+        }
+        return -1;
     }
 
     private static int indexOf(byte[] haystack, byte[] needle, int from) {

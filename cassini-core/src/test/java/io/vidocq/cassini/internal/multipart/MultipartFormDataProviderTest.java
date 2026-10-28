@@ -143,6 +143,21 @@ class MultipartFormDataProviderTest {
         assertEquals("unquoted", bare.getContent(String.class));
     }
 
+    /** CASSINI-026: RFC 7578 does not order the parameters; "name=" must not match inside "filename=". */
+    @Test
+    void theNameIsFoundWhenTheFileNameComesFirst() throws IOException {
+        String body = "--XyZ" + CRLF
+                + "Content-Disposition: form-data; filename=\"photo.png\"; name=\"upload\"" + CRLF
+                + CRLF
+                + "bytes" + CRLF
+                + "--XyZ--" + CRLF;
+
+        EntityPart part = read(body).get(0);
+
+        assertEquals("upload", part.getName());
+        assertEquals(Optional.of("photo.png"), part.getFileName());
+    }
+
     @Test
     void aBodyWithoutTheBoundaryOrWithATruncatedPartHasNoPart() throws IOException {
         assertTrue(read("no boundary here").isEmpty());
