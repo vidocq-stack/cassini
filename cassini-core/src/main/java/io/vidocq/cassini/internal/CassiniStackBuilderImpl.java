@@ -187,6 +187,9 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
         // §9: allows the Invoker to de-proxy a CDI bean (actual contextual instance)
         // for @Context injection into @RequestScoped resources (cf. BeanProvider).
         invoker.setBeanProvider(bp);
+        // §9.2.1 / §10.2: @Context Application and the @ApplicationPath of the matched
+        // resource template come from the deployment's Application (CASSINI-028).
+        if (application != null) invoker.setApplication(application);
 
         RequestStatistics counters = statistics ? new RequestStatistics() : null;
         var adapter = new DefaultCassiniHttpAdapter(router, invoker, counters);

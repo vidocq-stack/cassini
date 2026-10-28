@@ -227,7 +227,8 @@ public final class CassiniUriInfo implements UriInfo {
             if (ap != null && !ap.value().isEmpty()) {
                 String prefix = ap.value();
                 if (!prefix.startsWith("/")) prefix = "/" + prefix;
-                if (prefix.endsWith("/") && prefix.length() > 1) prefix = prefix.substring(0, prefix.length() - 1);
+                // "/" (the root) adds nothing: the template already starts with '/' (CASSINI-028).
+                if (prefix.endsWith("/")) prefix = prefix.substring(0, prefix.length() - 1);
                 return prefix + matchedTemplate;
             }
         }

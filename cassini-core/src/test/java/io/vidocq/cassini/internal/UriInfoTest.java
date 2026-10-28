@@ -22,6 +22,13 @@ package io.vidocq.cassini.internal;
 import io.vidocq.cassini.internal.context.CassiniUriInfo;
 import io.vidocq.cassini.internal.runtime.CassiniRuntimeDelegate;
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
+import io.vidocq.cassini.spi.http.CassiniStack;
+import jakarta.ws.rs.ApplicationPath;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.Application;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.PathSegment;
 import jakarta.ws.rs.core.UriInfo;
@@ -34,6 +41,7 @@ import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -162,6 +170,71 @@ class UriInfoTest {
         assertEquals("", info("/x", "").getMatchedResourceTemplate());
         assertEquals(ITEM, new CassiniUriInfo(InMemoryExchange.get("/r/1"), "", Map.of(), ITEM)
                 .getMatchedResourceTemplate());
+    }
+
+    /** Answers the matched resource template seen through {@code @Context UriInfo}. */
+    @Path("/r")
+    public static class TemplateResource {
+        @GET
+        @Path("{id}")
+        @Produces("text/plain")
+        public String template(@Context UriInfo uriInfo) {
+            return uriInfo.getMatchedResourceTemplate();
+        }
+
+        @GET
+        @Path("application")
+        @Produces("text/plain")
+        public String application(@Context Application application) {
+            return application.getClass().getSimpleName();
+        }
+    }
+
+    @ApplicationPath("shop/")
+    public static class ShopApplication extends Application {
+        @Override
+        public Set<Class<?>> getClasses() {
+            return Set.of(TemplateResource.class);
+        }
+    }
+
+    @ApplicationPath("/")
+    public static class RootApplication extends Application {
+        @Override
+        public Set<Class<?>> getClasses() {
+            return Set.of(TemplateResource.class);
+        }
+    }
+
+    /** CASSINI-028: a stack built from an Application must expose it to the requests. */
+    @Test
+    void theMatchedTemplateStartsWithTheApplicationPath() {
+        assertEquals("/shop" + ITEM, templateSeenBy(new ShopApplication()));
+        assertEquals(ITEM, templateSeenBy(new RootApplication()));
+        assertEquals(ITEM, templateSeenBy(new Application() {
+            @Override
+            public Set<Class<?>> getClasses() {
+                return Set.of(TemplateResource.class);
+            }
+        }));
+    }
+
+    /** CASSINI-028: {@code @Context Application} is the application the stack was built from. */
+    @Test
+    void contextApplicationIsTheApplicationOfTheStack() {
+        assertEquals("ShopApplication", answer(new ShopApplication(), "/r/application"));
+    }
+
+    private static String templateSeenBy(Application application) {
+        return answer(application, "/r/7");
+    }
+
+    private static String answer(Application application, String path) {
+        CassiniStack stack = new io.vidocq.cassini.internal.CassiniStackBuilderImpl().application(application).build();
+        InMemoryExchange exchange = InMemoryExchange.get(path);
+        stack.adapter().dispatch(exchange).toCompletableFuture().join();
+        assertEquals(200, exchange.status(), exchange.responseText());
+        return exchange.responseText();
     }
 
     /** {@code delegate} with another request URI and security. */

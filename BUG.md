@@ -305,3 +305,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `EntityPart.withName("p").mediaType(MediaType.TEXT_PLAIN_TYPE).fileName("a.txt").content("x").build().getMediaType()` gives `application/octet-stream`.
 - **Cause**: `CassiniEntityPartBuilder` stored `text/plain` as an initial value and overwrote it when a file name was set, delegated `header` to `MultivaluedMap.add`, and had no argument or content checks.
 - **Fix**: the media type is resolved at `build()` (the explicit one, else octet-stream with a file name, else text/plain); null arguments throw `IllegalArgumentException`; `header` replaces, `headers` calls it per entry; `build()` without content throws `IllegalStateException`. Regression tests: `CassiniEntityPartTest.anExplicitTextPlainMediaTypeSurvivesAFileName`, `nullArgumentsAreRejected`, `aHeaderReplacesTheValuesOfAPreviousOneOfTheSameName`, `buildingAPartWithoutContentIsAnIllegalState`.
+
+## CASSINI-028 — A `CassiniStack` built from an `Application` hides it from its requests
+- **Date**: 2026-10-28 — **Status**: FIXED
+- **Severity**: medium. Affects every stack built through `CassiniStack.builder().application(app)`, among them the SE bootstrap (`ChappeRuntimeDelegate`). The official TCK deploys through `CassiniTestHarness`, which seeds the application itself, so it did not see it.
+- **Symptom**: (1) `@Context Application` in a resource was a bare `new Application()` instead of the deployed one; (2) `UriInfo.getMatchedResourceTemplate()` left out the `@ApplicationPath` (`/r/{id}` instead of `/shop/r/{id}`); once the application was seeded, (3) `@ApplicationPath("/")` gave `//r/{id}`.
+- **Minimal repro**: `new CassiniStackBuilderImpl().application(new ShopApplication()).build()` (`@ApplicationPath("shop/")`) and `GET /r/7` on a resource returning `uriInfo.getMatchedResourceTemplate()`.
+- **Cause**: `CassiniStackBuilderImpl.build()` never called `Invoker.setApplication`, so the request scope carried no application; `CassiniUriInfo.getMatchedResourceTemplate` kept the trailing `/` of a root application path.
+- **Fix**: the builder seeds the invoker with its application; a trailing `/` of the application path is always dropped. Regression tests: `UriInfoTest.theMatchedTemplateStartsWithTheApplicationPath`, `UriInfoTest.contextApplicationIsTheApplicationOfTheStack`.
