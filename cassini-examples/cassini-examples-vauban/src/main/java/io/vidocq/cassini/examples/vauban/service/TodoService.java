@@ -30,7 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Todo service — Application scope (CDI singleton).
+ * Service holding the to-do items — Application scope (CDI singleton).
  *
  * <p>All business logic lives here; REST resources remain lightweight.</p>
  */

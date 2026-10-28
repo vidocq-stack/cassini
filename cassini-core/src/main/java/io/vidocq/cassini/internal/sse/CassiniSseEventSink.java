@@ -90,7 +90,7 @@ public final class CassiniSseEventSink implements SseEventSink {
             byte[] chunk = serializeEvent(event);
             if (streamingSink != null) {
                 return streamingSink.writeChunk(chunk)
-                        .thenCompose(__ -> streamingSink.flush())
+                        .thenCompose(_ -> streamingSink.flush())
                         .whenComplete((r, t) -> { if (t != null) closed = true; });
             }
             buffer.write(chunk);

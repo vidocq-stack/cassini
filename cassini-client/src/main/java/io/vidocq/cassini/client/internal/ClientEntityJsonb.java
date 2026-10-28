@@ -89,16 +89,9 @@ final class ClientEntityJsonb {
     static Jsonb resolve(Collection<Object> registered, Class<?> type, MediaType mt) {
         if (registered != null) {
             for (Object inst : registered) {
-                if (!(inst instanceof ContextResolver<?> cr)) {
-                    continue;
-                }
-                if (resolveContextType(cr.getClass()) != Jsonb.class) {
-                    continue;
-                }
-                if (!producesMatches(cr.getClass(), mt)) {
-                    continue;
-                }
-                Jsonb j = ((ContextResolver<Jsonb>) cr).getContext(type);
+                Jsonb j = inst instanceof ContextResolver<?> cr && resolveContextType(cr.getClass()) == Jsonb.class
+                        && producesMatches(cr.getClass(), mt)
+                        ? ((ContextResolver<Jsonb>) cr).getContext(type) : null;
                 if (j != null) {
                     return j;
                 }

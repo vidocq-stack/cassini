@@ -55,27 +55,13 @@ public final class CassiniSse implements Sse {
         return new CassiniSseBroadcaster();
     }
 
-    /** Représentation immuable d'un OutboundSseEvent. */
-    static final class CassiniOutboundSseEvent implements OutboundSseEvent {
-        private final String id;
-        private final String name;
-        private final String comment;
-        private final long reconnectDelay;
-        private final MediaType mediaType;
-        private final Class<?> type;
-        private final Type genericType;
-        private final Object data;
+    /** Immutable {@link OutboundSseEvent}; a missing media type defaults to {@code text/plain}. */
+    record CassiniOutboundSseEvent(String id, String name, String comment, long reconnectDelay,
+                                   MediaType mediaType, Class<?> type, Type genericType, Object data)
+            implements OutboundSseEvent {
 
-        CassiniOutboundSseEvent(String id, String name, String comment, long reconnectDelay,
-                                MediaType mediaType, Class<?> type, Type genericType, Object data) {
-            this.id = id;
-            this.name = name;
-            this.comment = comment;
-            this.reconnectDelay = reconnectDelay;
-            this.mediaType = mediaType == null ? MediaType.TEXT_PLAIN_TYPE : mediaType;
-            this.type = type;
-            this.genericType = genericType;
-            this.data = data;
+        CassiniOutboundSseEvent {
+            if (mediaType == null) mediaType = MediaType.TEXT_PLAIN_TYPE;
         }
 
         @Override public String getId() { return id; }

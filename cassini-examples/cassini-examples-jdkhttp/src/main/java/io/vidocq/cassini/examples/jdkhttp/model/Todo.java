@@ -20,7 +20,7 @@
 package io.vidocq.cassini.examples.jdkhttp.model;
 
 /**
- * Todo model — immutable JSON-serializable record.
+ * Immutable, JSON-serializable record of a to-do item.
  */
 public record Todo(long id, String title, boolean done) {
 

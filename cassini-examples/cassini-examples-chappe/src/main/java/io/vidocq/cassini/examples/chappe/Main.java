@@ -35,7 +35,7 @@ import java.util.concurrent.CountDownLatch;
  */
 public class Main {
 
-    static void main(String[] args) throws Exception {
+    static void main() throws Exception {
         var instance = SeBootstrap.start(new ExamplesApp(),
                 SeBootstrap.Configuration.builder()
                         .host("0.0.0.0")

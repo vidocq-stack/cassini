@@ -47,6 +47,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.ext.RuntimeDelegate;
 
 import java.io.IOException;
 import java.net.URI;
@@ -160,7 +161,7 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
 
     @Override
     public Invocation.Builder cookie(Cookie cookie) {
-        headers.add(HttpHeaders.COOKIE, cookie.toString());
+        headers.add(HttpHeaders.COOKIE, RuntimeDelegate.getInstance().createHeaderDelegate(Cookie.class).toString(cookie));
         return this;
     }
 
@@ -172,7 +173,8 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
 
     @Override
     public Invocation.Builder cacheControl(CacheControl cacheControl) {
-        headers.add(HttpHeaders.CACHE_CONTROL, cacheControl.toString());
+        headers.add(HttpHeaders.CACHE_CONTROL,
+                RuntimeDelegate.getInstance().createHeaderDelegate(CacheControl.class).toString(cacheControl));
         return this;
     }
 

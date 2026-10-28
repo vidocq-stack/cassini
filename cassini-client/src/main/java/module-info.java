@@ -59,9 +59,9 @@ module io.vidocq.cassini.client {
     // RuntimeDelegate: needed for UriBuilder.fromUri(...) on the Client side. Cassini-core
     // already contains CassiniRuntimeDelegate but does not declare it as a default service
     // to avoid a collision if multiple adapters (chappe, jdk-http) are on the classpath.
-    // Client side: we expose it here to make cassini-client self-contained — the ServiceLoader
-    // will resolve one of the three providers (chappe / jdk-http / client) based on the classpath;
-    // all three point to CassiniRuntimeDelegate, so no runtime divergence.
+    // Client side: we expose it here to make cassini-client self-contained. The ServiceLoader
+    // resolves one of the three providers (chappe, jdk-http or client) from the module path,
+    // and all three point to CassiniRuntimeDelegate, so there is no runtime divergence.
     provides jakarta.ws.rs.ext.RuntimeDelegate
             with io.vidocq.cassini.client.internal.CassiniClientRuntimeDelegate;
 }

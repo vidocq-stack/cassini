@@ -58,7 +58,7 @@ public final class CassiniSecurityContext implements SecurityContext {
     @Override public Principal getUserPrincipal() {
         AuthInfo a = authInfo();
         if (a == null || a.username() == null) return null;
-        return () -> a.username();
+        return a::username;
     }
 
     @Override public boolean isUserInRole(String role) {

@@ -38,7 +38,7 @@ import java.util.Optional;
  * <p>During routing, this sorted list is traversed and the first
  * template that matches (and whose HTTP verb corresponds) is selected.</p>
  */
-public final class UriRouter {
+public record UriRouter(List<ResourceMethod> routes) {
 
     // §3.7.2 : first the specificity of the root @Path (class), then the
     // combined template. A sub-resource @Path("resource/subresource")
@@ -52,12 +52,11 @@ public final class UriRouter {
                     .thenComparing(Comparator.comparingInt(r -> r.template().defaultCaptures()))
                     .thenComparing(r -> r.isLocated() ? 1 : 0); // routes directes avant locatées
 
-    private final List<ResourceMethod> routes;
-
-    public UriRouter(List<ResourceMethod> routes) {
+    /** Keeps an immutable copy of {@code routes}, sorted by decreasing specificity. */
+    public UriRouter {
         List<ResourceMethod> sorted = new ArrayList<>(routes);
         sorted.sort(BY_SPECIFICITY);
-        this.routes = List.copyOf(sorted);
+        routes = List.copyOf(sorted);
     }
 
     public Optional<MatchResult> match(String httpMethod, String path) {
@@ -121,10 +120,6 @@ public final class UriRouter {
             if (slash >= 0) { sb.append('/'); start = slash + 1; }
         }
         return sb.toString();
-    }
-
-    public List<ResourceMethod> routes() {
-        return routes;
     }
 
     public List<String> methodsAllowedFor(String path) {

@@ -398,7 +398,7 @@ public final class MessageBodyRegistry {
             StringBuilder sb = new StringBuilder();
             for (var e : v.entrySet()) {
                 for (String val : e.getValue()) {
-                    if (sb.length() > 0) sb.append('&');
+                    if (!sb.isEmpty()) sb.append('&');
                     sb.append(java.net.URLEncoder.encode(e.getKey() == null ? "" : e.getKey(), StandardCharsets.UTF_8))
                       .append('=').append(java.net.URLEncoder.encode(val == null ? "" : val, StandardCharsets.UTF_8));
                 }

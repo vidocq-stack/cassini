@@ -40,7 +40,7 @@ import java.util.concurrent.CountDownLatch;
  */
 public class Main {
 
-    static void main(String[] args) throws Exception {
+    static void main() throws Exception {
         // scanClasspath() reads META-INF/vauban-beans.list, generated at compile time
         // by vauban-maven-plugin (goal 'generate'). Works in a Java Modules named
         // module — META-INF/ resources are always accessible via

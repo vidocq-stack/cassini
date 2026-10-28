@@ -57,7 +57,7 @@ import java.util.concurrent.CountDownLatch;
  */
 public class Main {
 
-    static void main(String[] args) throws Exception {
+    static void main() throws Exception {
         var stack = CassiniStack.builder()
                 .application(new ExamplesApp())
                 .build();

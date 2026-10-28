@@ -19,6 +19,7 @@
  */
 package io.vidocq.cassini.client.internal;
 
+import jakarta.ws.rs.HttpMethod;
 import jakarta.ws.rs.client.AsyncInvoker;
 import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.client.InvocationCallback;
@@ -49,6 +50,9 @@ import java.util.function.Function;
  * not typed {@code Response}, a status that is not successful.</p>
  */
 final class CassiniAsyncInvoker implements AsyncInvoker {
+
+    /** {@link HttpMethod} declares no TRACE constant. */
+    private static final String TRACE = "TRACE";
 
     private final CassiniInvocationBuilder builder;
     private final Executor executor;
@@ -122,50 +126,50 @@ final class CassiniAsyncInvoker implements AsyncInvoker {
 
     // ---- GET -------------------------------------------------------------------------------
 
-    @Override public Future<Response> get() { return async("GET", null); }
-    @Override public <T> Future<T> get(Class<T> type) { return asyncTyped("GET", null, type); }
-    @Override public <T> Future<T> get(GenericType<T> type) { return asyncTyped("GET", null, type); }
-    @Override public <T> Future<T> get(InvocationCallback<T> cb) { return asyncCallback("GET", null, cb); }
+    @Override public Future<Response> get() { return async(HttpMethod.GET, null); }
+    @Override public <T> Future<T> get(Class<T> type) { return asyncTyped(HttpMethod.GET, null, type); }
+    @Override public <T> Future<T> get(GenericType<T> type) { return asyncTyped(HttpMethod.GET, null, type); }
+    @Override public <T> Future<T> get(InvocationCallback<T> cb) { return asyncCallback(HttpMethod.GET, null, cb); }
 
     // ---- PUT -------------------------------------------------------------------------------
 
-    @Override public Future<Response> put(Entity<?> e) { return async("PUT", e); }
-    @Override public <T> Future<T> put(Entity<?> e, Class<T> type) { return asyncTyped("PUT", e, type); }
-    @Override public <T> Future<T> put(Entity<?> e, GenericType<T> type) { return asyncTyped("PUT", e, type); }
-    @Override public <T> Future<T> put(Entity<?> e, InvocationCallback<T> cb) { return asyncCallback("PUT", e, cb); }
+    @Override public Future<Response> put(Entity<?> e) { return async(HttpMethod.PUT, e); }
+    @Override public <T> Future<T> put(Entity<?> e, Class<T> type) { return asyncTyped(HttpMethod.PUT, e, type); }
+    @Override public <T> Future<T> put(Entity<?> e, GenericType<T> type) { return asyncTyped(HttpMethod.PUT, e, type); }
+    @Override public <T> Future<T> put(Entity<?> e, InvocationCallback<T> cb) { return asyncCallback(HttpMethod.PUT, e, cb); }
 
     // ---- POST ------------------------------------------------------------------------------
 
-    @Override public Future<Response> post(Entity<?> e) { return async("POST", e); }
-    @Override public <T> Future<T> post(Entity<?> e, Class<T> type) { return asyncTyped("POST", e, type); }
-    @Override public <T> Future<T> post(Entity<?> e, GenericType<T> type) { return asyncTyped("POST", e, type); }
-    @Override public <T> Future<T> post(Entity<?> e, InvocationCallback<T> cb) { return asyncCallback("POST", e, cb); }
+    @Override public Future<Response> post(Entity<?> e) { return async(HttpMethod.POST, e); }
+    @Override public <T> Future<T> post(Entity<?> e, Class<T> type) { return asyncTyped(HttpMethod.POST, e, type); }
+    @Override public <T> Future<T> post(Entity<?> e, GenericType<T> type) { return asyncTyped(HttpMethod.POST, e, type); }
+    @Override public <T> Future<T> post(Entity<?> e, InvocationCallback<T> cb) { return asyncCallback(HttpMethod.POST, e, cb); }
 
     // ---- DELETE ----------------------------------------------------------------------------
 
-    @Override public Future<Response> delete() { return async("DELETE", null); }
-    @Override public <T> Future<T> delete(Class<T> type) { return asyncTyped("DELETE", null, type); }
-    @Override public <T> Future<T> delete(GenericType<T> type) { return asyncTyped("DELETE", null, type); }
-    @Override public <T> Future<T> delete(InvocationCallback<T> cb) { return asyncCallback("DELETE", null, cb); }
+    @Override public Future<Response> delete() { return async(HttpMethod.DELETE, null); }
+    @Override public <T> Future<T> delete(Class<T> type) { return asyncTyped(HttpMethod.DELETE, null, type); }
+    @Override public <T> Future<T> delete(GenericType<T> type) { return asyncTyped(HttpMethod.DELETE, null, type); }
+    @Override public <T> Future<T> delete(InvocationCallback<T> cb) { return asyncCallback(HttpMethod.DELETE, null, cb); }
 
     // ---- HEAD ------------------------------------------------------------------------------
 
-    @Override public Future<Response> head() { return async("HEAD", null); }
-    @Override public Future<Response> head(InvocationCallback<Response> cb) { return asyncCallback("HEAD", null, cb); }
+    @Override public Future<Response> head() { return async(HttpMethod.HEAD, null); }
+    @Override public Future<Response> head(InvocationCallback<Response> cb) { return asyncCallback(HttpMethod.HEAD, null, cb); }
 
     // ---- OPTIONS ---------------------------------------------------------------------------
 
-    @Override public Future<Response> options() { return async("OPTIONS", null); }
-    @Override public <T> Future<T> options(Class<T> type) { return asyncTyped("OPTIONS", null, type); }
-    @Override public <T> Future<T> options(GenericType<T> type) { return asyncTyped("OPTIONS", null, type); }
-    @Override public <T> Future<T> options(InvocationCallback<T> cb) { return asyncCallback("OPTIONS", null, cb); }
+    @Override public Future<Response> options() { return async(HttpMethod.OPTIONS, null); }
+    @Override public <T> Future<T> options(Class<T> type) { return asyncTyped(HttpMethod.OPTIONS, null, type); }
+    @Override public <T> Future<T> options(GenericType<T> type) { return asyncTyped(HttpMethod.OPTIONS, null, type); }
+    @Override public <T> Future<T> options(InvocationCallback<T> cb) { return asyncCallback(HttpMethod.OPTIONS, null, cb); }
 
     // ---- TRACE -----------------------------------------------------------------------------
 
-    @Override public Future<Response> trace() { return async("TRACE", null); }
-    @Override public <T> Future<T> trace(Class<T> type) { return asyncTyped("TRACE", null, type); }
-    @Override public <T> Future<T> trace(GenericType<T> type) { return asyncTyped("TRACE", null, type); }
-    @Override public <T> Future<T> trace(InvocationCallback<T> cb) { return asyncCallback("TRACE", null, cb); }
+    @Override public Future<Response> trace() { return async(TRACE, null); }
+    @Override public <T> Future<T> trace(Class<T> type) { return asyncTyped(TRACE, null, type); }
+    @Override public <T> Future<T> trace(GenericType<T> type) { return asyncTyped(TRACE, null, type); }
+    @Override public <T> Future<T> trace(InvocationCallback<T> cb) { return asyncCallback(TRACE, null, cb); }
 
     // ---- method() --------------------------------------------------------------------------
 
