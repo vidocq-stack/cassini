@@ -166,34 +166,41 @@ public final class CassiniUriBuilder extends UriBuilder {
         String q = qIdx < 0 ? null : body.substring(qIdx + 1);
         int colonIdx = beforeQ.indexOf(':');
         int slashSlash = beforeQ.indexOf("//");
-        String sch = null, rest;
-        if (colonIdx > 0 && (slashSlash < 0 || colonIdx < slashSlash)) {
-            sch = beforeQ.substring(0, colonIdx);
-            rest = beforeQ.substring(colonIdx + 1);
-        } else { rest = beforeQ; }
-        String auth = null, pathPart;
+        boolean hasScheme = colonIdx > 0 && (slashSlash < 0 || colonIdx < slashSlash);
+        this.scheme = hasScheme ? beforeQ.substring(0, colonIdx) : null;
+        String rest = hasScheme ? beforeQ.substring(colonIdx + 1) : beforeQ;
+        String pathPart = rest;
         if (rest.startsWith("//")) {
             int slash = rest.indexOf('/', 2);
-            if (slash < 0) { auth = rest.substring(2); pathPart = ""; }
-            else { auth = rest.substring(2, slash); pathPart = rest.substring(slash); }
-        } else { pathPart = rest; }
-        this.scheme = sch;
-        if (auth != null) {
-            int at = auth.indexOf('@');
-            String hostPort = at < 0 ? auth : auth.substring(at + 1);
-            this.userInfo = at < 0 ? null : auth.substring(0, at);
-            int colon = hostPort.lastIndexOf(':');
-            if (colon >= 0) {
-                this.host = hostPort.substring(0, colon);
-                try { this.port = Integer.parseInt(hostPort.substring(colon + 1)); }
-                catch (NumberFormatException nfe) { this.port = -1; }
-            } else { this.host = hostPort; }
+            pathPart = slash < 0 ? "" : rest.substring(slash);
+            applyAuthority(slash < 0 ? rest.substring(2) : rest.substring(2, slash));
         }
         this.path.setLength(0);
         if (!pathPart.isEmpty()) this.path.append(pathPart);
         if (q != null) { this.query.clear(); parseQueryInto(q); }
         if (frag != null) this.fragment = frag;
         return this;
+    }
+
+    /** Sets user info, host and port from a template authority {@code [userInfo@]host[:port]}. */
+    private void applyAuthority(String auth) {
+        int at = auth.indexOf('@');
+        String hostPort = at < 0 ? auth : auth.substring(at + 1);
+        this.userInfo = at < 0 ? null : auth.substring(0, at);
+        int colon = hostPort.lastIndexOf(':');
+        if (colon >= 0) {
+            this.host = hostPort.substring(0, colon);
+            this.port = parsePort(hostPort.substring(colon + 1));
+        } else { this.host = hostPort; }
+    }
+
+    /** The port number, or -1 when it is not one (e.g. a {port} template). */
+    private static int parsePort(String port) {
+        try {
+            return Integer.parseInt(port);
+        } catch (NumberFormatException _) {
+            return -1;
+        }
     }
 
     @Override public UriBuilder scheme(String scheme) { this.scheme = scheme; return this; }
@@ -272,8 +279,7 @@ public final class CassiniUriBuilder extends UriBuilder {
         if (method == null) throw new IllegalArgumentException("method is null");
         java.lang.reflect.Method found = null;
         for (java.lang.reflect.Method m : resource.getMethods()) {
-            if (!m.getName().equals(method)) continue;
-            if (m.getAnnotation(jakarta.ws.rs.Path.class) == null) continue;
+            if (!m.getName().equals(method) || m.getAnnotation(jakarta.ws.rs.Path.class) == null) continue;
             if (found != null) throw new IllegalArgumentException(
                     "Multiple methods named '" + method + "' annotated with @Path on " + resource.getName());
             found = m;
@@ -298,7 +304,7 @@ public final class CassiniUriBuilder extends UriBuilder {
             if (s == null) throw new IllegalArgumentException("segment is null");
             // Encode the segment as a path segment: '/' is always encoded as %2F
             String enc = encode(s, Comp.PATH, true, true);
-            if (path.length() > 0 && path.charAt(path.length() - 1) != '/') path.append('/');
+            if (!path.isEmpty() && path.charAt(path.length() - 1) != '/') path.append('/');
             path.append(enc);
         }
         return this;
@@ -337,8 +343,7 @@ public final class CassiniUriBuilder extends UriBuilder {
         boolean first = true;
         String encName = encodeKeepingTemplates(name, Comp.MATRIX_PARAM);
         for (String p : parts) {
-            if (p.isEmpty()) continue;
-            if (!first && (p.startsWith(encName + "=") || p.equals(encName))) continue;
+            if (p.isEmpty() || (!first && (p.startsWith(encName + "=") || p.equals(encName)))) continue;
             if (!first) rebuilt.append(';');
             rebuilt.append(p);
             first = false;
@@ -454,30 +459,51 @@ public final class CassiniUriBuilder extends UriBuilder {
 
     private URI buildInternal(Object[] values, Map<String, ?> valueMap,
                               boolean encodeSlash, boolean valuesAlreadyEncoded) {
-        Map<String, Object> seen = new LinkedHashMap<>();
-        int[] posIdx = new int[]{0};
-        String pathOut = substituteLiteralAndTemplates(path.toString(), values, valueMap,
-                seen, posIdx, Comp.PATH, encodeSlash, valuesAlreadyEncoded);
+        TemplateValues supplied = new TemplateValues(values, valueMap, valuesAlreadyEncoded);
+        String pathOut = substituteLiteralAndTemplates(path.toString(), supplied, Comp.PATH, encodeSlash);
         // Positional values follow the order of appearance in the URI: path, query, fragment (CASSINI-011).
-        String queryOut = buildQuery(values, valueMap, seen, posIdx, valuesAlreadyEncoded);
-        String fragmentOut = substituteLiteralAndTemplates(fragment, values, valueMap,
-                seen, posIdx, Comp.FRAGMENT, true, valuesAlreadyEncoded);
+        String queryOut = buildQuery(supplied);
+        String fragmentOut = substituteLiteralAndTemplates(fragment, supplied, Comp.FRAGMENT, true);
         return assemble(pathOut, queryOut, fragmentOut);
     }
 
+    /** The values one build call substitutes for the templates: by name, then the value already
+     *  used for that name, then the next positional one. */
+    private static final class TemplateValues {
+        private final Object[] values;
+        private final Map<String, ?> valueMap;
+        private final boolean alreadyEncoded;
+        private final Map<String, Object> seen = new LinkedHashMap<>();
+        private int next;
+
+        TemplateValues(Object[] values, Map<String, ?> valueMap, boolean alreadyEncoded) {
+            this.values = values;
+            this.valueMap = valueMap;
+            this.alreadyEncoded = alreadyEncoded;
+        }
+
+        Object valueOf(String name) {
+            if (valueMap != null && valueMap.containsKey(name)) return valueMap.get(name);
+            if (seen.containsKey(name)) return seen.get(name);
+            if (values != null && next < values.length) {
+                Object val = values[next++];
+                seen.put(name, val);
+                return val;
+            }
+            throw new IllegalArgumentException("No value supplied for template parameter " + name);
+        }
+    }
+
     /** The query with its templates substituted, or null when there is none. */
-    private String buildQuery(Object[] values, Map<String, ?> valueMap, Map<String, Object> seen, int[] posIdx,
-                              boolean valuesAlreadyEncoded) {
+    private String buildQuery(TemplateValues supplied) {
         StringBuilder q = new StringBuilder();
         for (var e : query.entrySet()) {
             for (String v : e.getValue()) {
                 if (!q.isEmpty()) q.append('&');
                 // The name may hold templates too; it comes before its value in the URI.
-                q.append(substituteLiteralAndTemplates(e.getKey(), values, valueMap,
-                        seen, posIdx, Comp.QUERY_PARAM, true, valuesAlreadyEncoded));
+                q.append(substituteLiteralAndTemplates(e.getKey(), supplied, Comp.QUERY_PARAM, true));
                 if (v != null) {
-                    String subst = substituteLiteralAndTemplates(v, values, valueMap,
-                            seen, posIdx, Comp.QUERY_PARAM, true, valuesAlreadyEncoded);
+                    String subst = substituteLiteralAndTemplates(v, supplied, Comp.QUERY_PARAM, true);
                     q.append('=').append(subst);
                 }
             }
@@ -519,10 +545,8 @@ public final class CassiniUriBuilder extends UriBuilder {
 
     /** Walks the template: literal segments encoded while preserving
      *  {@code %XX} triplets (already typed), with {name} values encoded according to {@code valuesAlreadyEncoded}. */
-    private String substituteLiteralAndTemplates(String tpl, Object[] values, Map<String, ?> valueMap,
-                                                 Map<String, Object> seen, int[] posIdx,
-                                                 Comp comp, boolean encodeSlash,
-                                                 boolean valuesAlreadyEncoded) {
+    private String substituteLiteralAndTemplates(String tpl, TemplateValues supplied, Comp comp,
+                                                 boolean encodeSlash) {
         if (tpl == null || tpl.isEmpty()) return tpl;
         StringBuilder out = new StringBuilder();
         int i = 0;
@@ -537,12 +561,12 @@ public final class CassiniUriBuilder extends UriBuilder {
                 if (resolvedTemplates.containsKey(name)) {
                     out.append(encodeResolved(name, comp, encodeSlash));
                 } else {
-                    Object val = suppliedValue(name, values, valueMap, seen, posIdx);
+                    Object val = supplied.valueOf(name);
                     // §6: when the value is already pre-encoded (buildFromEncoded*),
                     // any '/' it contains must be preserved — it
                     // represents what the caller chose to emit.
-                    out.append(encodeValue(name, val, comp, valuesAlreadyEncoded,
-                            !valuesAlreadyEncoded && encodeSlash));
+                    out.append(encodeValue(name, val, comp, supplied.alreadyEncoded,
+                            !supplied.alreadyEncoded && encodeSlash));
                 }
                 i = end + 1;
                 litStart = i;
@@ -571,19 +595,6 @@ public final class CassiniUriBuilder extends UriBuilder {
                 resolvedTemplatesEncodeSlash.getOrDefault(name, encodeSlash));
     }
 
-    /** The value supplied for a template: by name, then the value already used for it, then the next positional one. */
-    private static Object suppliedValue(String name, Object[] values, Map<String, ?> valueMap,
-                                        Map<String, Object> seen, int[] posIdx) {
-        if (valueMap != null && valueMap.containsKey(name)) return valueMap.get(name);
-        if (seen.containsKey(name)) return seen.get(name);
-        if (values != null && posIdx[0] < values.length) {
-            Object val = values[posIdx[0]++];
-            seen.put(name, val);
-            return val;
-        }
-        throw new IllegalArgumentException("No value supplied for template parameter " + name);
-    }
-
     private static String encodeValue(String name, Object val, Comp comp, boolean encoded, boolean encodeSlash) {
         if (val == null) throw new IllegalArgumentException(
                 "Null value supplied for template parameter " + name);
@@ -600,18 +611,23 @@ public final class CassiniUriBuilder extends UriBuilder {
             if (port >= 0) sb.append(':').append(port);
         }
         appendPath(sb, resolveStoredTemplates(path.toString()));
-        if (!query.isEmpty()) {
-            sb.append('?');
-            boolean first = true;
-            for (var e : query.entrySet())
-                for (String v : e.getValue()) {
-                    if (!first) sb.append('&'); first = false;
-                    sb.append(e.getKey());
-                    if (v != null) sb.append('=').append(resolveStoredTemplates(v));
-                }
-        }
+        if (!query.isEmpty()) appendTemplateQuery(sb);
         if (fragment != null) sb.append('#').append(resolveStoredTemplates(fragment));
         return sb.toString();
+    }
+
+    /** {@code ?name=value&...} with the templates resolved on the builder substituted in the values. */
+    private void appendTemplateQuery(StringBuilder sb) {
+        sb.append('?');
+        boolean first = true;
+        for (var e : query.entrySet()) {
+            for (String v : e.getValue()) {
+                if (!first) sb.append('&');
+                first = false;
+                sb.append(e.getKey());
+                if (v != null) sb.append('=').append(resolveStoredTemplates(v));
+            }
+        }
     }
 
     private String resolveStoredTemplates(String tpl) {
@@ -627,18 +643,21 @@ public final class CassiniUriBuilder extends UriBuilder {
             if (c == '{') {
                 int end = tpl.indexOf('}', i);
                 if (end < 0) { out.append(tpl, i, tpl.length()); break; }
-                String inside = tpl.substring(i + 1, end).trim();
-                int colon = inside.indexOf(':');
-                String name = colon < 0 ? inside : inside.substring(0, colon).trim();
-                if (resolvedTemplates.containsKey(name)) {
-                    boolean enc = resolvedTemplatesEncoded.getOrDefault(name, false);
-                    boolean encSlash = resolvedTemplatesEncodeSlash.getOrDefault(name, true);
-                    out.append(encode(String.valueOf(resolvedTemplates.get(name)), comp, enc, encSlash));
-                } else out.append('{').append(inside).append('}');
+                out.append(resolveStoredTemplate(tpl.substring(i + 1, end).trim(), comp));
                 i = end + 1;
             } else { out.append(c); i++; }
         }
         return out.toString();
+    }
+
+    /** The encoded value of a template resolved on the builder, or the {@code {template}} itself. */
+    private String resolveStoredTemplate(String inside, Comp comp) {
+        int colon = inside.indexOf(':');
+        String name = colon < 0 ? inside : inside.substring(0, colon).trim();
+        if (!resolvedTemplates.containsKey(name)) return "{" + inside + "}";
+        boolean enc = resolvedTemplatesEncoded.getOrDefault(name, false);
+        boolean encSlash = resolvedTemplatesEncodeSlash.getOrDefault(name, true);
+        return encode(String.valueOf(resolvedTemplates.get(name)), comp, enc, encSlash);
     }
 
     // --- Encoding helpers ---

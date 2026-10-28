@@ -118,7 +118,7 @@ public final class CassiniHttpHeaders implements HttpHeaders {
     private static double qValue(MediaType mt) {
         String q = mt.getParameters().get("q");
         if (q == null) return 1.0;
-        try { return Double.parseDouble(q); } catch (NumberFormatException e) { return 1.0; }
+        try { return Double.parseDouble(q); } catch (NumberFormatException _) { return 1.0; }
     }
 
     @Override public MediaType getMediaType() {
@@ -143,39 +143,57 @@ public final class CassiniHttpHeaders implements HttpHeaders {
         // separated by ';' with $Version/$Path/$Domain attributes that apply
         // to the following ($Version) or preceding ($Path/$Domain) cookie.
         Map<String, Cookie> out = new HashMap<>();
-        for (String header : exchange.headers("Cookie")) {
-            int currentVersion = 0;
-            String pendingName = null, pendingValue = null;
-            String pendingPath = null, pendingDomain = null;
-            for (String pair : header.split(";")) {
-                int eq = pair.indexOf('=');
-                if (eq < 0) continue;
-                String n = pair.substring(0, eq).trim();
-                String v = pair.substring(eq + 1).trim();
-                if (v.length() >= 2 && v.charAt(0) == '"' && v.charAt(v.length() - 1) == '"') {
-                    v = v.substring(1, v.length() - 1);
+        for (String header : exchange.headers("Cookie")) parseCookieHeader(header, out);
+        return out;
+    }
+
+    /** Parses one {@code Cookie} header into {@code out}, applying the RFC 2109 attributes. */
+    private static void parseCookieHeader(String header, Map<String, Cookie> out) {
+        int currentVersion = 0;
+        String pendingName = null;
+        String pendingValue = null;
+        String pendingPath = null;
+        String pendingDomain = null;
+        for (String pair : header.split(";")) {
+            int eq = pair.indexOf('=');
+            if (eq < 0) continue;
+            String n = pair.substring(0, eq).trim();
+            String v = unquote(pair.substring(eq + 1).trim());
+            if ("$Version".equalsIgnoreCase(n)) {
+                currentVersion = parseVersion(v, currentVersion);
+            } else if ("$Path".equalsIgnoreCase(n)) {
+                pendingPath = v;
+            } else if ("$Domain".equalsIgnoreCase(n)) {
+                pendingDomain = v;
+            } else {
+                if (pendingName != null) {
+                    flushCookie(out, pendingName, pendingValue, currentVersion, pendingPath, pendingDomain);
+                    pendingPath = null;
+                    pendingDomain = null;
                 }
-                if ("$Version".equalsIgnoreCase(n)) {
-                    try { currentVersion = Integer.parseInt(v); } catch (NumberFormatException ignored) {}
-                } else if ("$Path".equalsIgnoreCase(n)) {
-                    pendingPath = v;
-                } else if ("$Domain".equalsIgnoreCase(n)) {
-                    pendingDomain = v;
-                } else {
-                    if (pendingName != null) {
-                        flushCookie(out, pendingName, pendingValue, currentVersion, pendingPath, pendingDomain);
-                        pendingPath = null;
-                        pendingDomain = null;
-                    }
-                    pendingName = n;
-                    pendingValue = v;
-                }
-            }
-            if (pendingName != null) {
-                flushCookie(out, pendingName, pendingValue, currentVersion, pendingPath, pendingDomain);
+                pendingName = n;
+                pendingValue = v;
             }
         }
-        return out;
+        if (pendingName != null) {
+            flushCookie(out, pendingName, pendingValue, currentVersion, pendingPath, pendingDomain);
+        }
+    }
+
+    private static String unquote(String v) {
+        if (v.length() >= 2 && v.charAt(0) == '"' && v.charAt(v.length() - 1) == '"') {
+            return v.substring(1, v.length() - 1);
+        }
+        return v;
+    }
+
+    /** {@code $Version} as a number; a malformed value keeps {@code current}. */
+    private static int parseVersion(String v, int current) {
+        try {
+            return Integer.parseInt(v);
+        } catch (NumberFormatException _) {
+            return current;
+        }
     }
 
     private static void flushCookie(Map<String, Cookie> out, String name, String value,
@@ -192,12 +210,12 @@ public final class CassiniHttpHeaders implements HttpHeaders {
         try {
             SimpleDateFormat fmt = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US);
             return fmt.parse(raw);
-        } catch (Exception e) { return null; }
+        } catch (Exception _) { return null; }
     }
 
     @Override public int getLength() {
         String raw = exchange.firstHeader("Content-Length");
         if (raw == null) return -1;
-        try { return Integer.parseInt(raw); } catch (NumberFormatException e) { return -1; }
+        try { return Integer.parseInt(raw); } catch (NumberFormatException _) { return -1; }
     }
 }

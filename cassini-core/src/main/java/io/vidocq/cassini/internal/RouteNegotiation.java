@@ -68,43 +68,50 @@ final class RouteNegotiation {
         MatchResult best = null;
         double bestScore = -1;
         for (MatchResult c : candidates) {
-            var cons = MediaTypes.fromSet(c.method().consumes());
-            if (hasRequestBody(request) && !cons.isEmpty() && !MediaTypes.consumesMatches(ct, cons)) continue;
-            var prod = MediaTypes.fromSet(c.method().produces());
-            // §3.7.2: @Consumes specificity dominates @Produces (scaled ×10).
-            // text/plain > text/* > */* > absence of @Consumes (if ct is present).
-            double consScore = consumesSpecificity(ct, cons);
-            double prodScore = 0;
-            if (!prod.isEmpty()) {
-                var pick = MediaTypes.pickProduced(accepts, prod);
-                if (pick.isEmpty()) continue;
-                // §3.7.2 / JAXRS:SPEC:25.11 + 26.8: order
-                //   primary   = q-value of the MOST SPECIFIC matching Accept
-                //               (cf. bestAcceptQuality)
-                //   secondary = qs-value (source quality, server-side)
-                //   tertiary  = @Produces specificity (tie-break)
-                double acceptQ = bestAcceptQuality(accepts, prod);
-                double qs = sourceQuality(prod);
-                double spec = producesAnnotationSpecificity(accepts, prod);
-                prodScore = acceptQ * 1_000_000 + qs * 1_000 + spec;
-            }
-            // §3.7.2: URI template specificity dominates first (literalChars
-            // desc, totalCaptures desc, defaultCaptures asc), then @Consumes,
-            // then @Produces. Scales: classPathLiterals (×1e8) > template
-            // literalChars (×1e6) > totalCaptures (×1e3) > inverse defaultCaptures
-            // (×1) > consumes (×10) > produces.
-            int classLits = c.method().classPathLiterals();
-            int tplLits = c.method().template().literalChars();
-            int totalCaps = c.method().template().totalCaptures();
-            int defaultCaps = c.method().template().defaultCaptures();
-            double score = classLits * 1e8
-                    + tplLits * 1e6
-                    + totalCaps * 1e3
-                    + (1000 - defaultCaps)
-                    + consScore * 10 + prodScore;
+            double score = candidateScore(c, request, ct, accepts);
             if (score > bestScore) { best = c; bestScore = score; }
         }
         return best != null ? best : candidates.get(0);
+    }
+
+    /** The §3.7.2 rank of a candidate, or -1 when its @Consumes rejects the request body
+     *  or its @Produces matches no Accept. */
+    private static double candidateScore(MatchResult c, CassiniHttpExchange request, MediaType ct,
+                                         List<MediaType> accepts) {
+        var cons = MediaTypes.fromSet(c.method().consumes());
+        if (hasRequestBody(request) && !cons.isEmpty() && !MediaTypes.consumesMatches(ct, cons)) return -1;
+        var prod = MediaTypes.fromSet(c.method().produces());
+        // §3.7.2: @Consumes specificity dominates @Produces (scaled ×10).
+        // text/plain > text/* > */* > absence of @Consumes (if ct is present).
+        double consScore = consumesSpecificity(ct, cons);
+        double prodScore = 0;
+        if (!prod.isEmpty()) {
+            var pick = MediaTypes.pickProduced(accepts, prod);
+            if (pick.isEmpty()) return -1;
+            // §3.7.2 / JAXRS:SPEC:25.11 + 26.8: order
+            //   primary   = q-value of the MOST SPECIFIC matching Accept
+            //               (cf. bestAcceptQuality)
+            //   secondary = qs-value (source quality, server-side)
+            //   tertiary  = @Produces specificity (tie-break)
+            double acceptQ = bestAcceptQuality(accepts, prod);
+            double qs = sourceQuality(prod);
+            double spec = producesAnnotationSpecificity(accepts, prod);
+            prodScore = acceptQ * 1_000_000 + qs * 1_000 + spec;
+        }
+        // §3.7.2: URI template specificity dominates first (literalChars
+        // desc, totalCaptures desc, defaultCaptures asc), then @Consumes,
+        // then @Produces. Scales: classPathLiterals (×1e8) > template
+        // literalChars (×1e6) > totalCaptures (×1e3) > inverse defaultCaptures
+        // (×1) > consumes (×10) > produces.
+        int classLits = c.method().classPathLiterals();
+        int tplLits = c.method().template().literalChars();
+        int totalCaps = c.method().template().totalCaptures();
+        int defaultCaps = c.method().template().defaultCaptures();
+        return classLits * 1e8
+                + tplLits * 1e6
+                + totalCaps * 1e3
+                + (1000 - defaultCaps)
+                + consScore * 10 + prodScore;
     }
 
     /** Specificity of the best-ranked @Produces matching an Accept, computed
@@ -132,17 +139,22 @@ final class RouteNegotiation {
         double bestQ = 0;
         int bestSpec = -1;
         for (MediaType a : accepts) {
-            for (MediaType p : produces) {
-                if (!MediaTypes.matches(a, p)) continue;
-                int aSpec = (!a.isWildcardType() ? 2 : 0) + (!a.isWildcardSubtype() ? 1 : 0);
-                double q = MediaTypes.quality(a);
-                if (aSpec > bestSpec || (aSpec == bestSpec && q > bestQ)) {
-                    bestSpec = aSpec;
-                    bestQ = q;
-                }
+            if (!matchesAny(a, produces)) continue;
+            int aSpec = (!a.isWildcardType() ? 2 : 0) + (!a.isWildcardSubtype() ? 1 : 0);
+            double q = MediaTypes.quality(a);
+            if (aSpec > bestSpec || (aSpec == bestSpec && q > bestQ)) {
+                bestSpec = aSpec;
+                bestQ = q;
             }
         }
         return bestQ;
+    }
+
+    private static boolean matchesAny(MediaType accept, List<MediaType> produces) {
+        for (MediaType p : produces) {
+            if (MediaTypes.matches(accept, p)) return true;
+        }
+        return false;
     }
 
     /** Returns the specificity of the most precise @Consumes that matches ct. */

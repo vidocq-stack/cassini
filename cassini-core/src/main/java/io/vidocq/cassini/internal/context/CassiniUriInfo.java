@@ -144,7 +144,7 @@ public final class CassiniUriInfo implements UriInfo {
             String pq = pathAndQuery == null ? "/" : pathAndQuery;
             if (!pq.startsWith("/")) pq = "/" + pq;
             return new URI(scheme + "://" + host + pq);
-        } catch (Exception e) { return exchange.requestUri(); }
+        } catch (Exception _) { return exchange.requestUri(); }
     }
 
     @Override public UriBuilder getRequestUriBuilder() {
@@ -155,7 +155,7 @@ public final class CassiniUriInfo implements UriInfo {
         URI req = getRequestUri();
         try {
             return new URI(req.getScheme(), req.getAuthority(), req.getPath(), null, null);
-        } catch (Exception e) { return req; }
+        } catch (Exception _) { return req; }
     }
 
     @Override public UriBuilder getAbsolutePathBuilder() {
@@ -166,7 +166,7 @@ public final class CassiniUriInfo implements UriInfo {
         URI req = getRequestUri();
         try {
             return baseUri(req.getScheme(), req.getAuthority(), contextPath);
-        } catch (Exception e) { return req; }
+        } catch (Exception _) { return req; }
     }
 
     @Override public UriBuilder getBaseUriBuilder() {
@@ -183,7 +183,7 @@ public final class CassiniUriInfo implements UriInfo {
                 if (decode && v != null && v.indexOf('%') >= 0) {
                     try { val = java.net.URLDecoder.decode(v.replace("+", "%2B"),
                             java.nio.charset.StandardCharsets.UTF_8); }
-                    catch (Exception ignored) {}
+                    catch (Exception _) { /* malformed escape: the raw value is kept */ }
                 }
                 m.add(k, val);
             }
@@ -198,19 +198,23 @@ public final class CassiniUriInfo implements UriInfo {
         // In decode=false mode we re-read from getRawQuery(); otherwise we use
         // the SPI helper that decodes.
         if (!decode) {
-            String rawQuery = exchange.requestUri().getRawQuery();
-            if (rawQuery == null || rawQuery.isEmpty()) return m;
-            for (String pair : rawQuery.split("&")) {
-                if (pair.isEmpty()) continue;
-                int eq = pair.indexOf('=');
-                String k = eq < 0 ? pair : pair.substring(0, eq);
-                String v = eq < 0 ? "" : pair.substring(eq + 1);
-                m.add(k, v);
-            }
+            addRawQueryParameters(exchange.requestUri().getRawQuery(), m);
         } else {
             exchange.queryParams().forEach((k, vs) -> { for (String v : vs) m.add(k, v); });
         }
         return m;
+    }
+
+    /** Adds the still-encoded {@code name=value} pairs of {@code rawQuery} to {@code m}. */
+    private static void addRawQueryParameters(String rawQuery, MultivaluedMap<String, String> m) {
+        if (rawQuery == null || rawQuery.isEmpty()) return;
+        for (String pair : rawQuery.split("&")) {
+            if (pair.isEmpty()) continue;
+            int eq = pair.indexOf('=');
+            String k = eq < 0 ? pair : pair.substring(0, eq);
+            String v = eq < 0 ? "" : pair.substring(eq + 1);
+            m.add(k, v);
+        }
     }
 
     @Override public List<String> getMatchedURIs() { return getMatchedURIs(true); }

@@ -129,7 +129,9 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
                 if (raw instanceof java.util.Optional<?> opt) {
                     opt.ifPresent(v -> props.put(key, v));
                 }
-            } catch (RuntimeException ignored) {}
+            } catch (RuntimeException _) {
+                // a property the source cannot provide is left unset
+            }
         }
         @Override public SeBootstrap.Configuration build() {
             return new CassiniBootstrapConfig(java.util.Map.copyOf(props));
@@ -332,14 +334,8 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
         @Override public String toString(jakarta.ws.rs.core.CacheControl c) {
             if (c == null) throw new IllegalArgumentException("value is null");
             StringBuilder sb = new StringBuilder();
-            if (c.isPrivate()) {
-                if (c.getPrivateFields().isEmpty()) append(sb, "private");
-                else append(sb, "private=\"" + String.join(",", c.getPrivateFields()) + "\"");
-            }
-            if (c.isNoCache()) {
-                if (c.getNoCacheFields().isEmpty()) append(sb, "no-cache");
-                else append(sb, "no-cache=\"" + String.join(",", c.getNoCacheFields()) + "\"");
-            }
+            if (c.isPrivate()) appendWithFields(sb, "private", c.getPrivateFields());
+            if (c.isNoCache()) appendWithFields(sb, "no-cache", c.getNoCacheFields());
             if (c.isNoStore()) append(sb, "no-store");
             if (c.isNoTransform()) append(sb, "no-transform");
             if (c.isMustRevalidate()) append(sb, "must-revalidate");
@@ -355,6 +351,11 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
         private static void append(StringBuilder sb, String v) {
             if (!sb.isEmpty()) sb.append(", ");
             sb.append(v);
+        }
+        /** {@code directive}, or {@code directive="f1,f2"} when it is restricted to header fields. */
+        private static void appendWithFields(StringBuilder sb, String directive, java.util.List<String> fields) {
+            if (fields.isEmpty()) append(sb, directive);
+            else append(sb, directive + "=\"" + String.join(",", fields) + "\"");
         }
     }
 
@@ -458,22 +459,25 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
             java.util.List<MediaType> mts = mediaTypes.isEmpty() ? java.util.Collections.singletonList(null) : mediaTypes;
             java.util.List<java.util.Locale> ls = languages.isEmpty() ? java.util.Collections.singletonList(null) : languages;
             java.util.List<String> encs = encodings.isEmpty() ? java.util.Collections.singletonList(null) : encodings;
-            for (MediaType m : mts) for (java.util.Locale l : ls) for (String e : encs)
-                variants.add(new Variant(m, l, e));
+            for (MediaType m : mts) {
+                for (java.util.Locale l : ls) {
+                    for (String e : encs) variants.add(new Variant(m, l, e));
+                }
+            }
             mediaTypes.clear(); languages.clear(); encodings.clear();
             return this;
         }
 
         @Override public Variant.VariantListBuilder languages(java.util.Locale... langs) {
-            for (java.util.Locale l : langs) languages.add(l);
+            java.util.Collections.addAll(languages, langs);
             return this;
         }
         @Override public Variant.VariantListBuilder encodings(String... enc) {
-            for (String e : enc) encodings.add(e);
+            java.util.Collections.addAll(encodings, enc);
             return this;
         }
         @Override public Variant.VariantListBuilder mediaTypes(MediaType... mts) {
-            for (MediaType m : mts) mediaTypes.add(m);
+            java.util.Collections.addAll(mediaTypes, mts);
             return this;
         }
     }
@@ -507,23 +511,19 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
                     throw new IllegalArgumentException("malformed Link header: " + link);
                 }
                 uri(s.substring(1, gt));
-                String rest = gt + 1 < s.length() ? s.substring(gt + 1) : "";
-                for (String p : rest.split(";")) {
-                    String pp = p.trim();
-                    int eq = pp.indexOf('=');
-                    if (eq < 0) continue;
-                    String name = pp.substring(0, eq).trim();
-                    String value = pp.substring(eq + 1).trim();
-                    if (value.length() >= 2 && value.charAt(0) == '"'
-                            && value.charAt(value.length() - 1) == '"') {
-                        value = value.substring(1, value.length() - 1);
-                    }
-                    params.put(name, value);
-                }
+                putParams(gt + 1 < s.length() ? s.substring(gt + 1) : "");
             } else {
                 uri(s);
             }
             return this;
+        }
+        /** Adds the {@code ;name=value} parameters that follow the URI of a Link header. */
+        private void putParams(String rest) {
+            for (String p : rest.split(";")) {
+                String pp = p.trim();
+                int eq = pp.indexOf('=');
+                if (eq >= 0) params.put(pp.substring(0, eq).trim(), stripQuotes(pp.substring(eq + 1).trim()));
+            }
         }
         @Override public Link.Builder uri(java.net.URI uri) {
             if (uri == null) throw new IllegalArgumentException("uri");
@@ -615,21 +615,25 @@ public class CassiniRuntimeDelegate extends RuntimeDelegate {
         private static String substituteTemplates(String tpl, Object[] values) {
             if (tpl.indexOf('{') < 0) return tpl;
             StringBuilder out = new StringBuilder();
-            int i = 0, pos = 0;
+            int i = 0;
+            int pos = 0;
             java.util.Map<String, Object> seen = new java.util.LinkedHashMap<>();
             while (i < tpl.length()) {
                 char c = tpl.charAt(i);
-                if (c == '{') {
-                    int end = tpl.indexOf('}', i);
-                    if (end < 0) { out.append(tpl, i, tpl.length()); break; }
+                int end = c == '{' ? tpl.indexOf('}', i) : -1;
+                if (c != '{') {
+                    out.append(c);
+                    i++;
+                } else if (end < 0) {
+                    out.append(tpl, i, tpl.length());
+                    i = tpl.length();
+                } else {
                     String name = templateName(tpl, i, end);
-                    Object val;
-                    if (seen.containsKey(name)) val = seen.get(name);
-                    else if (pos < values.length) { val = values[pos++]; seen.put(name, val); }
-                    else { out.append('{').append(tpl, i + 1, end).append('}'); i = end + 1; continue; }
-                    out.append(val);
+                    if (seen.containsKey(name)) out.append(seen.get(name));
+                    else if (pos < values.length) { Object val = values[pos++]; seen.put(name, val); out.append(val); }
+                    else out.append('{').append(tpl, i + 1, end).append('}');
                     i = end + 1;
-                } else { out.append(c); i++; }
+                }
             }
             return out.toString();
         }

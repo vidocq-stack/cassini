@@ -21,12 +21,12 @@ package io.vidocq.cassini.internal.context;
 
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import io.vidocq.cassini.internal.MediaTypes;
+import io.vidocq.cassini.internal.runtime.HeaderValues;
 import jakarta.ws.rs.core.EntityTag;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Variant;
 
-import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 import java.util.List;
@@ -71,6 +71,16 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
         boolean anyMedia = variants.stream().anyMatch(v -> v.getMediaType() != null);
         boolean anyLang = variants.stream().anyMatch(v -> v.getLanguage() != null);
         boolean anyEnc = variants.stream().anyMatch(v -> v.getEncoding() != null);
+        addPendingVary(anyMedia, anyLang, anyEnc);
+
+        for (Variant v : variants) {
+            if (acceptable(v, accepts, langWildcard ? List.of() : langs, encWildcard ? null : acceptEnc)) return v;
+        }
+        return null;
+    }
+
+    /** Records the negotiated dimensions for the {@code Vary} response header. */
+    private void addPendingVary(boolean anyMedia, boolean anyLang, boolean anyEnc) {
         @SuppressWarnings("unchecked")
         java.util.Set<String> vary = (java.util.Set<String>) delegate.getAttribute(ATTR_PENDING_VARY);
         if (vary == null) {
@@ -80,24 +90,21 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
         if (anyMedia) vary.add("Accept");
         if (anyLang) vary.add("Accept-Language");
         if (anyEnc) vary.add("Accept-Encoding");
+    }
 
-        Variant best = null;
-        for (Variant v : variants) {
-            if (v.getMediaType() != null && !accepts.isEmpty()) {
-                boolean ok = accepts.stream().anyMatch(a -> MediaTypes.matches(a, v.getMediaType()));
-                if (!ok) continue;
-            }
-            if (v.getLanguage() != null && !langs.isEmpty() && !langWildcard) {
-                boolean ok = langs.stream().anyMatch(l -> sameLang(l, v.getLanguage()));
-                if (!ok) continue;
-            }
-            if (v.getEncoding() != null && acceptEnc != null && !encWildcard) {
-                if (!acceptEnc.toLowerCase().contains(v.getEncoding().toLowerCase())) continue;
-            }
-            best = v;
-            break;
+    /** True when every dimension {@code v} declares is accepted; an empty {@code langs} or a
+     *  {@code null} {@code acceptEnc} accepts any language or encoding. */
+    private static boolean acceptable(Variant v, List<MediaType> accepts, List<Locale> langs, String acceptEnc) {
+        if (v.getMediaType() != null && !accepts.isEmpty()
+                && accepts.stream().noneMatch(a -> MediaTypes.matches(a, v.getMediaType()))) {
+            return false;
         }
-        return best;
+        if (v.getLanguage() != null && !langs.isEmpty()
+                && langs.stream().noneMatch(l -> sameLang(l, v.getLanguage()))) {
+            return false;
+        }
+        return v.getEncoding() == null || acceptEnc == null
+                || acceptEnc.toLowerCase().contains(v.getEncoding().toLowerCase());
     }
 
     /** RFC 7231 §5.3: an Accept-Language/Encoding may contain "*" which matches
@@ -173,7 +180,7 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
 
     private static boolean matchesEtag(String header, EntityTag eTag) {
         if (header.trim().equals("*")) return true;
-        String tag = eTag.toString();
+        String tag = HeaderValues.format(eTag);
         for (String tok : header.split(",")) {
             if (tok.trim().equals(tag)) return true;
             // ignore weak/strong distinction in MVP
@@ -183,14 +190,6 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
     }
 
     private static Date parseHttpDate(String s) {
-        if (s == null) return null;
-        for (String fmt : new String[] {
-                "EEE, dd MMM yyyy HH:mm:ss zzz",
-                "EEEE, dd-MMM-yy HH:mm:ss zzz",
-                "EEE MMM d HH:mm:ss yyyy"}) {
-            try { return new SimpleDateFormat(fmt, Locale.US).parse(s); }
-            catch (java.text.ParseException ignored) {}
-        }
-        return null;
+        return HeaderValues.httpDate(s);
     }
 }

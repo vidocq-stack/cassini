@@ -82,32 +82,34 @@ public final class CassiniProviders implements Providers {
         int bestScore = -1;
         for (ContextResolver<?> cr : contextResolvers) {
             Class<?> param = resolveContextType(cr.getClass());
-            if (param == null) continue;
-            if (!contextType.isAssignableFrom(param)) continue;
-            jakarta.ws.rs.Produces prod = cr.getClass().getAnnotation(jakarta.ws.rs.Produces.class);
-            int score = -1;
-            if (prod == null || prod.value().length == 0) {
-                // No @Produces → implicit wildcard, score 0
-                score = 0;
-            } else {
-                for (String mt : prod.value()) {
-                    MediaType declared = io.vidocq.cassini.internal.MediaTypes.parse(mt);
-                    if (mediaType == null
-                            || io.vidocq.cassini.internal.MediaTypes.matches(declared, mediaType)) {
-                        // Specificity: 2 for concrete type, 1 for concrete subtype
-                        int sp = (!declared.isWildcardType() ? 2 : 0)
-                                + (!declared.isWildcardSubtype() ? 1 : 0);
-                        if (sp > score) score = sp;
-                    }
-                }
-                if (score < 0) continue;
-            }
+            int score = param != null && contextType.isAssignableFrom(param) ? producesScore(cr, mediaType) : -1;
             if (score > bestScore) {
                 best = cr;
                 bestScore = score;
             }
         }
         return (ContextResolver<T>) best;
+    }
+
+    /** How specifically the {@code @Produces} of {@code cr} matches {@code mediaType}: 0 for no
+     *  {@code @Produces} (implicit wildcard), else the best of 2 for a concrete type plus 1 for a
+     *  concrete subtype among the matching entries; -1 when none matches. */
+    private static int producesScore(ContextResolver<?> cr, MediaType mediaType) {
+        jakarta.ws.rs.Produces prod = cr.getClass().getAnnotation(jakarta.ws.rs.Produces.class);
+        // No @Produces → implicit wildcard, score 0
+        if (prod == null || prod.value().length == 0) return 0;
+        int score = -1;
+        for (String mt : prod.value()) {
+            MediaType declared = io.vidocq.cassini.internal.MediaTypes.parse(mt);
+            if (mediaType == null
+                    || io.vidocq.cassini.internal.MediaTypes.matches(declared, mediaType)) {
+                // Specificity: 2 for concrete type, 1 for concrete subtype
+                int sp = (!declared.isWildcardType() ? 2 : 0)
+                        + (!declared.isWildcardSubtype() ? 1 : 0);
+                if (sp > score) score = sp;
+            }
+        }
+        return score;
     }
 
     private static Class<?> resolveContextType(Class<?> cls) {

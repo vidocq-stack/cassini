@@ -409,7 +409,6 @@ public class CassiniResourceProcessor extends AbstractProcessor {
 
     /** Collects resource methods and detects whether the class has locators. */
     private RouteCollection collectRoutes(TypeElement resourceType) {
-        boolean hasLocators = false;
         List<RouteMethodModel> methods = new ArrayList<>();
 
         // Get class-level @Path, @Produces, @Consumes
@@ -432,11 +431,9 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             String methodPathValue = annotationValue(m, JAKARTA_PATH, VALUE);
 
             if (verb == null) {
-                // Sub-resource locator: @Path without HTTP verb
-                if (methodPathValue != null) {
-                    hasLocators = true;
-                }
-                // No verb, no @Path = skip
+                // Sub-resource locator (@Path without HTTP verb): signal fallback for the whole
+                // class. No verb, no @Path = skip.
+                if (methodPathValue != null) return new RouteCollection(true, List.of());
                 continue;
             }
 
@@ -445,34 +442,32 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                     ? basePath
                     : combinePaths(basePath, normalizePath(methodPathValue));
 
-            List<String> methodProduces = annotationValues(m, "jakarta.ws.rs.Produces", VALUE);
-            List<String> methodConsumes = annotationValues(m, "jakarta.ws.rs.Consumes", VALUE);
-            List<String> effProduces = methodProduces.isEmpty() ? classProduces : methodProduces;
-            List<String> effConsumes = methodConsumes.isEmpty() ? classConsumes : methodConsumes;
-
-            // Parameter types for targeted reflection
-            List<String> paramTypeNames = new ArrayList<>();
-            for (VariableElement param : m.getParameters()) {
-                paramTypeNames.add(jvmBinaryName(param.asType()));
-            }
-
             methods.add(new RouteMethodModel(
                     beanClassLiteral,
                     m.getSimpleName().toString(),
-                    paramTypeNames,
+                    paramTypeNames(m),
                     verb,
                     fullPath,
-                    effProduces,
-                    effConsumes,
+                    orElse(annotationValues(m, "jakarta.ws.rs.Produces", VALUE), classProduces),
+                    orElse(annotationValues(m, "jakarta.ws.rs.Consumes", VALUE), classConsumes),
                     classPathLiterals
             ));
         }
-
-        // If any locators detected, signal fallback for the whole class
-        if (hasLocators) {
-            return new RouteCollection(true, List.of());
-        }
         return new RouteCollection(false, List.copyOf(methods));
+    }
+
+    /** The method's media types, or the class ones when the method declares none. */
+    private static List<String> orElse(List<String> methodValues, List<String> classValues) {
+        return methodValues.isEmpty() ? classValues : methodValues;
+    }
+
+    /** Parameter types for targeted reflection. */
+    private List<String> paramTypeNames(ExecutableElement m) {
+        List<String> paramTypeNames = new ArrayList<>();
+        for (VariableElement param : m.getParameters()) {
+            paramTypeNames.add(jvmBinaryName(param.asType()));
+        }
+        return paramTypeNames;
     }
 
     /** Collects all public non-static methods visible on the type (declared + inherited). */
@@ -486,19 +481,19 @@ public class CassiniResourceProcessor extends AbstractProcessor {
     private void collectMethodsRecursive(TypeElement type, Set<String> seen, List<ExecutableElement> result) {
         if (type == null || isObjectType(type)) return;
         for (Element enc : type.getEnclosedElements()) {
-            if (enc.getKind() != ElementKind.METHOD) continue;
-            ExecutableElement ee = (ExecutableElement) enc;
-            if (!ee.getModifiers().contains(Modifier.PUBLIC)) continue;
-            if (ee.getModifiers().contains(Modifier.STATIC)) continue;
-            String sig = ee.getSimpleName().toString() + buildJvmParamDescriptor(ee);
-            if (!seen.contains(sig)) {
-                seen.add(sig);
-                result.add(ee);
+            if (isPublicInstanceMethod(enc)
+                    && seen.add(enc.getSimpleName().toString() + buildJvmParamDescriptor((ExecutableElement) enc))) {
+                result.add((ExecutableElement) enc);
             }
         }
         for (TypeElement parent : supertypes(type)) {
             collectMethodsRecursive(parent, seen, result);
         }
+    }
+
+    private static boolean isPublicInstanceMethod(Element enc) {
+        return enc.getKind() == ElementKind.METHOD && enc.getModifiers().contains(Modifier.PUBLIC)
+                && !enc.getModifiers().contains(Modifier.STATIC);
     }
 
     /** The superclass of {@code type} (if any), then its declared interfaces (for default methods). */
@@ -568,18 +563,19 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                 .orElse(List.of());
     }
 
+    private static boolean isPrimitiveOrVoid(TypeMirror t) {
+        return t.getKind().isPrimitive() || t.getKind() == TypeKind.VOID;
+    }
+
+    /** The Java keyword of a primitive or void type: its {@link TypeKind} name in lower case. */
+    private static String primitiveName(TypeMirror t) {
+        return t.getKind().name().toLowerCase(java.util.Locale.ROOT);
+    }
+
     /** Returns the binary name suitable for use in a generated Class.getDeclaredMethod call. */
     private String jvmBinaryName(TypeMirror t) {
+        if (isPrimitiveOrVoid(t)) return primitiveName(t);
         return switch (t.getKind()) {
-            case BOOLEAN -> "boolean";
-            case BYTE    -> "byte";
-            case SHORT   -> "short";
-            case INT     -> "int";
-            case LONG    -> "long";
-            case FLOAT   -> "float";
-            case DOUBLE  -> "double";
-            case CHAR    -> "char";
-            case VOID    -> "void";
             case ARRAY   -> jvmBinaryName(((ArrayType) t).getComponentType()) + "[]";
             case DECLARED -> {
                 TypeElement te = (TypeElement) ((DeclaredType) t).asElement();
@@ -988,13 +984,10 @@ public class CassiniResourceProcessor extends AbstractProcessor {
      */
     private boolean hasAccessibleNoArgCtor(TypeElement resourceType) {
         for (Element enc : resourceType.getEnclosedElements()) {
-            if (enc.getKind() != ElementKind.CONSTRUCTOR) continue;
-            ExecutableElement ctor = (ExecutableElement) enc;
-            if (!ctor.getParameters().isEmpty()) continue;
-            // no-arg constructor found — check accessibility
-            Set<Modifier> mods = ctor.getModifiers();
-            // private → not accessible from same-package adapter
-            return !mods.contains(Modifier.PRIVATE);
+            if (enc.getKind() == ElementKind.CONSTRUCTOR && ((ExecutableElement) enc).getParameters().isEmpty()) {
+                // no-arg constructor found: private → not accessible from same-package adapter
+                return !enc.getModifiers().contains(Modifier.PRIVATE);
+            }
         }
         // No explicit no-arg constructor: it is implicitly public when the class is public/package
         // and there are no other constructors. Check whether the class has any explicit constructors.
@@ -1039,32 +1032,35 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         while (cls != null && !isObjectType(cls)) {
             // Sort declared fields by name for reproducibility (getDeclaredFields order is
             // JVM-internal; javax.lang.model has the same caveat).
-            List<VariableElement> declared = new ArrayList<>();
-            for (Element enc : cls.getEnclosedElements()) {
-                if (enc.getKind() == ElementKind.FIELD) {
-                    VariableElement ve = (VariableElement) enc;
-                    if (!ve.getModifiers().contains(Modifier.STATIC)) {
-                        declared.add(ve);
-                    }
-                }
-            }
-            declared.sort(Comparator.comparing(ve -> ve.getSimpleName().toString()));
-
-            for (VariableElement ve : declared) {
+            for (VariableElement ve : instanceFieldsByName(cls)) {
                 FieldModel fm = describeField(ve, cls, index);
                 if (fm != null) {
                     result.add(fm);
                     index++;
                 }
             }
-            // move to superclass
-            TypeMirror superMirror = cls.getSuperclass();
-            if (superMirror == null || superMirror.getKind() == TypeKind.NONE) break;
-            Element superElem = ((DeclaredType) superMirror).asElement();
-            if (!(superElem instanceof TypeElement)) break;
-            cls = (TypeElement) superElem;
+            cls = superclassOf(cls);
         }
         return result;
+    }
+
+    /** The non-static fields {@code cls} declares, sorted by name. */
+    private static List<VariableElement> instanceFieldsByName(TypeElement cls) {
+        List<VariableElement> declared = new ArrayList<>();
+        for (Element enc : cls.getEnclosedElements()) {
+            if (enc.getKind() == ElementKind.FIELD && !enc.getModifiers().contains(Modifier.STATIC)) {
+                declared.add((VariableElement) enc);
+            }
+        }
+        declared.sort(Comparator.comparing(ve -> ve.getSimpleName().toString()));
+        return declared;
+    }
+
+    /** The superclass element of {@code cls}, or {@code null} when it has none. */
+    private static TypeElement superclassOf(TypeElement cls) {
+        TypeMirror superMirror = cls.getSuperclass();
+        if (superMirror == null || superMirror.getKind() == TypeKind.NONE) return null;
+        return ((DeclaredType) superMirror).asElement() instanceof TypeElement superType ? superType : null;
     }
 
     private FieldModel describeField(VariableElement ve, TypeElement declaring, int index) {
@@ -1169,23 +1165,13 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         if (type == null || isObjectType(type)) return;
 
         // Process declared methods first
+        // Bridge and synthetic methods cannot be detected in javax.lang.model, but the model
+        // normally exposes only the non-bridge overrides of covariant return types.
         for (Element enc : type.getEnclosedElements()) {
-            if (enc.getKind() != ElementKind.METHOD) continue;
-            ExecutableElement ee = (ExecutableElement) enc;
-            Set<Modifier> mods = ee.getModifiers();
-            if (!mods.contains(Modifier.PUBLIC)) continue;
-            if (mods.contains(Modifier.STATIC)) continue;
-            // Bridge and synthetic cannot be directly detected in javax.lang.model;
-            // we exclude methods that are purely synthetic overrides of generics (covariant
-            // return bridges), but the model normally only exposes the non-bridge overrides.
-
-            String paramDesc = buildJvmParamDescriptor(ee);
-            String key = ee.getSimpleName().toString() + paramDesc;
-            if (seen.contains(key)) continue;
-            seen.add(key);
-
-            MethodModel mm = describeMethod(ee, type);
-            result.add(mm);
+            if (isPublicInstanceMethod(enc)
+                    && seen.add(enc.getSimpleName().toString() + buildJvmParamDescriptor((ExecutableElement) enc))) {
+                result.add(describeMethod((ExecutableElement) enc, type));
+            }
         }
 
         // Recurse into the superclass, then the interfaces (for default methods)
@@ -1233,16 +1219,8 @@ public class CassiniResourceProcessor extends AbstractProcessor {
     }
 
     private String toJvmDescriptor(TypeMirror t) {
+        if (isPrimitiveOrVoid(t)) return Class.forPrimitiveName(primitiveName(t)).descriptorString();
         return switch (t.getKind()) {
-            case BOOLEAN -> "Z";
-            case BYTE    -> "B";
-            case SHORT   -> "S";
-            case INT     -> "I";
-            case LONG    -> "J";
-            case FLOAT   -> "F";
-            case DOUBLE  -> "D";
-            case CHAR    -> "C";
-            case VOID    -> "V";
             case ARRAY   -> "[" + toJvmDescriptor(((ArrayType) t).getComponentType());
             case DECLARED -> {
                 TypeElement te = (TypeElement) ((DeclaredType) t).asElement();
@@ -1256,16 +1234,8 @@ public class CassiniResourceProcessor extends AbstractProcessor {
 
     /** Returns the Java source name for a TypeMirror (for use in generated source). */
     private String javaTypeName(TypeMirror t) {
+        if (isPrimitiveOrVoid(t)) return primitiveName(t);
         return switch (t.getKind()) {
-            case BOOLEAN -> "boolean";
-            case BYTE    -> "byte";
-            case SHORT   -> "short";
-            case INT     -> "int";
-            case LONG    -> "long";
-            case FLOAT   -> "float";
-            case DOUBLE  -> "double";
-            case CHAR    -> "char";
-            case VOID    -> "void";
             case ARRAY   -> javaTypeName(((ArrayType) t).getComponentType()) + "[]";
             case DECLARED -> {
                 TypeElement te = (TypeElement) ((DeclaredType) t).asElement();
@@ -1281,16 +1251,8 @@ public class CassiniResourceProcessor extends AbstractProcessor {
 
     /** Returns a {@code SomeClass.class} literal for use in generated source. */
     private String classLiteral(TypeMirror t) {
+        if (isPrimitiveOrVoid(t)) return primitiveName(t) + DOT_CLASS;
         return switch (t.getKind()) {
-            case BOOLEAN -> "boolean.class";
-            case BYTE    -> "byte.class";
-            case SHORT   -> "short.class";
-            case INT     -> "int.class";
-            case LONG    -> "long.class";
-            case FLOAT   -> "float.class";
-            case DOUBLE  -> "double.class";
-            case CHAR    -> "char.class";
-            case VOID    -> "void.class";
             case ARRAY   -> {
                 // e.g. byte[].class
                 String comp = javaTypeName(((ArrayType) t).getComponentType());
@@ -1422,7 +1384,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         if (ps == null) return false;
         try {
             return types.isAssignable(types.erasure(type), types.erasure(ps.asType()));
-        } catch (RuntimeException e) {
+        } catch (RuntimeException _) {
             return false;
         }
     }
@@ -1441,13 +1403,11 @@ public class CassiniResourceProcessor extends AbstractProcessor {
     /** True if {@code te} declares a {@code public static <Type> name(String)} method. */
     private boolean hasPublicStaticStringMethod(TypeElement te, String name) {
         for (Element enc : te.getEnclosedElements()) {
-            if (enc.getKind() != ElementKind.METHOD) continue;
-            ExecutableElement m = (ExecutableElement) enc;
-            if (!m.getSimpleName().contentEquals(name)) continue;
-            Set<Modifier> mods = m.getModifiers();
-            if (!mods.contains(Modifier.STATIC) || !mods.contains(Modifier.PUBLIC)) continue;
-            if (m.getParameters().size() != 1) continue;
-            if (isStringType(m.getParameters().get(0).asType())) return true;
+            if (enc.getKind() == ElementKind.METHOD && enc.getSimpleName().contentEquals(name)
+                    && enc.getModifiers().contains(Modifier.STATIC)
+                    && takesOneString((ExecutableElement) enc)) {
+                return true;
+            }
         }
         return false;
     }
@@ -1455,13 +1415,15 @@ public class CassiniResourceProcessor extends AbstractProcessor {
     /** True if {@code te} declares a {@code public <Type>(String)} constructor. */
     private boolean hasPublicStringConstructor(TypeElement te) {
         for (Element enc : te.getEnclosedElements()) {
-            if (enc.getKind() != ElementKind.CONSTRUCTOR) continue;
-            ExecutableElement c = (ExecutableElement) enc;
-            if (!c.getModifiers().contains(Modifier.PUBLIC)) continue;
-            if (c.getParameters().size() != 1) continue;
-            if (isStringType(c.getParameters().get(0).asType())) return true;
+            if (enc.getKind() == ElementKind.CONSTRUCTOR && takesOneString((ExecutableElement) enc)) return true;
         }
         return false;
+    }
+
+    /** True for a public method or constructor whose single parameter is a {@code String}. */
+    private boolean takesOneString(ExecutableElement e) {
+        return e.getModifiers().contains(Modifier.PUBLIC) && e.getParameters().size() == 1
+                && isStringType(e.getParameters().get(0).asType());
     }
 
     private boolean isStringType(TypeMirror t) {

@@ -138,32 +138,38 @@ public final class MediaTypes {
         List<MediaType> sortedAccepts = new ArrayList<>(effectiveAccepts);
         sortedAccepts.sort(Comparator.comparingDouble(MediaTypes::quality).reversed());
         for (MediaType a : sortedAccepts) {
-            MediaType best = null;
-            double bestSourceQ = -1;
-            int bestSpec = -1;
-            for (MediaType p : produces) {
-                if (!matches(a, p)) continue;
-                MediaType candidate = p.isWildcardSubtype() || p.isWildcardType() ? a : p;
-                double sq = sourceQuality(p);
-                int spec = specificity(candidate);
-                // Prioritize higher qs, then specificity.
-                if (sq > bestSourceQ || (sq == bestSourceQ && spec > bestSpec)) {
-                    best = candidate;
-                    bestSourceQ = sq;
-                    bestSpec = spec;
-                }
-            }
-            if (best == null) continue;
-            if (producesExplicit && best.isWildcardSubtype()) continue;
-            return Optional.of(best);
+            MediaType best = bestProducedFor(a, produces);
+            if (best != null && !(producesExplicit && best.isWildcardSubtype())) return Optional.of(best);
         }
         return Optional.empty();
+    }
+
+    /** The {@code produces} entry compatible with {@code accept} that has the highest qs, then the
+     *  highest specificity (a wildcard {@code produces} entry yields {@code accept} itself); {@code null}
+     *  when none is compatible. */
+    private static MediaType bestProducedFor(MediaType accept, List<MediaType> produces) {
+        MediaType best = null;
+        double bestSourceQ = -1;
+        int bestSpec = -1;
+        for (MediaType p : produces) {
+            if (!matches(accept, p)) continue;
+            MediaType candidate = p.isWildcardSubtype() || p.isWildcardType() ? accept : p;
+            double sq = sourceQuality(p);
+            int spec = specificity(candidate);
+            // Prioritize higher qs, then specificity.
+            if (sq > bestSourceQ || (sq == bestSourceQ && spec > bestSpec)) {
+                best = candidate;
+                bestSourceQ = sq;
+                bestSpec = spec;
+            }
+        }
+        return best;
     }
 
     private static double sourceQuality(MediaType mt) {
         String qs = mt.getParameters().get("qs");
         if (qs == null) return 1.0;
-        try { return Double.parseDouble(qs); } catch (NumberFormatException e) { return 1.0; }
+        try { return Double.parseDouble(qs); } catch (NumberFormatException _) { return 1.0; }
     }
 
     /** Request Content-Type vs @Consumes method. */

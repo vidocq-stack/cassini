@@ -79,32 +79,35 @@ public final class CassiniReaderInterceptorContext implements ReaderInterceptorC
     }
 
     @Override
-    @SuppressWarnings({"rawtypes", "unchecked"})
+    @SuppressWarnings("unchecked")
     public Object proceed() throws IOException {
         if (index < interceptors.size()) {
             ReaderInterceptor i = interceptors.get(index++).instance();
             return i.aroundReadFrom(this);
         }
-        // §7.2: setType may have changed the target type; re-select
-        // an MBR compatible with the current parameters. The initial terminal
-        // may be null if no MBR was found during the initial scan — in that
-        // case we rely entirely on the registry (interceptors may have
-        // rewritten type/mediaType to match a different MBR).
-        MessageBodyReader r = terminal;
-        if (r == null || (registry != null && !r.isReadable(type, genericType, annotations, mediaType))) {
-            if (registry == null) {
-                if (r == null) throw new jakarta.ws.rs.WebApplicationException(
-                        "No MessageBodyReader and no registry available", 415);
-                // No registry for fallback; try the initial terminal anyway.
-            } else {
-                r = registry.findReader(type, genericType, annotations, mediaType)
-                        .orElse(terminal);
-                if (r == null) throw new jakarta.ws.rs.WebApplicationException(
-                        "No MessageBodyReader for " + type.getName()
-                                + " / " + (mediaType == null ? "*/*" : mediaType.toString()), 415);
-            }
+        return selectReader().readFrom(type, genericType, annotations, mediaType, headers, stream);
+    }
+
+    /** §7.2: setType may have changed the target type; re-select
+     *  an MBR compatible with the current parameters. The initial terminal
+     *  may be null if no MBR was found during the initial scan — in that
+     *  case we rely entirely on the registry (interceptors may have
+     *  rewritten type/mediaType to match a different MBR). */
+    @SuppressWarnings("rawtypes")
+    private MessageBodyReader selectReader() {
+        if (registry == null) {
+            if (terminal == null) throw new jakarta.ws.rs.WebApplicationException(
+                    "No MessageBodyReader and no registry available", 415);
+            // No registry for fallback; try the initial terminal anyway.
+            return terminal;
         }
-        return r.readFrom(type, genericType, annotations, mediaType, headers, stream);
+        if (terminal != null && terminal.isReadable(type, genericType, annotations, mediaType)) return terminal;
+        MessageBodyReader r = registry.findReader(type, genericType, annotations, mediaType)
+                .orElse(terminal);
+        if (r == null) throw new jakarta.ws.rs.WebApplicationException(
+                "No MessageBodyReader for " + type.getName()
+                        + " / " + (mediaType == null ? "*/*" : mediaType.toString()), 415);
+        return r;
     }
 
     @Override public Object getProperty(String name) { return properties.get(name); }

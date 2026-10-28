@@ -55,62 +55,85 @@ public final class ResourceScanner {
         List<ResourceMethod> out = new ArrayList<>();
         for (Class<?> cls : classes) {
             Path root = cls.getAnnotation(Path.class);
-            if (root == null) continue;
-            String basePath = normalize(root.value());
-            int classLits = countLiterals(basePath);
-            Set<String> classProduces = produces(cls.getAnnotation(Produces.class));
-            Set<String> classConsumes = consumes(cls.getAnnotation(Consumes.class));
+            if (root != null) scanRootClass(cls, normalize(root.value()), out);
+        }
+        return out;
+    }
 
-            for (Method m : collectInheritedMethods(cls)) {
-                // §3.3.1: a resource method must be public.
-                if (!java.lang.reflect.Modifier.isPublic(m.getModifiers())) continue;
-                String verb = resolveHttpMethod(m);
-                Path sub = m.getAnnotation(Path.class);
+    /** Media types a class, a locator or a method declares, falling back to the enclosing ones
+     *  (§3.5: method {@code @Produces}/{@code @Consumes} override the class ones). */
+    private record MediaRanges(Set<String> produces, Set<String> consumes) {
+        static final MediaRanges NONE = new MediaRanges(Set.of(), Set.of());
+
+        MediaRanges overriddenBy(java.lang.reflect.AnnotatedElement element) {
+            Set<String> p = ResourceScanner.produces(element.getAnnotation(Produces.class));
+            Set<String> c = ResourceScanner.consumes(element.getAnnotation(Consumes.class));
+            return new MediaRanges(p.isEmpty() ? produces : p, c.isEmpty() ? consumes : c);
+        }
+    }
+
+    /** The sub-resource locators leading to a class: the root resource class, the locator methods
+     *  invoked from it, and the literal characters of the root {@code @Path}. */
+    private record Locators(Class<?> rootBeanClass, java.util.List<Method> chain, int rootClassLiterals) {
+        Locators then(Method locator) {
+            java.util.List<Method> extended = new java.util.ArrayList<>(chain);
+            extended.add(locator);
+            return new Locators(rootBeanClass, extended, rootClassLiterals);
+        }
+    }
+
+    private static void scanRootClass(Class<?> cls, String basePath, List<ResourceMethod> out) {
+        int classLits = countLiterals(basePath);
+        MediaRanges classMedia = MediaRanges.NONE.overriddenBy(cls);
+        for (Method m : collectInheritedMethods(cls)) {
+            // §3.3.1: a resource method must be public.
+            if (!java.lang.reflect.Modifier.isPublic(m.getModifiers())) continue;
+            String verb = resolveHttpMethod(m);
+            Path sub = m.getAnnotation(Path.class);
+            if (verb != null) {
+                String full = (sub == null) ? basePath : combine(basePath, normalize(sub.value()));
+                MediaRanges eff = classMedia.overriddenBy(m);
+                out.add(new ResourceMethod(cls, accessible(m), verb, UriTemplate.compile(full),
+                        eff.produces(), eff.consumes(), null, null, classLits));
+            } else if (sub != null) {
                 // Sub-resource locator §3.4.1: @Path on a method WITHOUT an HTTP verb
                 // → the method returns an instance whose routes we scan
                 //   by prefixing with the current path + @Path(method).
-                if (verb == null) {
-                    if (sub == null) continue;
-                    Class<?> returnCls = m.getReturnType();
-                    if (returnCls == void.class || returnCls == null) continue;
-                    // §3.4.2: a locator may return Class<T> — we unwrap
-                    // T through the generic type to scan its @Path entries.
-                    if (returnCls == Class.class
-                            && m.getGenericReturnType() instanceof java.lang.reflect.ParameterizedType pt
-                            && pt.getActualTypeArguments().length == 1
-                            && pt.getActualTypeArguments()[0] instanceof Class<?> argCls) {
-                        returnCls = argCls;
-                    }
-                    String locatorPath = combine(basePath, normalize(sub.value()));
-                    // @Produces/@Consumes inheritance: locator method > class.
-                    Set<String> locatorProduces = produces(m.getAnnotation(Produces.class));
-                    Set<String> locatorConsumes = consumes(m.getAnnotation(Consumes.class));
-                    Set<String> inhProd = locatorProduces.isEmpty() ? classProduces : locatorProduces;
-                    Set<String> inhCons = locatorConsumes.isEmpty() ? classConsumes : locatorConsumes;
-                    m.setAccessible(true);
-                    // §3.4.1: if the return type is Response, the locator IS the
-                    // terminal handler — create a direct "*" route (all HTTP methods).
-                    if (jakarta.ws.rs.core.Response.class.isAssignableFrom(returnCls)) {
-                        out.add(new ResourceMethod(cls, m, "*", UriTemplate.compile(locatorPath),
-                                inhProd, inhCons, null, null, classLits));
-                        continue;
-                    }
-                    scanLocatorType(returnCls, locatorPath, inhProd, inhCons,
-                            cls, new java.util.ArrayList<>(java.util.List.of(m)),
-                            classLits, new java.util.HashSet<>(), out);
-                    continue;
-                }
-                String full = (sub == null) ? basePath : combine(basePath, normalize(sub.value()));
-                Set<String> methodProduces = produces(m.getAnnotation(Produces.class));
-                Set<String> methodConsumes = consumes(m.getAnnotation(Consumes.class));
-                Set<String> effProd = methodProduces.isEmpty() ? classProduces : methodProduces;
-                Set<String> effCons = methodConsumes.isEmpty() ? classConsumes : methodConsumes;
-                m.setAccessible(true);
-                out.add(new ResourceMethod(cls, m, verb, UriTemplate.compile(full),
-                        effProd, effCons, null, null, classLits));
+                scanRootLocator(cls, m, combine(basePath, normalize(sub.value())), classMedia, classLits, out);
             }
         }
-        return out;
+    }
+
+    private static void scanRootLocator(Class<?> cls, Method m, String locatorPath, MediaRanges classMedia,
+                                        int classLits, List<ResourceMethod> out) {
+        Class<?> returnCls = m.getReturnType();
+        if (returnCls == void.class || returnCls == null) return;
+        // §3.4.2: a locator may return Class<T> — we unwrap
+        // T through the generic type to scan its @Path entries.
+        if (returnCls == Class.class
+                && m.getGenericReturnType() instanceof java.lang.reflect.ParameterizedType pt
+                && pt.getActualTypeArguments().length == 1
+                && pt.getActualTypeArguments()[0] instanceof Class<?> argCls) {
+            returnCls = argCls;
+        }
+        // @Produces/@Consumes inheritance: locator method > class.
+        MediaRanges inherited = classMedia.overriddenBy(m);
+        accessible(m);
+        // §3.4.1: if the return type is Response, the locator IS the
+        // terminal handler — create a direct "*" route (all HTTP methods).
+        if (jakarta.ws.rs.core.Response.class.isAssignableFrom(returnCls)) {
+            out.add(new ResourceMethod(cls, m, "*", UriTemplate.compile(locatorPath),
+                    inherited.produces(), inherited.consumes(), null, null, classLits));
+            return;
+        }
+        scanLocatorType(returnCls, locatorPath, inherited,
+                new Locators(cls, java.util.List.of(m), classLits), new java.util.HashSet<>(), out);
+    }
+
+    /** Opens a resource or locator method to the reflective invocation fallback of the Invoker. */
+    private static Method accessible(Method m) {
+        m.setAccessible(true);
+        return m;
     }
 
     /**
@@ -161,7 +184,7 @@ public final class ResourceScanner {
             try {
                 Method parent = iface.getDeclaredMethod(m.getName(), m.getParameterTypes());
                 if (hasJaxrsAnnotation(parent)) return parent;
-            } catch (NoSuchMethodException ignored) {}
+            } catch (NoSuchMethodException _) { /* not declared by this interface: the next one is tried */ }
         }
         return m;
     }
@@ -207,11 +230,9 @@ public final class ResourceScanner {
      *  we keep a comfortable margin. */
     private static final int MAX_RECURSIVE_DEPTH = 12;
 
-    private static void scanLocatorType(Class<?> cls, String basePath,
-                                        Set<String> inheritedProduces, Set<String> inheritedConsumes,
-                                        Class<?> rootBeanClass, java.util.List<Method> locatorChain,
-                                        int rootClassLiterals,
-                                        java.util.Set<Class<?>> visited, List<ResourceMethod> out) {
+    private static void scanLocatorType(Class<?> cls, String basePath, MediaRanges inherited,
+                                        Locators locators, java.util.Set<Class<?>> visited,
+                                        List<ResourceMethod> out) {
         if (cls == null) return;
         // §3.4.1: a sub-resource locator may return Object — its effective
         // type is only known at runtime. We emit a pair of catch-all routes
@@ -219,88 +240,80 @@ public final class ResourceScanner {
         //   - basePath           → exact match (sub-resource without sub-segments)
         //   - basePath/{__rest:.*} → match with propagated sub-segments
         if (cls == Object.class) {
-            emitDynamicLocatorRoute(basePath, inheritedProduces, inheritedConsumes,
-                    rootBeanClass, locatorChain, rootClassLiterals, out);
+            emitDynamicLocatorRoute(basePath, inherited, locators, out);
             return;
         }
-        if (!visited.add(cls)) {
-            // §3.4.1: a recursive locator (cls returns the same class) must
-            // be able to match a nested URI. We allow up to
-            // MAX_RECURSIVE_DEPTH levels only if the last invoked locator
-            // declares the same type as cls (true self-recursion),
-            // not a simple revisit through another branch.
-            int depth = 0;
-            for (Method m : locatorChain) if (m.getDeclaringClass() == cls) depth++;
-            if (depth >= MAX_RECURSIVE_DEPTH) return;
-            if (locatorChain.isEmpty()) return;
-            Method last = locatorChain.get(locatorChain.size() - 1);
-            if (last.getDeclaringClass() != cls && last.getReturnType() != cls) return;
-        }
-        Set<String> clsProduces = produces(cls.getAnnotation(Produces.class));
-        if (clsProduces.isEmpty()) clsProduces = inheritedProduces;
-        Set<String> clsConsumes = consumes(cls.getAnnotation(Consumes.class));
-        if (clsConsumes.isEmpty()) clsConsumes = inheritedConsumes;
+        if (!visited.add(cls) && !mayRevisit(cls, locators.chain())) return;
+        MediaRanges clsMedia = inherited.overriddenBy(cls);
         for (Method m : collectInheritedMethods(cls)) {
             if (!java.lang.reflect.Modifier.isPublic(m.getModifiers())) continue;
             String verb = resolveHttpMethod(m);
             Path sub = m.getAnnotation(Path.class);
-            if (verb == null) {
+            if (verb != null) {
+                String full = (sub == null) ? basePath : combine(basePath, normalize(sub.value()));
+                MediaRanges eff = clsMedia.overriddenBy(m);
+                out.add(new ResourceMethod(cls, accessible(m), verb, UriTemplate.compile(full),
+                        eff.produces(), eff.consumes(), locators.rootBeanClass(),
+                        java.util.List.copyOf(locators.chain()), locators.rootClassLiterals()));
+            } else if (sub != null) {
                 // Level N+1 sub-locator: §3.4.1 recursion
-                if (sub == null) continue;
-                Class<?> nestedReturn = m.getReturnType();
-                if (nestedReturn == void.class || nestedReturn == null) continue;
-                String nestedPath = combine(basePath, normalize(sub.value()));
-                Set<String> np = produces(m.getAnnotation(Produces.class));
-                Set<String> nc = consumes(m.getAnnotation(Consumes.class));
-                Set<String> inhP = np.isEmpty() ? clsProduces : np;
-                Set<String> inhC = nc.isEmpty() ? clsConsumes : nc;
-                m.setAccessible(true);
-                if (jakarta.ws.rs.core.Response.class.isAssignableFrom(nestedReturn)) {
-                    java.util.List<Method> chain = java.util.List.copyOf(locatorChain);
-                    out.add(new ResourceMethod(cls, m, "*", UriTemplate.compile(nestedPath),
-                            inhP, inhC, rootBeanClass, chain, rootClassLiterals));
-                    continue;
-                }
-                java.util.List<Method> extended = new java.util.ArrayList<>(locatorChain);
-                extended.add(m);
-                scanLocatorType(nestedReturn, nestedPath, inhP, inhC,
-                        rootBeanClass, extended, rootClassLiterals,
-                        new java.util.HashSet<>(visited), out);
-                continue;
+                scanNestedLocator(cls, m, combine(basePath, normalize(sub.value())), clsMedia,
+                        locators, visited, out);
             }
-            String full = (sub == null) ? basePath : combine(basePath, normalize(sub.value()));
-            Set<String> mp = produces(m.getAnnotation(Produces.class));
-            Set<String> mc = consumes(m.getAnnotation(Consumes.class));
-            Set<String> effP = mp.isEmpty() ? clsProduces : mp;
-            Set<String> effC = mc.isEmpty() ? clsConsumes : mc;
-            m.setAccessible(true);
-            out.add(new ResourceMethod(cls, m, verb, UriTemplate.compile(full), effP, effC,
-                    rootBeanClass, java.util.List.copyOf(locatorChain), rootClassLiterals));
         }
+    }
+
+    /** §3.4.1: a recursive locator (cls returns the same class) must
+     *  be able to match a nested URI. We allow up to
+     *  MAX_RECURSIVE_DEPTH levels only if the last invoked locator
+     *  declares the same type as cls (true self-recursion),
+     *  not a simple revisit through another branch. */
+    private static boolean mayRevisit(Class<?> cls, java.util.List<Method> locatorChain) {
+        int depth = 0;
+        for (Method m : locatorChain) if (m.getDeclaringClass() == cls) depth++;
+        if (depth >= MAX_RECURSIVE_DEPTH || locatorChain.isEmpty()) return false;
+        Method last = locatorChain.get(locatorChain.size() - 1);
+        return last.getDeclaringClass() == cls || last.getReturnType() == cls;
+    }
+
+    private static void scanNestedLocator(Class<?> cls, Method m, String nestedPath, MediaRanges clsMedia,
+                                          Locators locators, java.util.Set<Class<?>> visited,
+                                          List<ResourceMethod> out) {
+        Class<?> nestedReturn = m.getReturnType();
+        if (nestedReturn == void.class || nestedReturn == null) return;
+        MediaRanges inherited = clsMedia.overriddenBy(m);
+        accessible(m);
+        if (jakarta.ws.rs.core.Response.class.isAssignableFrom(nestedReturn)) {
+            out.add(new ResourceMethod(cls, m, "*", UriTemplate.compile(nestedPath),
+                    inherited.produces(), inherited.consumes(), locators.rootBeanClass(),
+                    java.util.List.copyOf(locators.chain()), locators.rootClassLiterals()));
+            return;
+        }
+        scanLocatorType(nestedReturn, nestedPath, inherited, locators.then(m),
+                new java.util.HashSet<>(visited), out);
     }
 
     /** §3.4.1: emits 2 catch-all routes (exact path + sub-path) with
      *  {@code dynamicLocator=true} to signal to the {@link Invoker} that it
      *  must invoke the locator chain and then scan the effective class of the
      *  returned instance. The final method is resolved at runtime. */
-    private static void emitDynamicLocatorRoute(String basePath,
-                                                Set<String> inheritedProduces, Set<String> inheritedConsumes,
-                                                Class<?> rootBeanClass, java.util.List<Method> locatorChain,
-                                                int rootClassLiterals, List<ResourceMethod> out) {
-        if (locatorChain == null || locatorChain.isEmpty() || rootBeanClass == null) return;
+    private static void emitDynamicLocatorRoute(String basePath, MediaRanges inherited, Locators locators,
+                                                List<ResourceMethod> out) {
+        java.util.List<Method> locatorChain = locators.chain();
+        if (locatorChain == null || locatorChain.isEmpty() || locators.rootBeanClass() == null) return;
         Method last = locatorChain.get(locatorChain.size() - 1);
         java.util.List<Method> chain = java.util.List.copyOf(locatorChain);
-        // Variante 1 : path exact (ex : GET /resource/l2locator → MainResourceLocator.get())
+        // Variant 1: exact path (e.g. GET /resource/l2locator → MainResourceLocator.get())
         out.add(new ResourceMethod(Object.class, last, "*",
                 UriTemplate.compile(basePath),
-                inheritedProduces, inheritedConsumes,
-                rootBeanClass, chain, rootClassLiterals, true));
-        // Variante 2 : path + sous-segments (ex : DELETE /resource/l2locator/l2locator)
+                inherited.produces(), inherited.consumes(),
+                locators.rootBeanClass(), chain, locators.rootClassLiterals(), true));
+        // Variant 2: path + sub-segments (e.g. DELETE /resource/l2locator/l2locator)
         String wildcardPath = combine(basePath, "/{__rest:.*}");
         out.add(new ResourceMethod(Object.class, last, "*",
                 UriTemplate.compile(wildcardPath),
-                inheritedProduces, inheritedConsumes,
-                rootBeanClass, chain, rootClassLiterals, true));
+                inherited.produces(), inherited.consumes(),
+                locators.rootBeanClass(), chain, locators.rootClassLiterals(), true));
     }
 
     private static Set<String> produces(Produces ann) {

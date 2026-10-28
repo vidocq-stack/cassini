@@ -51,6 +51,10 @@ import java.util.UUID;
 public final class MultipartFormDataProvider
         implements MessageBodyReader<List<EntityPart>>, MessageBodyWriter<List<EntityPart>> {
 
+    private static final String CONTENT_TYPE = "Content-Type";
+    private static final String CONTENT_DISPOSITION = "Content-Disposition";
+    private static final byte[] CRLF = {'\r', '\n'};
+
     @Override
     public boolean isReadable(Class<?> type, Type genericType, Annotation[] annotations, MediaType mediaType) {
         return List.class.isAssignableFrom(type)
@@ -99,101 +103,124 @@ public final class MultipartFormDataProvider
         // §3.5.4: force the wire Content-Type to include the boundary,
         // regardless of the initial mediaType value — without it, the
         // receiver cannot parse the body.
-        httpHeaders.putSingle("Content-Type", "multipart/form-data; boundary=" + boundary);
+        httpHeaders.putSingle(CONTENT_TYPE, "multipart/form-data; boundary=" + boundary);
         write(parts, boundary, entityStream);
     }
 
     /** RFC 7578: serializes parts as multipart/form-data. */
     static void write(List<EntityPart> parts, String boundary, OutputStream out) throws IOException {
-        byte[] eol = {'\r', '\n'};
         byte[] dashBoundary = ("--" + boundary).getBytes(StandardCharsets.UTF_8);
         for (EntityPart p : parts) {
-            out.write(dashBoundary); out.write(eol);
-            // Content-Disposition
-            StringBuilder cd = new StringBuilder("Content-Disposition: form-data; name=\"")
-                    .append(p.getName()).append('"');
-            p.getFileName().ifPresent(fn -> cd.append("; filename=\"").append(fn).append('"'));
-            out.write(cd.toString().getBytes(StandardCharsets.UTF_8));
-            out.write(eol);
-            // Content-Type
-            MediaType mt = p.getMediaType();
-            if (mt != null) {
-                out.write(("Content-Type: " + mt.toString()).getBytes(StandardCharsets.UTF_8));
-                out.write(eol);
-            }
-            // Other headers
-            for (var e : p.getHeaders().entrySet()) {
-                if ("Content-Disposition".equalsIgnoreCase(e.getKey())) continue;
-                if ("Content-Type".equalsIgnoreCase(e.getKey())) continue;
-                for (String v : e.getValue()) {
-                    out.write((e.getKey() + ": " + v).getBytes(StandardCharsets.UTF_8));
-                    out.write(eol);
-                }
-            }
-            out.write(eol);
+            out.write(dashBoundary); out.write(CRLF);
+            writePartHeaders(p, out);
+            out.write(CRLF);
             // Content
             byte[] body = (p instanceof CassiniEntityPart cep)
                     ? cep.rawContent()
                     : p.getContent().readAllBytes();
             out.write(body);
-            out.write(eol);
+            out.write(CRLF);
         }
         out.write(dashBoundary);
         out.write(new byte[]{'-', '-'});
-        out.write(eol);
+        out.write(CRLF);
+    }
+
+    /** Content-Disposition, Content-Type, then the other headers of a part, one per line. */
+    private static void writePartHeaders(EntityPart p, OutputStream out) throws IOException {
+        StringBuilder cd = new StringBuilder(CONTENT_DISPOSITION + ": form-data; name=\"")
+                .append(p.getName()).append('"');
+        p.getFileName().ifPresent(fn -> cd.append("; filename=\"").append(fn).append('"'));
+        out.write(cd.toString().getBytes(StandardCharsets.UTF_8));
+        out.write(CRLF);
+        MediaType mt = p.getMediaType();
+        if (mt != null) {
+            out.write((CONTENT_TYPE + ": " + mt.toString()).getBytes(StandardCharsets.UTF_8));
+            out.write(CRLF);
+        }
+        for (var e : p.getHeaders().entrySet()) {
+            if (CONTENT_DISPOSITION.equalsIgnoreCase(e.getKey()) || CONTENT_TYPE.equalsIgnoreCase(e.getKey())) continue;
+            for (String v : e.getValue()) {
+                out.write((e.getKey() + ": " + v).getBytes(StandardCharsets.UTF_8));
+                out.write(CRLF);
+            }
+        }
     }
 
     /** RFC 7578: parses a multipart/form-data body into parts. */
-    static List<EntityPart> parse(byte[] body, String boundary) throws IOException {
+    static List<EntityPart> parse(byte[] body, String boundary) {
         List<EntityPart> out = new ArrayList<>();
         byte[] delim = ("--" + boundary).getBytes(StandardCharsets.UTF_8);
         int idx = indexOf(body, delim, 0);
         if (idx < 0) return out;
         idx += delim.length;
-        while (idx < body.length) {
-            // skip --\r\n at end
-            if (idx + 1 < body.length && body[idx] == '-' && body[idx + 1] == '-') break;
+        // the close delimiter is followed by "--"
+        while (idx >= 0 && idx < body.length
+                && !(idx + 1 < body.length && body[idx] == '-' && body[idx + 1] == '-')) {
             // Skip CRLF after boundary
             while (idx < body.length && (body[idx] == '\r' || body[idx] == '\n')) idx++;
-            // Headers
-            MultivaluedMap<String, String> headers = new MultivaluedHashMap<>();
-            String partName = null;
-            String fileName = null;
-            MediaType ct = null;
-            while (true) {
-                int eol = indexOf(body, new byte[]{'\r', '\n'}, idx);
-                if (eol < 0) break;
+            idx = parsePart(body, idx, delim, out);
+        }
+        return out;
+    }
+
+    /** Parses the part whose headers start at {@code idx} into {@code out} (a part without a
+     *  name is dropped); returns the index after the delimiter that ends it, or -1 when the
+     *  body ends before that delimiter. */
+    private static int parsePart(byte[] body, int idx, byte[] delim, List<EntityPart> out) {
+        PartHeaders head = new PartHeaders();
+        int contentStart = head.read(body, idx);
+        // Content up to the next boundary
+        int next = indexOf(body, delim, contentStart);
+        if (next < 0) return -1;
+        int contentEnd = next;
+        // Stripe trailing CRLF before boundary
+        if (contentEnd >= 2 && body[contentEnd - 2] == '\r' && body[contentEnd - 1] == '\n') {
+            contentEnd -= 2;
+        }
+        byte[] partContent = new byte[contentEnd - contentStart];
+        System.arraycopy(body, contentStart, partContent, 0, partContent.length);
+        if (head.name != null) {
+            out.add(new CassiniEntityPart(head.name, head.fileName, head.contentType, head.headers, partContent));
+        }
+        return next + delim.length;
+    }
+
+    /** The headers of one part, with its name, file name and media type. */
+    private static final class PartHeaders {
+        private final MultivaluedMap<String, String> headers = new MultivaluedHashMap<>();
+        private String name;
+        private String fileName;
+        private MediaType contentType;
+
+        /** Reads the header lines from {@code idx} up to the empty line; returns the index of the content. */
+        int read(byte[] body, int idx) {
+            for (int eol = indexOf(body, CRLF, idx); eol >= 0; eol = indexOf(body, CRLF, idx)) {
                 String line = new String(body, idx, eol - idx, StandardCharsets.UTF_8);
                 idx = eol + 2;
                 if (line.isEmpty()) break;
-                int colon = line.indexOf(':');
-                if (colon < 0) continue;
-                String hname = line.substring(0, colon).trim();
-                String hvalue = line.substring(colon + 1).trim();
-                headers.add(hname, hvalue);
-                if ("Content-Disposition".equalsIgnoreCase(hname)) {
-                    partName = paramValue(hvalue, "name");
-                    fileName = paramValue(hvalue, "filename");
-                } else if ("Content-Type".equalsIgnoreCase(hname)) {
-                    try { ct = MediaType.valueOf(hvalue); } catch (RuntimeException ignored) {}
+                add(line);
+            }
+            return idx;
+        }
+
+        private void add(String line) {
+            int colon = line.indexOf(':');
+            if (colon < 0) return;
+            String hname = line.substring(0, colon).trim();
+            String hvalue = line.substring(colon + 1).trim();
+            headers.add(hname, hvalue);
+            if (CONTENT_DISPOSITION.equalsIgnoreCase(hname)) {
+                name = paramValue(hvalue, "name");
+                fileName = paramValue(hvalue, "filename");
+            } else if (CONTENT_TYPE.equalsIgnoreCase(hname)) {
+                try {
+                    contentType = MediaType.valueOf(hvalue);
+                } catch (RuntimeException _) {
+                    // malformed: the part keeps the media type it had, if any
                 }
             }
-            // Content up to the next boundary
-            int next = indexOf(body, delim, idx);
-            if (next < 0) break;
-            int contentEnd = next;
-            // Stripe trailing CRLF before boundary
-            if (contentEnd >= 2 && body[contentEnd - 2] == '\r' && body[contentEnd - 1] == '\n') {
-                contentEnd -= 2;
-            }
-            byte[] partContent = new byte[contentEnd - idx];
-            System.arraycopy(body, idx, partContent, 0, partContent.length);
-            if (partName != null) {
-                out.add(new CassiniEntityPart(partName, fileName, ct, headers, partContent));
-            }
-            idx = next + delim.length;
         }
-        return out;
     }
 
     private static String paramValue(String header, String name) {
@@ -226,11 +253,8 @@ public final class MultipartFormDataProvider
     }
 
     private static int indexOf(byte[] haystack, byte[] needle, int from) {
-        outer: for (int i = from; i <= haystack.length - needle.length; i++) {
-            for (int j = 0; j < needle.length; j++) {
-                if (haystack[i + j] != needle[j]) continue outer;
-            }
-            return i;
+        for (int i = from; i <= haystack.length - needle.length; i++) {
+            if (java.util.Arrays.equals(haystack, i, i + needle.length, needle, 0, needle.length)) return i;
         }
         return -1;
     }

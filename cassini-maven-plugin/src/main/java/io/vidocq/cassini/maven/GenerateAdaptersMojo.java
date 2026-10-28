@@ -90,6 +90,9 @@ import java.util.jar.JarFile;
 public class GenerateAdaptersMojo extends AbstractMojo {
 
     private static final String ADAPTER_SUFFIX = RuntimeAdapterGenerator.ADAPTER_SUFFIX;
+    private static final String CLASS_EXTENSION = ".class";
+    private static final String MODULE_INFO = "module-info.class";
+    private static final String CASSINI_API_MODULE = "io.vidocq.cassini.api";
 
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
     private MavenProject project;
@@ -176,12 +179,16 @@ public class GenerateAdaptersMojo extends AbstractMojo {
             }
 
             getLog().info("cassini:generate — " + generated + " adapter(s) generated.");
-        } catch (MojoExecutionException | MojoFailureException e) {
+        } catch (MojoExecutionException e) {
             throw e;
         } catch (Exception e) {
             throw new MojoExecutionException("Unexpected error in cassini:generate", e);
         } finally {
-            try { cl.close(); } catch (IOException ignored) {}
+            try {
+                cl.close();
+            } catch (IOException e) {
+                getLog().debug("Cannot close the scanning class loader: " + e.getMessage());
+            }
         }
     }
 
@@ -209,23 +216,27 @@ public class GenerateAdaptersMojo extends AbstractMojo {
 
     // ---- Project-classes scanning ----
 
-    private int scanDirectory(File dir, URLClassLoader cl, File outputDir)
-            throws MojoExecutionException {
+    private int scanDirectory(File dir, URLClassLoader cl, File outputDir) {
         if (!dir.exists()) return 0;
         List<String> classNames = new ArrayList<>();
         collectClassNames(dir, dir, classNames);
         int count = 0;
         for (String className : classNames) {
-            if (className.endsWith(ADAPTER_SUFFIX)) continue; // skip already-generated
-            try {
-                Class<?> cls = cl.loadClass(className);
-                if (!isResource(cls)) continue;
-                count += writeAdapter(cls, outputDir);
-            } catch (ClassNotFoundException | NoClassDefFoundError e) {
-                getLog().warn("Cannot load class " + className + " — skipping: " + e.getMessage());
-            }
+            // skip already-generated adapters
+            if (!className.endsWith(ADAPTER_SUFFIX)) count += generateIfResource(className, cl, outputDir);
         }
         return count;
+    }
+
+    /** Writes the adapter of {@code className} when it is a resource; returns the number written. */
+    private int generateIfResource(String className, URLClassLoader cl, File outputDir) {
+        try {
+            Class<?> cls = cl.loadClass(className);
+            return isResource(cls) ? writeAdapter(cls, outputDir) : 0;
+        } catch (ClassNotFoundException | NoClassDefFoundError e) {
+            getLog().warn("Cannot load class " + className + " — skipping: " + e.getMessage());
+            return 0;
+        }
     }
 
     private void collectClassNames(File root, File current, List<String> names) {
@@ -234,10 +245,10 @@ public class GenerateAdaptersMojo extends AbstractMojo {
         for (File f : files) {
             if (f.isDirectory()) {
                 collectClassNames(root, f, names);
-            } else if (f.getName().endsWith(".class") && !f.getName().contains("$")) {
+            } else if (f.getName().endsWith(CLASS_EXTENSION) && !f.getName().contains("$")) {
                 // Relative path from root → binary class name
                 String rel = root.toURI().relativize(f.toURI()).getPath();
-                String className = rel.replace('/', '.').replace('\\', '.').replace(".class", "");
+                String className = rel.replace('/', '.').replace('\\', '.').replace(CLASS_EXTENSION, "");
                 names.add(className);
             }
         }
@@ -245,52 +256,43 @@ public class GenerateAdaptersMojo extends AbstractMojo {
 
     // ---- Dependency scanning ----
 
-    private int scanDependencies(URLClassLoader cl)
-            throws MojoExecutionException, MojoFailureException {
+    private int scanDependencies(URLClassLoader cl) throws MojoExecutionException {
         int count = 0;
         for (org.apache.maven.artifact.Artifact artifact : project.getArtifacts()) {
             String ga = artifact.getGroupId() + ":" + artifact.getArtifactId();
-            if (!includeArtifacts.isEmpty() && !includeArtifacts.contains(ga)) continue;
-            if (excludeArtifacts.contains(ga)) continue;
             File jar = artifact.getFile();
-            if (jar == null || !jar.getName().endsWith(".jar") || !jar.exists()) continue;
-            // Auto-scope: never seal cassini's own infra (a module that `requires io.vidocq.cassini.*`
-            // is implementation-specific, not an agnostic wrapper — e.g. cassini-cdi-vauban whose
-            // package vauban.core must read for its BCE). Lets `sealModules=true` stay safe-by-default
-            // without a hand-maintained includeArtifacts allowlist.
-            if (sealModules && requiresCassini(jar)) {
-                getLog().info("cassini:seal — skipping infra module " + ga
-                        + " (requires io.vidocq.cassini.*)");
-                continue;
+            if (isSelected(ga) && jar != null && jar.getName().endsWith(".jar") && jar.exists()
+                    && !isSkippedInfraModule(jar, ga)) {
+                count += scanJar(jar, artifact, cl);
             }
-            count += scanJar(jar, artifact, cl);
         }
         return count;
+    }
+
+    /** True when {@code ga} passes the includeArtifacts (empty = all) and excludeArtifacts filters. */
+    private boolean isSelected(String ga) {
+        return (includeArtifacts.isEmpty() || includeArtifacts.contains(ga)) && !excludeArtifacts.contains(ga);
+    }
+
+    /**
+     * Auto-scope: never seal cassini's own infra (a module that `requires io.vidocq.cassini.*`
+     * is implementation-specific, not an agnostic wrapper — e.g. cassini-cdi-vauban whose
+     * package vauban.core must read for its BCE). Lets `sealModules=true` stay safe-by-default
+     * without a hand-maintained includeArtifacts allowlist.
+     */
+    private boolean isSkippedInfraModule(File jar, String ga) {
+        if (!sealModules || !requiresCassini(jar)) return false;
+        getLog().info("cassini:seal — skipping infra module " + ga
+                + " (requires io.vidocq.cassini.*)");
+        return true;
     }
 
     int scanJar(File jar, org.apache.maven.artifact.Artifact artifact, URLClassLoader cl)
             throws MojoExecutionException {
         boolean isNamedModule = jarHasModuleInfo(jar);
-        List<String> resourceClasses = new ArrayList<>();
-
-        try (JarFile jf = new JarFile(jar)) {
-            for (JarEntry entry : java.util.Collections.list(jf.entries())) {
-                String name = entry.getName();
-                if (!name.endsWith(".class")) continue;
-                if (name.contains("$")) continue; // skip inner/anonymous
-                if (name.equals("module-info.class")) continue;
-                String className = name.replace('/', '.').replace(".class", "");
-                if (className.endsWith(ADAPTER_SUFFIX)) continue;
-                try {
-                    Class<?> cls = cl.loadClass(className);
-                    if (isResource(cls)) {
-                        resourceClasses.add(className);
-                    }
-                } catch (ClassNotFoundException | NoClassDefFoundError e) {
-                    getLog().debug("Cannot load " + className + " from " + jar.getName()
-                            + ": " + e.getMessage());
-                }
-            }
+        List<String> resourceClasses;
+        try {
+            resourceClasses = resourceClassesIn(jar, cl);
         } catch (IOException e) {
             getLog().warn("Cannot scan JAR " + jar + ": " + e.getMessage());
             return 0;
@@ -299,39 +301,33 @@ public class GenerateAdaptersMojo extends AbstractMojo {
         if (resourceClasses.isEmpty()) return 0;
 
         if (isNamedModule) {
-            String moduleName = detectModuleName(jar);
             if (!repackageModularDependencies) {
                 // Build a representative message for the first class
                 String fqn = resourceClasses.get(0);
-                String pkg = fqn.contains(".") ? fqn.substring(0, fqn.lastIndexOf('.')) : "";
-                String ga = artifact.getGroupId() + ":" + artifact.getArtifactId()
-                        + ":" + artifact.getVersion();
                 throw new MojoExecutionException(
-                        "Resource class " + fqn + " is in named Java module '" + moduleName
-                                + "' (dependency " + ga + "). "
+                        "Resource class " + fqn + " is in named Java module '" + detectModuleName(jar)
+                                + "' (dependency " + coordinates(artifact) + "). "
                                 + "Generating its adapter in this module would split-package '"
-                                + pkg + "'. "
+                                + packageOf(fqn) + "'. "
                                 + "Set <repackageModularDependencies>true</repackageModularDependencies> "
                                 + "(or -Dcassini.repackageModularDependencies=true) to repackage that "
                                 + "module with the adapter woven in, OR keep it on the classpath, "
                                 + "OR rely on the runtime fallback (non-AOT).");
-            } else {
-                // Repackage: derive a jar with adapters woven into the same module/package
-                return repackageNamedModule(jar, artifact, resourceClasses, cl);
             }
+            // Repackage: derive a jar with adapters woven into the same module/package
+            return repackageNamedModule(jar, artifact, resourceClasses, cl);
         }
 
         // A jar without module-info is an automatic module once the project itself is a module: its
         // adapter, written into the project's output, would split the package between the two
         // modules — the layer then fails, or the application loses that jar's beans (grimm#15).
-        if (new File(outputDirectory, "module-info.class").isFile()) {
+        if (new File(outputDirectory, MODULE_INFO).isFile()) {
             String fqn = resourceClasses.get(0);
-            String pkg = fqn.contains(".") ? fqn.substring(0, fqn.lastIndexOf('.')) : "";
-            String ga = artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion();
             throw new MojoExecutionException(
-                    "Resource class " + fqn + " is in dependency " + ga + ", which has no module-info: "
+                    "Resource class " + fqn + " is in dependency " + coordinates(artifact)
+                            + ", which has no module-info: "
                             + "on the module path it is an automatic module, and generating its adapter in "
-                            + "this module would split package '" + pkg + "' between the two. "
+                            + "this module would split package '" + packageOf(fqn) + "' between the two. "
                             + "Give that dependency a module-info (a Vidocq artifact never ships as an "
                             + "automatic module), or leave it out with <excludeArtifacts>.");
         }
@@ -347,6 +343,48 @@ public class GenerateAdaptersMojo extends AbstractMojo {
             }
         }
         return count;
+    }
+
+    /** The top-level classes of {@code jar} that load as JAX-RS resources or providers. */
+    private List<String> resourceClassesIn(File jar, URLClassLoader cl) throws IOException {
+        List<String> resourceClasses = new ArrayList<>();
+        try (JarFile jf = new JarFile(jar)) {
+            for (JarEntry entry : java.util.Collections.list(jf.entries())) {
+                String className = candidateClassName(entry.getName());
+                if (className != null && loadsAsResource(className, jar, cl)) {
+                    resourceClasses.add(className);
+                }
+            }
+        }
+        return resourceClasses;
+    }
+
+    /** The binary name of a top-level class entry, or {@code null} for any other entry
+     *  (resources, inner/anonymous classes, module-info, already-generated adapters). */
+    private static String candidateClassName(String entryName) {
+        if (!entryName.endsWith(CLASS_EXTENSION) || entryName.contains("$") || entryName.equals(MODULE_INFO)) {
+            return null;
+        }
+        String className = entryName.replace('/', '.').replace(CLASS_EXTENSION, "");
+        return className.endsWith(ADAPTER_SUFFIX) ? null : className;
+    }
+
+    private boolean loadsAsResource(String className, File jar, URLClassLoader cl) {
+        try {
+            return isResource(cl.loadClass(className));
+        } catch (ClassNotFoundException | NoClassDefFoundError e) {
+            getLog().debug("Cannot load " + className + " from " + jar.getName()
+                    + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    private static String packageOf(String fqn) {
+        return fqn.contains(".") ? fqn.substring(0, fqn.lastIndexOf('.')) : "";
+    }
+
+    private static String coordinates(org.apache.maven.artifact.Artifact artifact) {
+        return artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion();
     }
 
     // ---- Named-module repackaging ----
@@ -373,7 +411,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
             try {
                 Class<?> cls = cl.loadClass(className);
                 byte[] bc = RuntimeAdapterGenerator.toBytecode(cls);
-                String adapterName = (cls.getName() + ADAPTER_SUFFIX).replace('.', '/') + ".class";
+                String adapterName = (cls.getName() + ADAPTER_SUFFIX).replace('.', '/') + CLASS_EXTENSION;
                 adapterEntries.add(new String[]{adapterName});
                 adapterBytecodes.add(bc);
                 adapterFqns.add(cls.getName() + ADAPTER_SUFFIX);
@@ -384,7 +422,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
                 // (full AOT coverage) instead of the reflective ResourceScanner fallback.
                 byte[] routesBc = RuntimeRoutesGenerator.toBytecode(cls);
                 String routesFqn = RuntimeRoutesGenerator.routesClassName(cls);
-                String routesName = routesFqn.replace('.', '/') + ".class";
+                String routesName = routesFqn.replace('.', '/') + CLASS_EXTENSION;
                 adapterEntries.add(new String[]{routesName});
                 adapterBytecodes.add(routesBc);
                 routesFqns.add(routesFqn);
@@ -403,7 +441,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
             // both in module io.vidocq.cassini.api) can link at runtime — otherwise the derived
             // module would not read cassini.api and the adapters would be unusable.
             for (java.util.zip.ZipEntry entry : java.util.Collections.list(orig.entries())) {
-                if (entry.getName().equals("module-info.class")) {
+                if (entry.getName().equals(MODULE_INFO)) {
                     byte[] mi;
                     try (InputStream in = orig.getInputStream(entry)) {
                         mi = in.readAllBytes();
@@ -413,7 +451,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
                     // publish the adapters/routes as ServiceLoader providers.
                     byte[] patched = sealModules
                             ? sealAndProvide(mi, resourcePackages, adapterFqns, routesFqns)
-                            : addModuleRequires(mi, "io.vidocq.cassini.api");
+                            : addModuleRequires(mi, CASSINI_API_MODULE);
                     jos.putNextEntry(new java.util.jar.JarEntry(entry.getName()));
                     jos.write(patched);
                     jos.closeEntry();
@@ -456,7 +494,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
      */
     private int writeAdapter(Class<?> cls, File outputDir) {
         String adapterBinaryName = cls.getName() + ADAPTER_SUFFIX;
-        String relPath = adapterBinaryName.replace('.', '/') + ".class";
+        String relPath = adapterBinaryName.replace('.', '/') + CLASS_EXTENSION;
         File dest = new File(outputDir, relPath);
         if (dest.exists()) {
             getLog().debug("Adapter already exists, skipping: " + dest);
@@ -483,8 +521,8 @@ public class GenerateAdaptersMojo extends AbstractMojo {
 
     private boolean jarHasModuleInfo(File jar) {
         try (JarFile jf = new JarFile(jar)) {
-            return jf.getEntry("module-info.class") != null;
-        } catch (IOException e) {
+            return jf.getEntry(MODULE_INFO) != null;
+        } catch (IOException _) {
             return false;
         }
     }
@@ -492,7 +530,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
     private String detectModuleName(File jar) {
         // Read module name from module-info.class using the Class-File API (JEP 484).
         try (JarFile jf = new JarFile(jar)) {
-            java.util.zip.ZipEntry mi = jf.getEntry("module-info.class");
+            java.util.zip.ZipEntry mi = jf.getEntry(MODULE_INFO);
             if (mi == null) return "<unknown>";
             try (InputStream is = jf.getInputStream(mi)) {
                 byte[] bytes = is.readAllBytes();
@@ -520,7 +558,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
      */
     boolean requiresCassini(File jar) {
         try (JarFile jf = new JarFile(jar)) {
-            java.util.zip.ZipEntry mi = jf.getEntry("module-info.class");
+            java.util.zip.ZipEntry mi = jf.getEntry(MODULE_INFO);
             if (mi == null) return false;
             try (InputStream is = jf.getInputStream(mi)) {
                 var cf = java.lang.classfile.ClassFile.of().parse(is.readAllBytes());
@@ -551,7 +589,7 @@ public class GenerateAdaptersMojo extends AbstractMojo {
         try {
             var cf = java.lang.classfile.ClassFile.of();
             var cm = cf.parse(moduleInfo);
-            return cf.transformClass(cm, cm.thisClass(), (cb, ce) -> {
+            return cf.transformClass(cm, (cb, ce) -> {
                 if (ce instanceof java.lang.classfile.attribute.ModuleAttribute ma) {
                     boolean present = ma.requires().stream().anyMatch(
                             r -> r.requires().name().stringValue().equals(requiredModule));
@@ -597,46 +635,52 @@ public class GenerateAdaptersMojo extends AbstractMojo {
             // Resource packages in internal (slash) form for matching ModuleExportInfo entries.
             var closedInternal = new java.util.HashSet<String>();
             for (String p : resourcePackages) closedInternal.add(p.replace('.', '/'));
-            var adapterSvc = java.lang.constant.ClassDesc.of("io.vidocq.cassini.spi.gen.ResourceAdapter");
-            var routeSvc   = java.lang.constant.ClassDesc.of("io.vidocq.cassini.spi.gen.RouteProvider");
-            return cf.transformClass(cm, cm.thisClass(), (cb, ce) -> {
+            return cf.transformClass(cm, (cb, ce) -> {
                 if (ce instanceof java.lang.classfile.attribute.ModuleAttribute ma) {
-                    var newMa = java.lang.classfile.attribute.ModuleAttribute.of(
-                            ma.moduleName().asSymbol(), b -> {
-                                b.moduleFlags(ma.moduleFlagsMask());
-                                ma.moduleVersion().ifPresent(v -> b.moduleVersion(v.stringValue()));
-                                ma.requires().forEach(b::requires);
-                                if (ma.requires().stream().noneMatch(
-                                        r -> r.requires().name().stringValue().equals("io.vidocq.cassini.api"))) {
-                                    b.requires(java.lang.constant.ModuleDesc.of("io.vidocq.cassini.api"), 0, null);
-                                }
-                                // Drop the exports of the (now sealed) resource packages.
-                                ma.exports().forEach(ex -> {
-                                    if (!closedInternal.contains(ex.exportedPackage().name().stringValue())) {
-                                        b.exports(ex);
-                                    }
-                                });
-                                ma.opens().forEach(b::opens);
-                                ma.uses().forEach(b::uses);
-                                ma.provides().forEach(b::provides);
-                                if (!adapterFqns.isEmpty()) {
-                                    b.provides(java.lang.classfile.attribute.ModuleProvideInfo.of(
-                                            adapterSvc,
-                                            adapterFqns.stream().map(java.lang.constant.ClassDesc::of).toList()));
-                                }
-                                if (!routesFqns.isEmpty()) {
-                                    b.provides(java.lang.classfile.attribute.ModuleProvideInfo.of(
-                                            routeSvc,
-                                            routesFqns.stream().map(java.lang.constant.ClassDesc::of).toList()));
-                                }
-                            });
-                    cb.with(newMa);
+                    cb.with(java.lang.classfile.attribute.ModuleAttribute.of(ma.moduleName().asSymbol(),
+                            b -> sealedModule(b, ma, closedInternal, adapterFqns, routesFqns)));
                 } else {
                     cb.with(ce);
                 }
             });
         } catch (Exception e) {
             throw new MojoExecutionException("Failed to seal repackaged module-info.class", e);
+        }
+    }
+
+    /** Copies {@code ma} into {@code b}, requiring cassini.api, dropping the exports of the sealed
+     *  packages and providing the woven adapters and routes. */
+    private static void sealedModule(java.lang.classfile.attribute.ModuleAttribute.ModuleAttributeBuilder b,
+                                     java.lang.classfile.attribute.ModuleAttribute ma,
+                                     java.util.Set<String> closedInternal,
+                                     List<String> adapterFqns, List<String> routesFqns) {
+        b.moduleFlags(ma.moduleFlagsMask());
+        ma.moduleVersion().ifPresent(v -> b.moduleVersion(v.stringValue()));
+        ma.requires().forEach(b::requires);
+        if (ma.requires().stream().noneMatch(
+                r -> r.requires().name().stringValue().equals(CASSINI_API_MODULE))) {
+            b.requires(java.lang.constant.ModuleDesc.of(CASSINI_API_MODULE), 0, null);
+        }
+        // Drop the exports of the (now sealed) resource packages.
+        ma.exports().forEach(ex -> {
+            if (!closedInternal.contains(ex.exportedPackage().name().stringValue())) {
+                b.exports(ex);
+            }
+        });
+        ma.opens().forEach(b::opens);
+        ma.uses().forEach(b::uses);
+        ma.provides().forEach(b::provides);
+        provide(b, "io.vidocq.cassini.spi.gen.ResourceAdapter", adapterFqns);
+        provide(b, "io.vidocq.cassini.spi.gen.RouteProvider", routesFqns);
+    }
+
+    /** {@code provides service with implementations}, when there is any implementation. */
+    private static void provide(java.lang.classfile.attribute.ModuleAttribute.ModuleAttributeBuilder b,
+                                String service, List<String> implementations) {
+        if (!implementations.isEmpty()) {
+            b.provides(java.lang.classfile.attribute.ModuleProvideInfo.of(
+                    java.lang.constant.ClassDesc.of(service),
+                    implementations.stream().map(java.lang.constant.ClassDesc::of).toList()));
         }
     }
 }

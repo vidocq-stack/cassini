@@ -77,56 +77,18 @@ public final class ChappeRuntimeDelegate extends CassiniRuntimeDelegate {
 
         ChappeSeBootstrapInstance(Application application,
                                   SeBootstrap.Configuration requested) {
-            Object p = requested.property(SeBootstrap.Configuration.PORT);
-            int reqPort = p instanceof Number n ? n.intValue() : -1;
-            if (reqPort <= 0) {
-                try (var ss = new java.net.ServerSocket(
-                        0, 50, java.net.InetAddress.getByName("127.0.0.1"))) {
-                    reqPort = ss.getLocalPort();
-                } catch (java.io.IOException e) { throw new RuntimeException(e); }
-            }
-            java.util.Map<String, Object> effective = new java.util.HashMap<>();
-            for (String k : new String[]{
-                    SeBootstrap.Configuration.PROTOCOL,
-                    SeBootstrap.Configuration.HOST,
-                    SeBootstrap.Configuration.PORT,
-                    SeBootstrap.Configuration.ROOT_PATH,
-                    SeBootstrap.Configuration.SSL_CLIENT_AUTHENTICATION,
-                    SeBootstrap.Configuration.SSL_CONTEXT}) {
-                Object v = requested.property(k);
-                if (v != null) effective.put(k, v);
-            }
-            effective.put(SeBootstrap.Configuration.PORT, reqPort);
-            effective.put(SeBootstrap.Configuration.HOST, "localhost");
-            this.config = new EffectiveConfig(java.util.Map.copyOf(effective));
+            int reqPort = portOf(requested);
+            this.config = effectiveConfig(requested, reqPort);
 
             try {
                 // Bootstrap through the public SPI — no direct access to internals.
                 var stack = CassiniStack.builder().application(application).build();
                 var bridge = new ChappeHttpAdapter(stack.adapter());
 
-                String rootPath = (String) requested.property(
-                        SeBootstrap.Configuration.ROOT_PATH);
-                String appPath = "";
-                jakarta.ws.rs.ApplicationPath ap =
-                        application.getClass().getAnnotation(
-                                jakarta.ws.rs.ApplicationPath.class);
-                if (ap != null) {
-                    appPath = ap.value();
-                    if (!appPath.isEmpty() && !appPath.startsWith("/"))
-                        appPath = "/" + appPath;
-                    if (appPath.length() > 1 && appPath.endsWith("/"))
-                        appPath = appPath.substring(0, appPath.length() - 1);
-                }
-                String rootNorm = (rootPath == null || "/".equals(rootPath)
-                        || rootPath.isEmpty())
-                        ? "" : (rootPath.startsWith("/") ? rootPath : "/" + rootPath);
-                if (rootNorm.length() > 1 && rootNorm.endsWith("/"))
-                    rootNorm = rootNorm.substring(0, rootNorm.length() - 1);
-                final String prefix = rootNorm + appPath;
+                final String prefix = rootPathOf(requested) + applicationPathOf(application);
 
-                Handler handler = prefix.isEmpty() ? bridge
-                        : req -> {
+                Handler handler = bridge;
+                if (!prefix.isEmpty()) handler = req -> {
                     String pth = req.path() == null ? "/" : req.path();
                     if (!pth.startsWith(prefix)) {
                         return Response.builder()
@@ -165,6 +127,57 @@ public final class ChappeRuntimeDelegate extends CassiniRuntimeDelegate {
                 this.server.set(null);
                 throw e;
             }
+        }
+
+        /** The requested port, or a free local one when none (or 0) is requested. */
+        private static int portOf(SeBootstrap.Configuration requested) {
+            Object p = requested.property(SeBootstrap.Configuration.PORT);
+            int reqPort = p instanceof Number n ? n.intValue() : -1;
+            if (reqPort > 0) return reqPort;
+            try (var ss = new java.net.ServerSocket(
+                    0, 50, java.net.InetAddress.getByName("127.0.0.1"))) {
+                return ss.getLocalPort();
+            } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        }
+
+        /** The requested properties, with the port actually used and the {@code localhost} host. */
+        private static SeBootstrap.Configuration effectiveConfig(SeBootstrap.Configuration requested, int port) {
+            java.util.Map<String, Object> effective = new java.util.HashMap<>();
+            for (String k : new String[]{
+                    SeBootstrap.Configuration.PROTOCOL,
+                    SeBootstrap.Configuration.HOST,
+                    SeBootstrap.Configuration.PORT,
+                    SeBootstrap.Configuration.ROOT_PATH,
+                    SeBootstrap.Configuration.SSL_CLIENT_AUTHENTICATION,
+                    SeBootstrap.Configuration.SSL_CONTEXT}) {
+                Object v = requested.property(k);
+                if (v != null) effective.put(k, v);
+            }
+            effective.put(SeBootstrap.Configuration.PORT, port);
+            effective.put(SeBootstrap.Configuration.HOST, "localhost");
+            return new EffectiveConfig(java.util.Map.copyOf(effective));
+        }
+
+        /** The {@code @ApplicationPath} as {@code /path} (no trailing slash, but {@code /} is kept),
+         *  or "" when absent. */
+        private static String applicationPathOf(Application application) {
+            jakarta.ws.rs.ApplicationPath ap =
+                    application.getClass().getAnnotation(jakarta.ws.rs.ApplicationPath.class);
+            return ap == null ? "" : asPrefix(ap.value());
+        }
+
+        /** The requested root path as {@code /path} (no trailing slash), or "" for none or {@code /}. */
+        private static String rootPathOf(SeBootstrap.Configuration requested) {
+            String rootPath = (String) requested.property(SeBootstrap.Configuration.ROOT_PATH);
+            return rootPath == null || "/".equals(rootPath) ? "" : asPrefix(rootPath);
+        }
+
+        /** {@code path} with a leading slash and without a trailing one; "" and "/" are kept. */
+        private static String asPrefix(String path) {
+            String prefix = path.isEmpty() || path.charAt(0) == '/' ? path : '/' + path;
+            return prefix.length() > 1 && prefix.endsWith("/") ? prefix.substring(0, prefix.length() - 1) : prefix;
         }
 
         @Override public SeBootstrap.Configuration configuration() { return config; }

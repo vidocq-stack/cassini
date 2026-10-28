@@ -155,16 +155,17 @@ public final class CassiniTestHarness implements AutoCloseable {
             return best;
         }
 
+        /** The annotations that make a constructor parameter injectable (§3.1.2). */
+        private static final List<Class<? extends java.lang.annotation.Annotation>> INJECTION_ANNOTATIONS = List.of(
+                jakarta.ws.rs.core.Context.class, jakarta.ws.rs.PathParam.class,
+                jakarta.ws.rs.QueryParam.class, jakarta.ws.rs.HeaderParam.class,
+                jakarta.ws.rs.CookieParam.class, jakarta.ws.rs.MatrixParam.class,
+                jakarta.ws.rs.FormParam.class, jakarta.ws.rs.BeanParam.class);
+
         private static boolean isInjectable(java.lang.reflect.Parameter p) {
-            if (p.getAnnotation(jakarta.ws.rs.core.Context.class) != null) return true;
-            if (p.getAnnotation(jakarta.ws.rs.PathParam.class) != null) return true;
-            if (p.getAnnotation(jakarta.ws.rs.QueryParam.class) != null) return true;
-            if (p.getAnnotation(jakarta.ws.rs.HeaderParam.class) != null) return true;
-            if (p.getAnnotation(jakarta.ws.rs.CookieParam.class) != null) return true;
-            if (p.getAnnotation(jakarta.ws.rs.MatrixParam.class) != null) return true;
-            if (p.getAnnotation(jakarta.ws.rs.FormParam.class) != null) return true;
-            if (p.getAnnotation(jakarta.ws.rs.BeanParam.class) != null) return true;
-            // A no-arg constructor is trivially "all injectable".
+            for (Class<? extends java.lang.annotation.Annotation> a : INJECTION_ANNOTATIONS) {
+                if (p.isAnnotationPresent(a)) return true;
+            }
             return false;
         }
 
@@ -192,7 +193,7 @@ public final class CassiniTestHarness implements AutoCloseable {
                 Object fixed = beans.get(cls);
                 if (fixed != null) return fixed;
                 var ctor = pickConstructor(cls);
-                if (ctor == null) throw new RuntimeException("No suitable constructor on " + cls);
+                if (ctor == null) throw new IllegalStateException("No suitable constructor on " + cls);
                 try {
                     if (ctor.getParameterCount() == 0) return ctor.newInstance();
                     var match = Invoker.currentMatch();
@@ -201,7 +202,7 @@ public final class CassiniTestHarness implements AutoCloseable {
                             .resolveConstructorArgs(ctor.getParameters(), match, req);
                     return ctor.newInstance(args);
                 } catch (ReflectiveOperationException e) {
-                    throw new RuntimeException("Failed to instantiate " + cls, e);
+                    throw new IllegalStateException("Failed to instantiate " + cls, e);
                 }
             };
             Invoker invoker = new Invoker(resolver, bodies, exceptionMappers);
@@ -226,35 +227,50 @@ public final class CassiniTestHarness implements AutoCloseable {
             // TIME_WAIT between tests). 10 attempts with 100 ms.
             int attempts = fixedPort != null ? 10 : 5;
             for (int attempt = 0; attempt < attempts; attempt++) {
-                int port;
-                if (fixedPort != null) {
-                    port = fixedPort;
-                } else {
-                    try (ServerSocket s = new ServerSocket(0)) { port = s.getLocalPort(); }
-                    catch (Exception e) { throw new RuntimeException(e); }
-                }
+                int port = fixedPort != null ? fixedPort : freePort();
                 try {
-                    Server server = Server.builder()
-                            .host("127.0.0.1").port(port).handler(rootHandler).build();
-                    server.start();
-                    String url = "http://127.0.0.1:" + port
-                            + ("/".equals(contextPath) ? "" : contextPath);
-                    return new CassiniTestHarness(server, port, url);
+                    return startOn(port, rootHandler);
                 } catch (RuntimeException e) {
                     last = e;
-                    if (fixedPort != null && attempt + 1 < attempts) {
-                        try { Thread.sleep(100); } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                        }
-                    }
+                    if (fixedPort != null && attempt + 1 < attempts) pauseBeforeRetry();
                 }
             }
             throw last;
         }
+
+        private CassiniTestHarness startOn(int port, Handler rootHandler) {
+            Server server = Server.builder()
+                    .host("127.0.0.1").port(port).handler(rootHandler).build();
+            server.start();
+            String url = "http://127.0.0.1:" + port
+                    + ("/".equals(contextPath) ? "" : contextPath);
+            return new CassiniTestHarness(server, port, url);
+        }
+
+        private static int freePort() {
+            try (ServerSocket s = new ServerSocket(0)) {
+                return s.getLocalPort();
+            } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        }
+
+        /** Waits for a port in TIME_WAIT to be released before the next attempt. */
+        private static void pauseBeforeRetry() {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     @Override public void close() {
-        try { server.stop(); } catch (RuntimeException ignored) {}
+        try {
+            server.stop();
+        } catch (RuntimeException _) {
+            // the server failed while stopping: nothing more can be released
+        }
     }
 
     /**

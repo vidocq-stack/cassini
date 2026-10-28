@@ -111,6 +111,7 @@ public final class RuntimeAdapterGenerator {
     private static final ClassDesc CD_Throwable       = ConstantDescs.CD_Throwable;
     private static final ClassDesc CD_ExceptionInInit = ClassDesc.of("java.lang.ExceptionInInitializerError");
     private static final ClassDesc CD_UnsupportedOp   = ClassDesc.of("java.lang.UnsupportedOperationException");
+    private static final ClassDesc CD_IllegalArgument = ClassDesc.of("java.lang.IllegalArgumentException");
 
     private static final ClassDesc CD_ResourceAdapter  = ClassDesc.of(ResourceAdapter.class.getName());
     private static final ClassDesc CD_InjectionSupport = ClassDesc.of(InjectionSupport.class.getName());
@@ -244,8 +245,7 @@ public final class RuntimeAdapterGenerator {
         // If the adapter class was already defined (e.g. from a previous call in the same JVM
         // run, or by a concurrent thread), reuse it rather than attempting a duplicate definition.
         try {
-            Class<?> existing = Class.forName(adapterName, false, resourceClass.getClassLoader());
-            return existing;
+            return Class.forName(adapterName, false, resourceClass.getClassLoader());
         } catch (ClassNotFoundException _) {
             // Not yet defined — proceed with defineClass below.
         }
@@ -256,10 +256,10 @@ public final class RuntimeAdapterGenerator {
         // resource's package with full access (including private members of resourceClass).
         //
         // privateLookupIn requires two conditions in named-module land:
-        //   1. cassini-core READS the resource's module (canRead) — impossible by construction:
+        //   1. cassini-core READS the resource's module — impossible by construction:
         //      a framework cannot `requires` its downstream user modules. We fix this at runtime
-        //      via Module.addReads, which is precisely what this API exists for (same pattern as
-        //      Weld/Hibernate/Jersey on user beans/entities/resources).
+        //      with Module.addReads, which is precisely what this API exists for: the same pattern
+        //      as Weld, Hibernate and Jersey on user beans, entities and resources.
         //   2. The resource's module OPENS its package to cassini-core — this is on the user,
         //      either qualified `opens <pkg> to io.vidocq.cassini.core` or unqualified `opens <pkg>`.
         //      Open-modules and unnamed modules satisfy this automatically.
@@ -278,7 +278,7 @@ public final class RuntimeAdapterGenerator {
             // After addReads above, the only remaining cause is a missing `opens` on the package.
             String pkg = resourceClass.getPackageName();
             String targetName = target.isNamed() ? target.getName() : "<unnamed>";
-            throw new Exception("Cannot obtain privateLookupIn for " + resourceClass.getName()
+            throw new AdapterGenerationException("Cannot obtain privateLookupIn for " + resourceClass.getName()
                     + " — module " + targetName + " does not open package " + pkg
                     + " to io.vidocq.cassini.core. Add 'opens " + pkg
                     + ";' (unqualified) or 'opens " + pkg + " to io.vidocq.cassini.core;' to "
@@ -306,7 +306,7 @@ public final class RuntimeAdapterGenerator {
             } catch (ClassNotFoundException cnfe) {
                 // Not a concurrent definition: the definition itself failed (unreadable
                 // supertype, verification…). Surface the original LinkageError, not the CNFE.
-                Exception ex = new Exception("Adapter class definition failed for "
+                Exception ex = new AdapterGenerationException("Adapter class definition failed for "
                         + resourceClass.getName() + ": " + le, le);
                 ex.addSuppressed(cnfe);
                 throw ex;
@@ -318,7 +318,7 @@ public final class RuntimeAdapterGenerator {
         try {
             Class.forName(defined.getName(), true, defined.getClassLoader());
         } catch (ExceptionInInitializerError eiie) {
-            throw new Exception("VarHandle <clinit> failed for " + resourceClass.getName()
+            throw new AdapterGenerationException("VarHandle <clinit> failed for " + resourceClass.getName()
                     + " (module not open?): " + eiie.getCause(), eiie.getCause());
         }
 
@@ -346,7 +346,7 @@ public final class RuntimeAdapterGenerator {
      * concurrency: an already-defined shim is reused, and {@code addReads} is itself idempotent.</p>
      */
     static void ensureTargetReads(Class<?> resourceClass, MethodHandles.Lookup resourceLookup,
-            Module... needed) throws Exception {
+            Module... needed) throws ReflectiveOperationException, AdapterGenerationException {
         Module target = resourceClass.getModule();
         if (!target.isNamed()) {
             return; // the unnamed module reads everything
@@ -368,7 +368,8 @@ public final class RuntimeAdapterGenerator {
         } catch (ClassNotFoundException _) {
             try {
                 shim = resourceLookup.defineClass(readsShimBytecode(shimName));
-            } catch (LinkageError alreadyDefinedConcurrently) {
+            } catch (LinkageError _) {
+                // already defined by a concurrent thread: load that definition
                 shim = Class.forName(shimName, false, resourceClass.getClassLoader());
             }
         }
@@ -379,7 +380,7 @@ public final class RuntimeAdapterGenerator {
             try {
                 addReads.invoke(m);
             } catch (Throwable t) {
-                throw new Exception("Read-edge bootstrap failed for module "
+                throw new AdapterGenerationException("Read-edge bootstrap failed for module "
                         + target.getName() + " -> " + m.getName(), t);
             }
         }
@@ -477,74 +478,69 @@ public final class RuntimeAdapterGenerator {
                         return;
                     }
 
-                    for (var fd : fields) {
-                        Label afterField = cob.newLabel();
-
-                        if (!fd.isContext()) {
-                            // @*Param and @BeanParam fields are skipped when injectParams is false
-                            cob.iload(3);
-                            cob.ifeq(afterField);
-                        }
-
-                        // value = support.context/param/beanParam(...)
-                        cob.aload(2); // support
-
-                        if (fd.isContext()) {
-                            // support.context(FieldType.class)
-                            cob.ldc(classDescOf(fd.fieldType()));
-                            cob.invokeinterface(CD_InjectionSupport, "context",
-                                    MethodTypeDesc.of(CD_Object, CD_Class));
-
-                        } else if (fd.isBeanParam()) {
-                            // support.beanParam(FieldType.class)
-                            cob.ldc(classDescOf(fd.fieldType()));
-                            cob.invokeinterface(CD_InjectionSupport, "beanParam",
-                                    MethodTypeDesc.of(CD_Object, CD_Class));
-
-                        } else {
-                            // M6b: decide inline strategy at generation time
-                            InlineStrategy strategy = resolveInlineStrategy(fd);
-                            if (strategy == InlineStrategy.FALLBACK) {
-                                // fall back to support.param(ParamKind, name, encoded, defaultValue, rawType, elementType)
-                                emitSupportParam(cob, fd);
-                            } else {
-                                // emit inline typed conversion
-                                emitInlineParam(cob, fd, strategy);
-                                // value is on stack — store to slot 4
-                                cob.astore(4);
-                                // if (value == null) skip assignment
-                                cob.aload(4);
-                                cob.ifnull(afterField);
-                                // VarHandle.set(target, value)
-                                cob.getstatic(adapterCD, fd.varHandleField(), CD_VarHandle);
-                                cob.aload(1); // target
-                                cob.aload(4); // value
-                                cob.invokevirtual(CD_VarHandle, "set",
-                                        MethodTypeDesc.of(CD_void, CD_Object, CD_Object));
-                                cob.labelBinding(afterField);
-                                continue; // skip the common tail below
-                            }
-                        }
-
-                        // value is on stack — store to slot 4
-                        cob.astore(4);
-
-                        // if (value == null) skip assignment
-                        cob.aload(4);
-                        cob.ifnull(afterField);
-
-                        // VarHandle.set(target, value)
-                        cob.getstatic(adapterCD, fd.varHandleField(), CD_VarHandle);
-                        cob.aload(1); // target
-                        cob.aload(4); // value
-                        cob.invokevirtual(CD_VarHandle, "set",
-                                MethodTypeDesc.of(CD_void, CD_Object, CD_Object));
-
-                        cob.labelBinding(afterField);
-                    }
+                    for (var fd : fields) emitFieldInjection(cob, adapterCD, fd);
 
                     cob.return_();
                 });
+    }
+
+    /** Stores the value of {@code fd} through its VarHandle unless it is null; {@code @*Param} and
+     *  {@code @BeanParam} fields are skipped when {@code injectParams} is false. */
+    private static void emitFieldInjection(CodeBuilder cob, ClassDesc adapterCD, FieldDesc fd) {
+        Label afterField = cob.newLabel();
+
+        if (!fd.isContext()) {
+            // @*Param and @BeanParam fields are skipped when injectParams is false
+            cob.iload(3);
+            cob.ifeq(afterField);
+        }
+
+        emitFieldValue(cob, fd);
+
+        // value is on stack — store to slot 4
+        cob.astore(4);
+
+        // the assignment is skipped when the value is null
+        cob.aload(4);
+        cob.ifnull(afterField);
+
+        // VarHandle.set(target, value)
+        cob.getstatic(adapterCD, fd.varHandleField(), CD_VarHandle);
+        cob.aload(1); // target
+        cob.aload(4); // value
+        cob.invokevirtual(CD_VarHandle, "set",
+                MethodTypeDesc.of(CD_void, CD_Object, CD_Object));
+
+        cob.labelBinding(afterField);
+    }
+
+    /** Pushes the value of {@code fd}: from support.context/param/beanParam, or an inline conversion. */
+    private static void emitFieldValue(CodeBuilder cob, FieldDesc fd) {
+        cob.aload(2); // support
+
+        if (fd.isContext()) {
+            // support.context(FieldType.class)
+            cob.ldc(classDescOf(fd.fieldType()));
+            cob.invokeinterface(CD_InjectionSupport, "context",
+                    MethodTypeDesc.of(CD_Object, CD_Class));
+
+        } else if (fd.isBeanParam()) {
+            // support.beanParam(FieldType.class)
+            cob.ldc(classDescOf(fd.fieldType()));
+            cob.invokeinterface(CD_InjectionSupport, "beanParam",
+                    MethodTypeDesc.of(CD_Object, CD_Class));
+
+        } else {
+            // M6b: decide inline strategy at generation time
+            InlineStrategy strategy = resolveInlineStrategy(fd);
+            if (strategy == InlineStrategy.FALLBACK) {
+                // fall back to support.param(ParamKind, name, encoded, defaultValue, rawType, elementType)
+                emitSupportParam(cob, fd);
+            } else {
+                // emit inline typed conversion
+                emitInlineParam(cob, fd, strategy);
+            }
+        }
     }
 
     // ---- M6b: inline strategy resolution ----
@@ -772,7 +768,8 @@ public final class RuntimeAdapterGenerator {
 
         ClassDesc typeCD = classDescOf(fd.elementType());
 
-        // try { convert } catch (WAE) { throw } catch (RE) { throw coercionError }
+        // Guard the conversion: a WebApplicationException propagates unchanged, any other
+        // RuntimeException is replaced by the coercion error.
         //
         // IMPORTANT: register outer exceptionCatch entries AFTER emitting (and thus registering)
         // any inner catches from emitScalarConversion (e.g. ENUM_PLAIN's IAE handler).
@@ -863,10 +860,10 @@ public final class RuntimeAdapterGenerator {
                 Label charNotEmpty = cob.newLabel();
                 cob.ifeq(charNotEmpty);
                 cob.pop(); // discard the dup'd string
-                cob.new_(ClassDesc.of("java.lang.IllegalArgumentException"));
+                cob.new_(CD_IllegalArgument);
                 cob.dup();
                 cob.ldc("Empty value for char");
-                cob.invokespecial(ClassDesc.of("java.lang.IllegalArgumentException"),
+                cob.invokespecial(CD_IllegalArgument,
                         ConstantDescs.INIT_NAME, MethodTypeDesc.of(CD_void, CD_String));
                 cob.athrow();
                 cob.labelBinding(charNotEmpty);
@@ -886,7 +883,7 @@ public final class RuntimeAdapterGenerator {
                 Label iaeCatch = cob.newLabel();
                 Label iaeAfter = cob.newLabel();
                 cob.exceptionCatch(iaeStart, iaeEnd, iaeCatch,
-                        ClassDesc.of("java.lang.IllegalArgumentException"));
+                        CD_IllegalArgument);
                 cob.astore(8); // save raw String
                 cob.ldc(typeCD);
                 cob.aload(8);
@@ -1012,6 +1009,12 @@ public final class RuntimeAdapterGenerator {
 
     // ---- Method collection and invoke generation ----
 
+    /** An instance method of the resource itself: not inherited from Object, not bridge nor synthetic. */
+    private static boolean isAdaptable(Method m) {
+        return m.getDeclaringClass() != Object.class && !Modifier.isStatic(m.getModifiers())
+                && !m.isBridge() && !m.isSynthetic();
+    }
+
     /**
      * Collects all eligible resource methods from the class hierarchy, assigning a stable
      * integer methodId to each. Eligibility: public, non-static, non-bridge, non-synthetic,
@@ -1029,10 +1032,7 @@ public final class RuntimeAdapterGenerator {
     public static Map<Method, Integer> collectMethods(Class<?> resourceClass) {
         List<Method> eligible = new ArrayList<>();
         for (Method m : resourceClass.getMethods()) {
-            if (m.getDeclaringClass() == Object.class) continue;
-            if (Modifier.isStatic(m.getModifiers())) continue;
-            if (m.isBridge() || m.isSynthetic()) continue;
-            eligible.add(m);
+            if (isAdaptable(m)) eligible.add(m);
         }
         // Canonical sort: (declaringClassName, methodName, JVM descriptor) — lexicographic.
         // The JVM descriptor is built from parameter types in declared order, giving a unique
@@ -1098,7 +1098,7 @@ public final class RuntimeAdapterGenerator {
                         return;
                     }
 
-                    // Build a tableswitch (IDs are 0..N-1 contiguous by collectMethods).
+                    // Build a tableswitch: collectMethods numbers the IDs contiguously from 0.
                     int size = methodIds.size();
                     Label defaultLabel = cob.newLabel();
                     Label[] caseLabels = new Label[size];
