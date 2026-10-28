@@ -164,22 +164,26 @@ public final class CassiniUriBuilder extends UriBuilder {
         int qIdx = body.indexOf('?');
         String beforeQ = qIdx < 0 ? body : body.substring(0, qIdx);
         String q = qIdx < 0 ? null : body.substring(qIdx + 1);
-        int colonIdx = beforeQ.indexOf(':');
-        int slashSlash = beforeQ.indexOf("//");
-        boolean hasScheme = colonIdx > 0 && (slashSlash < 0 || colonIdx < slashSlash);
-        this.scheme = hasScheme ? beforeQ.substring(0, colonIdx) : null;
-        String rest = hasScheme ? beforeQ.substring(colonIdx + 1) : beforeQ;
-        String pathPart = rest;
-        if (rest.startsWith("//")) {
-            int slash = rest.indexOf('/', 2);
-            pathPart = slash < 0 ? "" : rest.substring(slash);
-            applyAuthority(slash < 0 ? rest.substring(2) : rest.substring(2, slash));
-        }
+        String pathPart = applySchemeAndAuthority(beforeQ);
         this.path.setLength(0);
         if (!pathPart.isEmpty()) this.path.append(pathPart);
         if (q != null) { this.query.clear(); parseQueryInto(q); }
         if (frag != null) this.fragment = frag;
         return this;
+    }
+
+    /** Sets the scheme and the authority of {@code beforeQuery} ({@code [scheme:][//authority]path});
+     *  returns the path part. */
+    private String applySchemeAndAuthority(String beforeQuery) {
+        int colonIdx = beforeQuery.indexOf(':');
+        int slashSlash = beforeQuery.indexOf("//");
+        boolean hasScheme = colonIdx > 0 && (slashSlash < 0 || colonIdx < slashSlash);
+        this.scheme = hasScheme ? beforeQuery.substring(0, colonIdx) : null;
+        String rest = hasScheme ? beforeQuery.substring(colonIdx + 1) : beforeQuery;
+        if (!rest.startsWith("//")) return rest;
+        int slash = rest.indexOf('/', 2);
+        applyAuthority(slash < 0 ? rest.substring(2) : rest.substring(2, slash));
+        return slash < 0 ? "" : rest.substring(slash);
     }
 
     /** Sets user info, host and port from a template authority {@code [userInfo@]host[:port]}. */

@@ -222,20 +222,19 @@ public final class CassiniTestHarness implements AutoCloseable {
             Handler rootHandler = bh.prefix().isEmpty() ? bh.bridgeHandler()
                     : new ContextStrippingHandler(bh.prefix(), bh.bridgeHandler());
 
-            RuntimeException last = null;
             // More aggressive retry on fixed port (port 8080 may remain in
             // TIME_WAIT between tests). 10 attempts with 100 ms.
             int attempts = fixedPort != null ? 10 : 5;
-            for (int attempt = 0; attempt < attempts; attempt++) {
+            for (int attempt = 1; ; attempt++) {
                 int port = fixedPort != null ? fixedPort : freePort();
                 try {
                     return startOn(port, rootHandler);
                 } catch (RuntimeException e) {
-                    last = e;
-                    if (fixedPort != null && attempt + 1 < attempts) pauseBeforeRetry();
+                    // the failure of the last attempt is the one reported
+                    if (attempt >= attempts) throw e;
+                    if (fixedPort != null) pauseBeforeRetry();
                 }
             }
-            throw last;
         }
 
         private CassiniTestHarness startOn(int port, Handler rootHandler) {
