@@ -313,3 +313,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `new CassiniStackBuilderImpl().application(new ShopApplication()).build()` (`@ApplicationPath("shop/")`) and `GET /r/7` on a resource returning `uriInfo.getMatchedResourceTemplate()`.
 - **Cause**: `CassiniStackBuilderImpl.build()` never called `Invoker.setApplication`, so the request scope carried no application; `CassiniUriInfo.getMatchedResourceTemplate` kept the trailing `/` of a root application path.
 - **Fix**: the builder seeds the invoker with its application; a trailing `/` of the application path is always dropped. Regression tests: `UriInfoTest.theMatchedTemplateStartsWithTheApplicationPath`, `UriInfoTest.contextApplicationIsTheApplicationOfTheStack`.
+
+## CASSINI-029 — `UriInfo` decodes `+` as a space and keeps matrix parameters inside the path segments
+- **Date**: 2026-10-28 — **Status**: FIXED
+- **Severity**: low to medium. `@PathParam PathSegment` injection was right (`ParamValueConverter.parsePathSegment`); only `UriInfo` was affected.
+- **Symptom**: (1) `UriInfo.getPath()` of `/a+b%20c` was `a b c` instead of `a+b c` (and so were `getPathSegments()` and `getMatchedURIs()`); (2) `getPathSegments()` of `/cars;color=red/x` gave a first segment whose path was `cars;color=red` and whose matrix parameters were empty.
+- **Minimal repro**: `new CassiniUriInfo(InMemoryExchange.get("/cars;color=red/x"), "", Map.of()).getPathSegments().get(0).getPath()`.
+- **Cause**: `CassiniUriInfo` decoded paths with `URLDecoder`, a form decoder that turns `+` into a space, and built each segment from the decoded text without parsing its matrix parameters (a stub `SimpleSegment` with an empty map).
+- **Fix**: path decoding only decodes escaped octets (`+` is kept, as `getPathParameters` already did); segments are split on the raw path, parsed with `ParamValueConverter.parsePathSegment`, then decoded part by part. Regression tests: `UriInfoTest.aPlusSignInThePathIsKeptByTheDecoding`, `UriInfoTest.pathSegmentsSeparateTheirMatrixParameters`.

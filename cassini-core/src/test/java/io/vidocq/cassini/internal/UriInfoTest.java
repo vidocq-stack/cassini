@@ -82,6 +82,28 @@ class UriInfoTest {
         assertTrue(segments.get(0).getMatrixParameters().isEmpty());
     }
 
+    /** CASSINI-029: '+' is not an escaped octet in a path, it stays a '+' once decoded. */
+    @Test
+    void aPlusSignInThePathIsKeptByTheDecoding() {
+        assertEquals("a+b c", info("/a+b%20c", "").getPath());
+        assertEquals(List.of("a+b c"), info("/a+b%20c", "").getPathSegments().stream().map(PathSegment::getPath).toList());
+        assertEquals(List.of("a+b c"), info("/a+b%20c", "").getMatchedURIs());
+    }
+
+    /** CASSINI-029: a path segment carries its matrix parameters apart from its path. */
+    @Test
+    void pathSegmentsSeparateTheirMatrixParameters() {
+        List<PathSegment> segments = info("/cars;color=red%20dark;year=2020;year=2021;flag/x", "").getPathSegments();
+        assertEquals(List.of("cars", "x"), segments.stream().map(PathSegment::getPath).toList());
+        MultivaluedMap<String, String> matrix = segments.get(0).getMatrixParameters();
+        assertEquals(List.of("red dark"), matrix.get("color"));
+        assertEquals(List.of("2020", "2021"), matrix.get("year"));
+        assertEquals(List.of(""), matrix.get("flag"));
+        assertTrue(segments.get(1).getMatrixParameters().isEmpty());
+        assertEquals(List.of("red%20dark"), info("/cars;color=red%20dark", "").getPathSegments(false).get(0)
+                .getMatrixParameters().get("color"));
+    }
+
     // ---- request, absolute and base URIs ----
 
     @Test

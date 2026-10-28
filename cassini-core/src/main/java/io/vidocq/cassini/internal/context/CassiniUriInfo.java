@@ -101,20 +101,31 @@ public final class CassiniUriInfo implements UriInfo {
         String p = pathInfo();
         if (p == null || p.isEmpty()) return "";
         String out = p.startsWith("/") ? p.substring(1) : p;
-        if (decode) {
-            try { out = java.net.URLDecoder.decode(out, java.nio.charset.StandardCharsets.UTF_8); }
-            catch (Exception _) { /* not decodable: the raw path is returned */ }
+        return decode ? decodePath(out) : out;
+    }
+
+    /**
+     * Decodes the escaped octets of a path, or of one of its parts. Unlike a form, a path
+     * gives no meaning to {@code +}: it stays a {@code +} (CASSINI-029).
+     */
+    private static String decodePath(String raw) {
+        if (raw.indexOf('%') < 0) return raw;
+        try {
+            return java.net.URLDecoder.decode(raw.replace("+", "%2B"), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException _) {
+            return raw; // not decodable: kept raw
         }
-        return out;
     }
 
     @Override public List<PathSegment> getPathSegments() { return getPathSegments(true); }
 
     @Override public List<PathSegment> getPathSegments(boolean decode) {
+        // Split the raw path: an escaped '/' or ';' belongs to its segment (§9.2.1, CASSINI-029).
         List<PathSegment> segs = new ArrayList<>();
-        for (String s : getPath(decode).split("/")) {
-            if (s.isEmpty()) continue;
-            segs.add(new SimpleSegment(s));
+        for (String raw : getPath(false).split("/")) {
+            if (raw.isEmpty()) continue;
+            PathSegment segment = io.vidocq.cassini.internal.ParamValueConverter.parsePathSegment(raw);
+            segs.add(decode ? decoded(segment) : segment);
         }
         return List.copyOf(segs);
     }
@@ -246,8 +257,16 @@ public final class CassiniUriInfo implements UriInfo {
 
     @Override public URI relativize(URI uri) { return getRequestUri().relativize(uri); }
 
-    private record SimpleSegment(String value) implements PathSegment {
-        @Override public String getPath() { return value; }
-        @Override public MultivaluedMap<String, String> getMatrixParameters() { return new MultivaluedHashMap<>(); }
+    private static PathSegment decoded(PathSegment raw) {
+        MultivaluedMap<String, String> matrix = new MultivaluedHashMap<>();
+        raw.getMatrixParameters().forEach((name, values) -> {
+            for (String value : values) matrix.add(decodePath(name), decodePath(value));
+        });
+        return new Segment(decodePath(raw.getPath()), matrix);
+    }
+
+    private record Segment(String path, MultivaluedMap<String, String> matrix) implements PathSegment {
+        @Override public String getPath() { return path; }
+        @Override public MultivaluedMap<String, String> getMatrixParameters() { return matrix; }
     }
 }
