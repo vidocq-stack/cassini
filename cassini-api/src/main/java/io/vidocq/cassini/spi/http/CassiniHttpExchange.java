@@ -84,7 +84,7 @@ public interface CassiniHttpExchange {
             try {
                 k = java.net.URLDecoder.decode(k, java.nio.charset.StandardCharsets.UTF_8);
                 v = java.net.URLDecoder.decode(v, java.nio.charset.StandardCharsets.UTF_8);
-            } catch (Exception ignored) {}
+            } catch (Exception _) { /* not decodable: the raw pair is kept */ }
             out.computeIfAbsent(k, _ -> new java.util.ArrayList<>()).add(v);
         }
         return out;

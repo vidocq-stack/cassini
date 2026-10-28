@@ -266,7 +266,7 @@ public final class MessageBodyRegistry {
         String cs = mt.getParameters().get("charset");
         try {
             return cs == null ? StandardCharsets.UTF_8 : Charset.forName(cs);
-        } catch (Exception e) {
+        } catch (Exception _) {
             return StandardCharsets.UTF_8;
         }
     }
@@ -437,7 +437,8 @@ public final class MessageBodyRegistry {
         @Override public void writeTo(Reader v, Class<?> t, Type gt, Annotation[] a, MediaType mt,
                                       MultivaluedMap<String, Object> h, OutputStream s) throws IOException {
             OutputStreamWriter w = new OutputStreamWriter(s, charset(mt));
-            char[] buf = new char[4096]; int n;
+            char[] buf = new char[4096];
+            int n;
             while ((n = v.read(buf)) > 0) w.write(buf, 0, n);
             w.flush();
         }

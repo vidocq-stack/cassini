@@ -126,7 +126,7 @@ public final class InjectionSupportImpl implements InjectionSupport {
         if (adapter.isPresent()) {
             try {
                 instance = adapter.get().newInstance();
-            } catch (UnsupportedOperationException ignored) {
+            } catch (UnsupportedOperationException _) {
                 // no no-arg ctor — fall through to reflective path
                 instance = null;
             }
@@ -176,7 +176,7 @@ public final class InjectionSupportImpl implements InjectionSupport {
         if (s == null || s.indexOf('%') < 0) return s;
         try {
             return java.net.URLDecoder.decode(s.replace("+", "%2B"), java.nio.charset.StandardCharsets.UTF_8);
-        } catch (Exception e) {
+        } catch (Exception _) {
             return s;
         }
     }

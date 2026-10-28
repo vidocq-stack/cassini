@@ -263,7 +263,7 @@ public final class ChappeHttpAdapter implements Handler {
     private static void closeQuietly(InputStream in) {
         try {
             in.close();
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException _) {
             // Best effort: the response is already lost.
         }
     }

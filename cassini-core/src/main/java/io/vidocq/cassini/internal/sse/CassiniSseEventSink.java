@@ -171,8 +171,8 @@ public final class CassiniSseEventSink implements SseEventSink {
     public void awaitClose() {
         if (closed) return;
         try { closeFuture.get(); }
-        catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-        catch (java.util.concurrent.ExecutionException ignored) {}
+        catch (InterruptedException _) { Thread.currentThread().interrupt(); }
+        catch (java.util.concurrent.ExecutionException _) { /* the close future never fails */ }
     }
 
     public byte[] toByteArray() { return buffer.toByteArray(); }

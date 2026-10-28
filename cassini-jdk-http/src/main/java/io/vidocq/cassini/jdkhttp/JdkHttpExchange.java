@@ -163,7 +163,7 @@ public final class JdkHttpExchange implements CassiniHttpExchange {
 
                 @Override public boolean isOpen() { return open; }
             };
-        } catch (IOException e) {
+        } catch (IOException _) {
             return null;
         }
     }

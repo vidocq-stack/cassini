@@ -68,7 +68,7 @@ final class CassiniClientResponse extends Response {
         }
         try {
             return MediaType.valueOf(ct);
-        } catch (RuntimeException e) {
+        } catch (RuntimeException _) {
             return null;
         }
     }
@@ -197,7 +197,7 @@ final class CassiniClientResponse extends Response {
         String cs = mt.getParameters().get(MediaType.CHARSET_PARAMETER);
         try {
             return cs == null ? StandardCharsets.UTF_8 : java.nio.charset.Charset.forName(cs);
-        } catch (Exception e) {
+        } catch (Exception _) {
             return StandardCharsets.UTF_8;
         }
     }

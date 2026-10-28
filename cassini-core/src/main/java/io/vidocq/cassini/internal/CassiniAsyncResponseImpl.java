@@ -200,7 +200,7 @@ public final class CassiniAsyncResponseImpl implements AsyncResponse {
         for (var cb : completionCallbacks) {
             try {
                 cb.onComplete(unmappedError);
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException _) {
                 // a callback failure must not break response delivery
             }
         }

@@ -334,7 +334,7 @@ public final class CassiniResponse extends Response {
             jakarta.ws.rs.ext.RuntimeDelegate.HeaderDelegate hd =
                     jakarta.ws.rs.ext.RuntimeDelegate.getInstance().createHeaderDelegate(v.getClass());
             if (hd != null) return hd.toString(v);
-        } catch (Exception ignored) {}
+        } catch (Exception _) { /* no usable HeaderDelegate: String.valueOf below */ }
         return String.valueOf(v);
     }
 

@@ -63,7 +63,7 @@ public final class CassiniDynamicFeatureContext implements FeatureContext {
         try {
             Object instance = componentClass.getDeclaredConstructor().newInstance();
             registry.registerDynamic(instance, targetMethod);
-        } catch (ReflectiveOperationException ignored) {}
+        } catch (ReflectiveOperationException _) { /* not instantiable: not registered */ }
         return this;
     }
 

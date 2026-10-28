@@ -40,7 +40,7 @@ public final class CdiBeanProviderFactory implements BeanProvider.Factory {
         try {
             CDI<Object> cdi = CDI.current();
             return new CdiBeanProvider(cdi);
-        } catch (IllegalStateException noContainer) {
+        } catch (IllegalStateException _) {
             return null;
         }
     }

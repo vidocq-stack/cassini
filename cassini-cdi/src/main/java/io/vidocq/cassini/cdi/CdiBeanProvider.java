@@ -78,7 +78,7 @@ public final class CdiBeanProvider implements BeanProvider {
             if (scope == null || !scope.isAnnotationPresent(NormalScope.class)) return bean;
             Object contextual = fromContext(bm.getContext(scope), resolved, bm);
             return contextual != null ? contextual : bean;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException _) {
             // Inactive scope or unresolved bean: keep the client proxy.
             return bean;
         }

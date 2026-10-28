@@ -120,7 +120,7 @@ public final class FilterRegistry {
             };
             for (var df : dynamicFeatures) {
                 try { df.configure(ri, new CassiniDynamicFeatureContext(this, m)); }
-                catch (RuntimeException ignored) {}
+                catch (RuntimeException _) { /* a failing feature registers nothing */ }
             }
         }
     }
