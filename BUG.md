@@ -329,3 +329,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `var b = new CassiniSse().newBroadcaster(); b.register(sink); b.close(false); sink.isClosed()` is `true`.
 - **Cause**: `CassiniSseBroadcaster.close(boolean)` delegated to `close()` whatever the flag, and only `register` checked the closed state.
 - **Fix**: `close()` is `close(true)`; the sinks are closed only when cascading; the first close wins (`AtomicBoolean`) and every other method throws `IllegalStateException` afterwards, as the `SseBroadcaster` Javadoc specifies. Regression tests: `SseTest.aNonCascadingCloseLeavesTheSinksOpen`, `SseTest.aClosedBroadcasterRefusesEveryOtherCallAndIgnoresAnotherClose`.
+
+## CASSINI-031 — `UriInfo.relativize` ignores its specified algorithm, and the filter's `UriInfo` view keeps the query in the absolute path
+- **Date**: 2026-10-28 — **Status**: FIXED
+- **Severity**: low. Neither case is reached by the official TCK.
+- **Symptom**: (1) with base `http://example.com:8080/app/root/` and request `…/app/root/a/b/c/resource.html`, `uriInfo.relativize(URI.create("a/b/c/d/file.txt"))` returned `a/b/c/d/file.txt` instead of `d/file.txt` (the first example of the Javadoc); (2) after `ContainerRequestContext.setRequestUri(base, "…/items/9?x=1")`, `getUriInfo().getAbsolutePath()` kept `?x=1` and `getMatchedResourceTemplate()` was always `""`.
+- **Minimal repro**: `new CassiniUriInfo(InMemoryExchange.get("example.com:8080", "/app/root/a/b/c/resource.html"), "/app/root", Map.of()).relativize(URI.create("a/b/c/d/file.txt"))`.
+- **Cause**: `CassiniUriInfo.relativize` called `URI.relativize` on the request URI itself, without resolving a relative argument first and against the request's file rather than its directory; `CassiniRequestContext.MutableUriInfoView` returned the request URI as the absolute path and a constant template.
+- **Fix**: `relativize` resolves a relative URI against the base URI, then relativizes it against the request URI's directory (the resolved URI is returned when they share no prefix); the view drops the query and fragment from the absolute path and delegates the matched template. Regression tests: `UriInfoTest.relativizeFollowsTheExamplesOfTheSpecification`, `CassiniRequestContextTest.theChangedUriInfoKeepsTheAbsolutePathAndTheMatchedTemplate`.

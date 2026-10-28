@@ -209,6 +209,16 @@ class CassiniRequestContextTest {
         assertEquals("/items", context.getUriInfo().getPath(), "a request outside the base keeps its path");
     }
 
+    /** CASSINI-031: the absolute path has no query, and the matched template is the request's. */
+    @Test
+    void theChangedUriInfoKeepsTheAbsolutePathAndTheMatchedTemplate() {
+        var context = context(get());
+        context.setRequestUri(URI.create("http://example.org/v2/"), URI.create("http://example.org/v2/items/9?x=1"));
+        UriInfo info = context.getUriInfo();
+        assertEquals(URI.create("http://example.org/v2/items/9"), info.getAbsolutePath());
+        assertEquals("/things/{id}", info.getMatchedResourceTemplate());
+    }
+
     private static SecurityContext securityContext(String user) {
         return new SecurityContext() {
             @Override public Principal getUserPrincipal() { return () -> user; }

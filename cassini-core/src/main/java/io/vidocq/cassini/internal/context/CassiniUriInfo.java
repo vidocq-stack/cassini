@@ -255,7 +255,23 @@ public final class CassiniUriInfo implements UriInfo {
 
     @Override public URI resolve(URI uri) { return getBaseUri().resolve(uri); }
 
-    @Override public URI relativize(URI uri) { return getRequestUri().relativize(uri); }
+    /**
+     * As the {@link UriInfo#relativize} Javadoc describes it (CASSINI-031): a relative URI is
+     * first resolved against the base URI, then relativized against the request URI's
+     * directory; without a common prefix the resolved URI is returned.
+     */
+    @Override public URI relativize(URI uri) {
+        URI target = uri.isAbsolute() ? uri : resolve(uri);
+        URI request = getRequestUri();
+        String path = request.getPath() == null ? "/" : request.getPath();
+        try {
+            URI directory = new URI(request.getScheme(), request.getAuthority(),
+                    path.substring(0, path.lastIndexOf('/') + 1), null, null);
+            return directory.relativize(target);
+        } catch (java.net.URISyntaxException _) {
+            return target;
+        }
+    }
 
     private static PathSegment decoded(PathSegment raw) {
         MultivaluedMap<String, String> matrix = new MultivaluedHashMap<>();

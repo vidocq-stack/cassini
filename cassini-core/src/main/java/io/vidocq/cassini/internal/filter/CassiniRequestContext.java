@@ -277,7 +277,16 @@ public final class CassiniRequestContext implements ContainerRequestContext {
         @Override public jakarta.ws.rs.core.UriBuilder getRequestUriBuilder() {
             return jakarta.ws.rs.core.UriBuilder.fromUri(getRequestUri());
         }
-        @Override public URI getAbsolutePath() { return getRequestUri(); }
+        /** The request URI without its query and fragment (CASSINI-031). */
+        @Override public URI getAbsolutePath() {
+            URI uri = getRequestUri();
+            if (uri.getRawQuery() == null && uri.getRawFragment() == null) return uri;
+            try {
+                return new URI(uri.getScheme(), uri.getAuthority(), uri.getPath(), null, null);
+            } catch (java.net.URISyntaxException _) {
+                return uri;
+            }
+        }
         @Override public jakarta.ws.rs.core.UriBuilder getAbsolutePathBuilder() {
             return jakarta.ws.rs.core.UriBuilder.fromUri(getAbsolutePath());
         }
@@ -294,6 +303,6 @@ public final class CassiniRequestContext implements ContainerRequestContext {
         @Override public java.util.List<Object> getMatchedResources() { return delegate.getMatchedResources(); }
         @Override public URI resolve(URI uri) { return delegate.resolve(uri); }
         @Override public URI relativize(URI uri) { return delegate.relativize(uri); }
-        public String getMatchedResourceTemplate() { return ""; }
+        @Override public String getMatchedResourceTemplate() { return delegate.getMatchedResourceTemplate(); }
     }
 }

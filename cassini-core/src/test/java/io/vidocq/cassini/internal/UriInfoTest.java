@@ -141,6 +141,17 @@ class UriInfoTest {
         assertTrue(opaque.getPathParameters().isEmpty());
     }
 
+    /** CASSINI-031: the two examples of the UriInfo.relativize Javadoc. */
+    @Test
+    void relativizeFollowsTheExamplesOfTheSpecification() {
+        var info = new CassiniUriInfo(InMemoryExchange.get("example.com:8080", "/app/root/a/b/c/resource.html"),
+                "/app/root", Map.of());
+        assertEquals(URI.create("http://example.com:8080/app/root/"), info.getBaseUri());
+        assertEquals(URI.create("d/file.txt"), info.relativize(URI.create("a/b/c/d/file.txt")));
+        URI elsewhere = URI.create("http://example2.com:9090/app2/root2/a/d/file.txt");
+        assertEquals(elsewhere, info.relativize(elsewhere));
+    }
+
     // ---- parameters ----
 
     @Test
