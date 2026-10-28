@@ -353,3 +353,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `RuntimeAdapterGenerator.generate(AbstractResource.class)`, then `newInstance()` on the adapter.
 - **Cause**: both `hasAccessibleNoArgCtor` checked only the constructor's visibility, not whether the class can be instantiated at all.
 - **Fix**: the processor's check also returns `false` for an abstract type and for a non-static member type; the runtime one for an abstract class (an inner class already has no no-arg constructor). Such adapters inherit the default `newInstance()`. Regression tests: `CassiniResourceProcessorTest.anAbstractResourceCompilesAndGetsNoNewInstance`, `CassiniResourceProcessorTest.anInnerResourceCompilesAndGetsNoNewInstance`, `RuntimeAdapterGeneratorTest.anAbstractResourceGetsNoNewInstance`.
+
+## CASSINI-034 — The Maven plugin keeps the adapter of a previous build
+- **Date**: 2026-10-29 — **Status**: FIXED
+- **Severity**: medium. Only a build without `clean` is affected, but the result is silent: the application runs with an adapter of an older version of its resource.
+- **Symptom**: `cassini:generate` skipped every resource whose `$$CassiniAdapter.class` already existed. Built again after a change to the resource, the project kept the adapter of the previous build: a new `@Context` or `@*Param` field was not injected by it, and a new or changed method had no id (reflective dispatch).
+- **Minimal repro**: run the goal on a `target/classes` that already holds an adapter for the resource (`GenerateAdaptersMojoExecuteTest.aSecondRunReplacesTheAdapterItGeneratedBefore`).
+- **Cause**: `GenerateAdaptersMojo.writeAdapter` returned on `dest.exists()`, to leave the annotation processor's adapter in place, without telling it from one the goal itself wrote.
+- **Fix**: the goal keeps only an adapter javac compiled from the processor's source (it carries a `SourceFile` attribute, and javac regenerates it with its resource); it writes its own again on every run. Regression tests: `GenerateAdaptersMojoExecuteTest.aSecondRunReplacesTheAdapterItGeneratedBefore`, `anAdapterCompiledFromTheProcessorsSourceIsKept`.

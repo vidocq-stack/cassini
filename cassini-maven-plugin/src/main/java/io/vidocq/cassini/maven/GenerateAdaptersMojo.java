@@ -33,6 +33,8 @@ import org.apache.maven.project.MavenProject;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.classfile.Attributes;
+import java.lang.classfile.ClassFile;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
@@ -496,8 +498,8 @@ public class GenerateAdaptersMojo extends AbstractMojo {
         String adapterBinaryName = cls.getName() + ADAPTER_SUFFIX;
         String relPath = adapterBinaryName.replace('.', '/') + CLASS_EXTENSION;
         File dest = new File(outputDir, relPath);
-        if (dest.exists()) {
-            getLog().debug("Adapter already exists, skipping: " + dest);
+        if (compiledFromSource(dest)) {
+            getLog().debug("Adapter compiled by the annotation processor, skipping: " + dest);
             return 0;
         }
         try {
@@ -513,6 +515,20 @@ public class GenerateAdaptersMojo extends AbstractMojo {
     }
 
     // ---- Helpers ----
+
+    /**
+     * Whether {@code adapter} was compiled by javac from the annotation processor's source, which javac
+     * regenerates with its resource. An adapter this goal wrote has no {@code SourceFile}: it is written again,
+     * as the resource may have changed since (CASSINI-034).
+     */
+    private static boolean compiledFromSource(File adapter) {
+        if (!adapter.isFile()) return false;
+        try {
+            return ClassFile.of().parse(adapter.toPath()).findAttribute(Attributes.sourceFile()).isPresent();
+        } catch (IOException | IllegalArgumentException _) {
+            return false;
+        }
+    }
 
     private boolean isResource(Class<?> cls) {
         return cls.isAnnotationPresent(jakarta.ws.rs.Path.class)

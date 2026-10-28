@@ -39,7 +39,9 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.classfile.Attributes;
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassTransform;
 import java.lang.classfile.attribute.ModuleAttribute;
+import java.lang.classfile.attribute.SourceFileAttribute;
 import java.lang.constant.ModuleDesc;
 import java.lang.constant.PackageDesc;
 import java.net.URL;
@@ -87,7 +89,7 @@ class GenerateAdaptersMojoExecuteTest {
     // ---- project scope ----
 
     @Test
-    void generatesAnAdapterForEachResourceOfTheProjectAndKeepsExistingOnes(@TempDir File dir) throws Exception {
+    void generatesAnAdapterForEachResourceOfTheProject(@TempDir File dir) throws Exception {
         File classes = new File(dir, CLASSES);
         copyClass(PlainJarResource.class, classes);
         copyClass(RichJarResource.class, classes);
@@ -106,10 +108,39 @@ class GenerateAdaptersMojoExecuteTest {
         assertArrayEquals(RuntimeAdapterGenerator.toBytecode(PlainJarResource.class),
                 Files.readAllBytes(plain.toPath()));
 
-        // A second run leaves an adapter already there untouched.
+    }
+
+    @Test
+    void aSecondRunReplacesTheAdapterItGeneratedBefore(@TempDir File dir) throws Exception {
+        // Built again without `clean`, the resource may have changed since: its old adapter would
+        // inject the old fields and miss the new methods (CASSINI-034).
+        File classes = new File(dir, CLASSES);
+        copyClass(PlainJarResource.class, classes);
+        File plain = adapterFile(classes, PlainJarResource.class);
+        plain.getParentFile().mkdirs();
         Files.write(plain.toPath(), new byte[]{1, 2, 3});
+
         newMojo(dir, classes, Map.of()).execute();
-        assertArrayEquals(new byte[]{1, 2, 3}, Files.readAllBytes(plain.toPath()));
+
+        assertArrayEquals(RuntimeAdapterGenerator.toBytecode(PlainJarResource.class),
+                Files.readAllBytes(plain.toPath()));
+    }
+
+    @Test
+    void anAdapterCompiledFromTheProcessorsSourceIsKept(@TempDir File dir) throws Exception {
+        // javac compiles the processor's adapter with its resource, so it is never stale: it has a SourceFile.
+        File classes = new File(dir, CLASSES);
+        copyClass(PlainJarResource.class, classes);
+        File plain = adapterFile(classes, PlainJarResource.class);
+        plain.getParentFile().mkdirs();
+        ClassFile cf = ClassFile.of();
+        byte[] fromSource = cf.transformClass(cf.parse(RuntimeAdapterGenerator.toBytecode(PlainJarResource.class)),
+                ClassTransform.endHandler(b -> b.with(SourceFileAttribute.of("PlainJarResource$$CassiniAdapter.java"))));
+        Files.write(plain.toPath(), fromSource);
+
+        newMojo(dir, classes, Map.of()).execute();
+
+        assertArrayEquals(fromSource, Files.readAllBytes(plain.toPath()));
     }
 
     @Test
