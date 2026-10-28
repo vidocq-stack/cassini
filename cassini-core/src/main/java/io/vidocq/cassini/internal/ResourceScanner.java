@@ -149,11 +149,9 @@ public final class ResourceScanner {
         }
         // 2. inherited hierarchy methods (superclasses + interfaces)
         for (Method m : cls.getMethods()) {
-            if (m.getDeclaringClass() == Object.class) continue;
-            String sig = signature(m);
-            if (merged.containsKey(sig)) continue;
-            Method eff = effectiveMethod(m, cls);
-            merged.put(sig, eff);
+            if (m.getDeclaringClass() != Object.class) {
+                merged.computeIfAbsent(signature(m), _ -> effectiveMethod(m, cls));
+            }
         }
         return new java.util.ArrayList<>(merged.values());
     }

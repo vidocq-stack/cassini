@@ -233,9 +233,11 @@ public final class RuntimeAdapterGenerator {
      *
      * @param resourceClass the JAX-RS resource class to generate an adapter for
      * @return the generated adapter class
-     * @throws Exception if bytecode generation or class definition fails
+     * @throws AdapterGenerationException if the adapter class cannot be defined or initialised
+     * @throws ReflectiveOperationException if the module read-edge shim cannot be defined
      */
-    public static Class<?> generate(Class<?> resourceClass) throws Exception {
+    public static Class<?> generate(Class<?> resourceClass)
+            throws AdapterGenerationException, ReflectiveOperationException {
         Map<Method, Integer> methodIds = collectMethods(resourceClass);
 
         String adapterName = adapterClassName(resourceClass);
@@ -306,7 +308,7 @@ public final class RuntimeAdapterGenerator {
             } catch (ClassNotFoundException cnfe) {
                 // Not a concurrent definition: the definition itself failed (unreadable
                 // supertype, verification…). Surface the original LinkageError, not the CNFE.
-                Exception ex = new AdapterGenerationException("Adapter class definition failed for "
+                AdapterGenerationException ex = new AdapterGenerationException("Adapter class definition failed for "
                         + resourceClass.getName() + ": " + le, le);
                 ex.addSuppressed(cnfe);
                 throw ex;
