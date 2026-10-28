@@ -69,6 +69,11 @@ class RuntimeAdapterGeneratorTest {
 
     // ---- Resource fixtures (in this package so privateLookupIn works) ----
 
+    /** Abstract: no adapter can create it, whatever constructor it declares. */
+    abstract static class AbstractResource {
+        public String hello() { return "hello"; }
+    }
+
     /** Has a private @Context SecurityContext — the acid test for VarHandle + private field. */
     static class PrivateContextResource {
         @Context
@@ -405,6 +410,15 @@ class RuntimeAdapterGeneratorTest {
 
         assertDoesNotThrow(() -> adapter.injectFields(target, support, true));
         assertEquals("original", target.nonInjectable, "non-injectable field must not be touched");
+    }
+
+    @Test
+    void anAbstractResourceGetsNoNewInstance() throws Exception {
+        // The adapter used to emit `new AbstractResource()`: an InstantiationError on the first call.
+        Class<?> adapterClass = RuntimeAdapterGenerator.generate(AbstractResource.class);
+        ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
+
+        assertThrows(UnsupportedOperationException.class, adapter::newInstance);
     }
 
     @Test

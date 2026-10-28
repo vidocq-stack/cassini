@@ -31,6 +31,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
+import javax.lang.model.element.NestingKind;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.ArrayType;
@@ -1001,8 +1002,15 @@ public class CassiniResourceProcessor extends AbstractProcessor {
      * Returns {@code true} when the resource type has a no-arg constructor that is accessible
      * from the adapter's package (public or package-private/protected; NOT private).
      * Used by the APT processor to decide whether to emit a generated {@code newInstance()}.
+     * An abstract class, and an inner class that needs an enclosing instance, has none: {@code new}
+     * would not compile (CASSINI-033).
      */
     private boolean hasAccessibleNoArgCtor(TypeElement resourceType) {
+        Set<Modifier> typeMods = resourceType.getModifiers();
+        if (typeMods.contains(Modifier.ABSTRACT)
+                || (resourceType.getNestingKind() == NestingKind.MEMBER && !typeMods.contains(Modifier.STATIC))) {
+            return false;
+        }
         for (Element enc : resourceType.getEnclosedElements()) {
             if (enc.getKind() == ElementKind.CONSTRUCTOR && ((ExecutableElement) enc).getParameters().isEmpty()) {
                 // no-arg constructor found: private → not accessible from same-package adapter
@@ -1016,9 +1024,8 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                 .count();
         if (ctorCount == 0) {
             // Implicit no-arg constructor exists (and has the same access as the class)
-            Set<Modifier> classMods = resourceType.getModifiers();
             // Private nested class → not accessible; otherwise OK
-            return !classMods.contains(Modifier.PRIVATE);
+            return !typeMods.contains(Modifier.PRIVATE);
         }
         return false;
     }

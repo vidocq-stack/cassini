@@ -267,6 +267,50 @@ class CassiniResourceProcessorTest {
     }
 
     @Test
+    void anAbstractResourceCompilesAndGetsNoNewInstance() throws Throwable {
+        // The adapter used to emit `new Abstract()`: the application did not compile.
+        File src = writeSource("io/vidocq/cassini/test/apt/Abstract.java", """
+                package io.vidocq.cassini.test.apt;
+
+                @jakarta.ws.rs.Path("/abstract")
+                public abstract class Abstract {
+                    @jakarta.ws.rs.GET public String hello() { return "hello"; }
+                }
+                """);
+        File outDir = tempDir.resolve("out-abstract").toFile();
+        outDir.mkdirs();
+
+        URLClassLoader loader = compileWithProcessor(outDir, src);
+
+        ResourceAdapter adapter = (ResourceAdapter) loader
+                .loadClass("io.vidocq.cassini.test.apt.Abstract$$CassiniAdapter").getDeclaredConstructor().newInstance();
+        assertThrows(UnsupportedOperationException.class, adapter::newInstance);
+    }
+
+    @Test
+    void anInnerResourceCompilesAndGetsNoNewInstance() throws Throwable {
+        // An inner class needs its enclosing instance: `new Outer.Inner()` does not compile either.
+        File src = writeSource("io/vidocq/cassini/test/apt/Outer.java", """
+                package io.vidocq.cassini.test.apt;
+
+                public class Outer {
+                    @jakarta.ws.rs.Path("/inner")
+                    public class Inner {
+                        @jakarta.ws.rs.GET public String hello() { return "hello"; }
+                    }
+                }
+                """);
+        File outDir = tempDir.resolve("out-inner").toFile();
+        outDir.mkdirs();
+
+        URLClassLoader loader = compileWithProcessor(outDir, src);
+
+        ResourceAdapter adapter = (ResourceAdapter) loader
+                .loadClass("io.vidocq.cassini.test.apt.Outer$Inner$$CassiniAdapter").getDeclaredConstructor().newInstance();
+        assertThrows(UnsupportedOperationException.class, adapter::newInstance);
+    }
+
+    @Test
     void applicationPathValueIsEscapedInTheDescriptor() throws Throwable {
         File src = writeSource("io/vidocq/cassini/test/apt/Odd.java", """
                 package io.vidocq.cassini.test.apt;

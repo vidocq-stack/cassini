@@ -1309,9 +1309,13 @@ public final class RuntimeAdapterGenerator {
      * Returns {@code true} when the resource class has an accessible no-arg constructor.
      * Accessible means: public, OR package-private/protected (the adapter is in the same
      * package, so it can call a non-private no-arg ctor). Private no-arg ctors are excluded
-     * because the generated adapter code would fail at classload time.
+     * because the generated adapter code would fail at classload time. An abstract class has none
+     * either: {@code new} would throw {@link InstantiationError} (CASSINI-033).
      */
     static boolean hasAccessibleNoArgCtor(Class<?> resourceClass) {
+        if (java.lang.reflect.Modifier.isAbstract(resourceClass.getModifiers())) {
+            return false;
+        }
         try {
             java.lang.reflect.Constructor<?> ctor = resourceClass.getDeclaredConstructor();
             int mods = ctor.getModifiers();
