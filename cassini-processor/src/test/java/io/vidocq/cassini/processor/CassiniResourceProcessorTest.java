@@ -532,14 +532,8 @@ class CassiniResourceProcessorTest {
         assertEquals("HELLO", echoResult, "echo must uppercase the argument");
 
         // Test unknown methodId throws
-        assertThrows(UnsupportedOperationException.class, () -> {
-            try {
-                adapter.invoke(999, resource, new Object[0]);
-            } catch (Throwable t) {
-                if (t instanceof UnsupportedOperationException u) throw u;
-                throw new RuntimeException(t);
-            }
-        });
+        Object[] noArgs = new Object[0];
+        assertThrows(UnsupportedOperationException.class, () -> adapter.invoke(999, resource, noArgs));
     }
 
     // -------------------------------------------------------------------------
@@ -710,8 +704,9 @@ class CassiniResourceProcessorTest {
         Map<String, List<String>> raw = new HashMap<>();
         raw.put("i", List.of("not-a-number")); // @QueryParam int → NumberFormatException → coercionError
 
+        MapSupport support = new MapSupport(raw, Map.of());
         CoercionInvoked invoked = assertThrows(CoercionInvoked.class,
-                () -> adapter.injectFields(resource, new MapSupport(raw, Map.of()), true));
+                () -> adapter.injectFields(resource, support, true));
         // The generated inline path caught the conversion failure and delegated to coercionError
         // with the right kind + name; status selection (404 for QUERY) is cassini-core's job.
         assertEquals(ParamKind.QUERY, invoked.kind, "coercionError called with the param's kind");

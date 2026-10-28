@@ -200,7 +200,8 @@ class RouteTableTest {
         List<RouteDescription> routes = stack().routes();
 
         assertThrows(UnsupportedOperationException.class, routes::clear);
-        assertThrows(UnsupportedOperationException.class, () -> routes.getFirst().produces().clear());
+        Set<String> produces = routes.getFirst().produces();
+        assertThrows(UnsupportedOperationException.class, produces::clear);
     }
 
     @Test

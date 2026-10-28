@@ -547,8 +547,10 @@ class RuntimeAdapterGeneratorTest {
         Class<?> adapterClass = RuntimeAdapterGenerator.generate(InvokeResource.class);
         ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
 
+        InvokeResource target = new InvokeResource();
+        Object[] noArgs = new Object[0];
         assertThrows(UnsupportedOperationException.class,
-                () -> adapter.invoke(9999, new InvokeResource(), new Object[0]),
+                () -> adapter.invoke(9999, target, noArgs),
                 "unknown methodId must throw UnsupportedOperationException");
     }
 

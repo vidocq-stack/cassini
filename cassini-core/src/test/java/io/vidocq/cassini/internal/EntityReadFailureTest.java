@@ -78,8 +78,8 @@ class EntityReadFailureTest {
 
     @BeforeAll
     static void setUp() {
-        // cassini-core does not register a RuntimeDelegate (the transports do);
-        // Response.status(..) and the WebApplicationException constructors need one.
+        // cassini-core does not register a RuntimeDelegate, the transports do, but
+        // Response.status and the WebApplicationException constructors need one.
         RuntimeDelegate.setInstance(new CassiniRuntimeDelegate());
         // These fixtures live in cassini-core's own (patched) module. Export their
         // package to Champollion, as an application exports its DTO package, so that

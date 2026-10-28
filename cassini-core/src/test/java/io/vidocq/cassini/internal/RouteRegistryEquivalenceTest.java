@@ -161,7 +161,7 @@ class RouteRegistryEquivalenceTest {
 
         List<RouteDescriptor> descriptors = provider.routes();
         // Convert via the same logic RouteRegistry uses
-        List<ResourceMethod> generated = convertDescriptors(descriptors, PingResource.class);
+        List<ResourceMethod> generated = convertDescriptors(descriptors);
         List<ResourceMethod> scanned = ResourceScanner.discover(PingResource.class);
 
         assertEquivalent(scanned, generated, "PingResource");
@@ -205,7 +205,7 @@ class RouteRegistryEquivalenceTest {
             }
         };
 
-        List<ResourceMethod> generated = convertDescriptors(provider.routes(), ItemResource.class);
+        List<ResourceMethod> generated = convertDescriptors(provider.routes());
         List<ResourceMethod> scanned = ResourceScanner.discover(ItemResource.class);
 
         assertEquivalent(scanned, generated, "ItemResource");
@@ -236,7 +236,7 @@ class RouteRegistryEquivalenceTest {
                 PingResource.class, "ping", new String[0],
                 "GET", "/ping", new String[0], new String[0], 5);
 
-        List<ResourceMethod> routes = convertDescriptors(List.of(d), PingResource.class);
+        List<ResourceMethod> routes = convertDescriptors(List.of(d));
         assertEquals(1, routes.size());
         assertEquals(5, routes.get(0).classPathLiterals());
     }
@@ -247,7 +247,7 @@ class RouteRegistryEquivalenceTest {
                 PingResource.class, "ping", new String[0],
                 "GET", "/ping", new String[0], new String[0], 5);
 
-        List<ResourceMethod> routes = convertDescriptors(List.of(d), PingResource.class);
+        List<ResourceMethod> routes = convertDescriptors(List.of(d));
         assertEquals(1, routes.size());
         ResourceMethod rm = routes.get(0);
         assertNotNull(rm.javaMethod(), "javaMethod should be resolved");
@@ -274,7 +274,7 @@ class RouteRegistryEquivalenceTest {
                 CalcResource.class, "square", new String[]{"int"},
                 "GET", "/calc/{n}", new String[0], new String[0], 5);
 
-        List<ResourceMethod> routes = convertDescriptors(List.of(d), CalcResource.class);
+        List<ResourceMethod> routes = convertDescriptors(List.of(d));
         assertEquals(1, routes.size());
         ResourceMethod rm = routes.get(0);
         assertNotNull(rm.javaMethod());
@@ -305,7 +305,7 @@ class RouteRegistryEquivalenceTest {
      * Converts RouteDescriptors to ResourceMethods using the same logic as RouteRegistry,
      * for white-box comparison in tests.
      */
-    private List<ResourceMethod> convertDescriptors(List<RouteDescriptor> descriptors, Class<?> rootCls) throws Exception {
+    private List<ResourceMethod> convertDescriptors(List<RouteDescriptor> descriptors) throws Exception {
         // Use package-accessible internal: call directly for test
         // Re-implement the same conversion logic to avoid depending on private RouteRegistry.convertDescriptors
         java.util.List<ResourceMethod> routes = new java.util.ArrayList<>(descriptors.size());

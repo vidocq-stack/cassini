@@ -36,6 +36,8 @@ import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 /**
  * cassini#42: what the request counters cost. Two stacks, one with {@link RequestStatistics} and one without, serve
  * the same in-memory {@code GET} — no socket, so that the counters are not lost in network noise. Rounds alternate
@@ -150,8 +152,10 @@ class RequestStatisticsBench {
                 medOn, medOff, medOn - medOff, 100 * (medOn - medOff) / medOff);
         System.out.printf("  allocated bytes/request (one thread, %d requests): with %.1f, without %.1f, delta %+.1f%n",
                 ALLOC_REQUESTS, allocOn, allocOff, allocOn - allocOff);
-        System.out.printf("  requests counted by the instrumented stack: %d%n",
-                on.statistics().orElseThrow().requests());
+        long counted = on.statistics().orElseThrow().requests();
+        System.out.printf("  requests counted by the instrumented stack: %d%n", counted);
+        assertTrue(counted > 0, "the instrumented stack counts the requests it served");
+        assertTrue(medOn > 0 && medOff > 0, "both stacks served the measured rounds");
     }
 
     private static double[] round1(double[] values) {
