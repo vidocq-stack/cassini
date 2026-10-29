@@ -590,7 +590,7 @@ public final class Invoker {
         Object intermediate = root;
         for (Method locStep : route.locatorChain()) {
             Object[] lArgs = ParamExtractor.resolveConstructorArgs(locStep.getParameters(), inv.match, inv.request);
-            locStep.setAccessible(true); // NOSONAR java:S3011 - a locator of a non-public resource class (§3.4.1)
+            // Made accessible once, when the scanner built the route (§3.4.1).
             intermediate = locStep.invoke(intermediate, lArgs);
             if (intermediate == null) {
                 return renderWebAppException(

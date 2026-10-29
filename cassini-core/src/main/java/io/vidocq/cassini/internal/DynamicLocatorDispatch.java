@@ -52,6 +52,19 @@ final class DynamicLocatorDispatch {
     private static final String REST = "__rest";
     private static final String CONTENT_TYPE = "Content-Type";
 
+    /**
+     * The router of the routes of each class a locator returns, or {@code null} when it has none. They depend on
+     * the class alone: scanning it and building its router on every request cost about 27 KB per request
+     * (BENCH.md, 2026-10-29).
+     */
+    private static final ClassValue<UriRouter> SUB_ROUTERS = new ClassValue<>() {
+        @Override
+        protected UriRouter computeValue(Class<?> cls) {
+            List<ResourceMethod> routes = scanInstanceClass(cls);
+            return routes.isEmpty() ? null : new UriRouter(routes);
+        }
+    };
+
     private final Invoker host;
 
     DynamicLocatorDispatch(Invoker host) {
@@ -107,7 +120,8 @@ final class DynamicLocatorDispatch {
         Object intermediate = start;
         for (Method locStep : route.locatorChain()) {
             Object[] lArgs = ParamExtractor.resolveConstructorArgs(locStep.getParameters(), match, request);
-            intermediate = accessible(locStep).invoke(intermediate, lArgs);
+            // Made accessible once, when its class was scanned (§3.4.1).
+            intermediate = locStep.invoke(intermediate, lArgs);
             if (intermediate == null) {
                 return host.renderWebAppException(
                         new WebApplicationException("Sub-resource locator returned null", 404),
@@ -156,12 +170,11 @@ final class DynamicLocatorDispatch {
         // adding @Path("") through a scan wrapper. ResourceScanner.discover
         // requires @Path on the class — work around that by scanning locators
         // from a fake locator chain.
-        List<ResourceMethod> subRoutes = scanInstanceClass(cls);
-        if (subRoutes.isEmpty()) {
+        UriRouter subRouter = SUB_ROUTERS.get(cls);
+        if (subRouter == null) {
             return host.renderWebAppException(new jakarta.ws.rs.NotFoundException(),
                     null, MediaType.WILDCARD_TYPE, null);
         }
-        UriRouter subRouter = new UriRouter(subRoutes);
         String httpMethod = request.method() == null ? "GET" : request.method();
         List<MatchResult> subCandidates = subRouter.matchAll(httpMethod, remaining);
         if (subCandidates.isEmpty()) {
@@ -262,7 +275,8 @@ final class DynamicLocatorDispatch {
             }
         }
         try {
-            return accessible(route.javaMethod()).invoke(instance, args);
+            // Made accessible once, when its class was scanned (§3.4.1).
+            return route.javaMethod().invoke(instance, args);
         } catch (InvocationTargetException ite) {
             return host.handleResourceThrowable(ite.getCause(), route, chosen, null);
         }

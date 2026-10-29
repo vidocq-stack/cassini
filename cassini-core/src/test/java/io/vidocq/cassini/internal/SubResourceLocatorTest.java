@@ -40,6 +40,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Sub-resource locators (§3.4.1): a locator that returns a typed sub-resource is routed with the
@@ -202,5 +203,13 @@ class SubResourceLocatorTest {
                 .header("Accept", "text/html");
         STACK.adapter().dispatch(refused).toCompletableFuture().join();
         assertEquals(406, refused.status());
+    }
+
+    @Test
+    void anObjectLocatorDoesNotScanWhatItReturnsOnEveryRequest() {
+        // The class an Object locator returns was scanned again, and its router rebuilt, on every request.
+        long typed = Allocations.bytesPerCall(() -> get("/loc/typed/7"), 2_000, 5_000);
+        long dynamic = Allocations.bytesPerCall(() -> get("/loc/dyn"), 2_000, 5_000);
+        assertTrue(dynamic < typed + 1_024, () -> "typed: " + typed + " B, dynamic: " + dynamic + " B per request");
     }
 }

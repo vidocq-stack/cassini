@@ -6,6 +6,37 @@ raw results, delta vs previous run).
 
 ---
 
+## 2026-10-29 — Object sub-resource locators: the returned class scanned once
+
+**Purpose**: a sub-resource locator that returns `Object` is routed at run time on the class of what it returned
+(§3.4.1). `DynamicLocatorDispatch` scanned that class and built a router for it on every request. Its router is now
+built once per class (`ClassValue`), and the `setAccessible` calls the request path repeated on methods the
+scanner had already opened are gone.
+
+- **Commit**: `67a1e09` (main) against branch `perf/locator-hot-path`.
+- **Hardware / JVM**: Apple M5 Max, 18 cores, 128 GB RAM, OpenJDK 25 LTS (Temurin 25+36), macOS (Darwin 27.0.0).
+- **Harness**: `SubResourceLocatorTest.anObjectLocatorDoesNotScanWhatItReturnsOnEveryRequest` dispatches in-memory
+  requests through `CassiniStack.adapter().dispatch` (no socket) and reads the bytes the thread allocates
+  (`Allocations.bytesPerCall`, 2 000 unmeasured then 5 000 measured requests). `GET /loc/typed/7` goes through a
+  locator typed with its sub-resource class (routed at startup), `GET /loc/dyn` through one returning `Object`, to
+  the same sub-resource. A `System.out` of the two figures was added for the measurement only; "before" is the same
+  test on main's `DynamicLocatorDispatch`.
+- **Command** (three runs after, three before):
+  ```bash
+  ./mvnw -ntp test -pl cassini-core -Dtest='SubResourceLocatorTest'
+  ```
+- **Raw results** (bytes allocated per request):
+
+  | Route | Before | After |
+  |---|---|---|
+  | typed locator, `GET /loc/typed/7` | 6 696 / 6 682 / 6 685 B | 6 671 / 6 677 / 6 695 B |
+  | `Object` locator, `GET /loc/dyn` | 33 866 / 34 008 / 33 950 B | 6 518 / 6 512 / 6 512 B |
+
+- **Delta vs previous run**: first entry for this measure.
+- **Conclusion**: a request through an `Object` locator allocated about **27 KB more** than through a typed one, the
+  scan of the returned class and its router. It now costs the same as the typed route (slightly less: no locator
+  chain to inject for the sub-resource's own route).
+
 ## 2026-10-29 — Parameter conversion: the §3.2 factory of a type looked up once
 
 **Purpose**: `ParamValueConverter` converts a method parameter, and a field the generated adapter cannot convert
