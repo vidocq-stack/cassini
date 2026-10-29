@@ -21,6 +21,7 @@ package io.vidocq.cassini.internal;
 
 import io.vidocq.cassini.internal.filter.FilterRegistry;
 import io.vidocq.cassini.internal.gen.AdapterRegistry;
+import io.vidocq.cassini.internal.gen.RuntimeGeneration;
 import io.vidocq.cassini.spi.bean.BeanProvider;
 import io.vidocq.cassini.spi.http.CassiniStack;
 import io.vidocq.cassini.spi.resource.ResourceFactory;
@@ -109,6 +110,7 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
         }
 
         var routes = RouteRegistry.discover(pathClasses.toArray(Class<?>[]::new));
+        RuntimeGeneration.stackBuilt(pathClasses);
         // §6.5.5: run DynamicFeatures on each resource method — they register
         // their per-method filters/interceptors (e.g. RolesAllowedDynamicFeature →
         // @RolesAllowed/@DenyAll/@PermitAll). Without this call, features were collected

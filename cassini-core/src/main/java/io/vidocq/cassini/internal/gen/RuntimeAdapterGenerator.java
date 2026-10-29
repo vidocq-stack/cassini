@@ -260,15 +260,15 @@ public final class RuntimeAdapterGenerator {
             throws AdapterGenerationException, ReflectiveOperationException {
         String adapterName = adapterClassName(resourceClass);
 
-        byte[] bytecode = toBytecode(resourceClass);
-
         // If the adapter class was already defined (e.g. from a previous call in the same JVM
-        // run, or by a concurrent thread), reuse it rather than attempting a duplicate definition.
+        // run, or by a concurrent thread), reuse it rather than generating it for nothing.
         try {
             return Class.forName(adapterName, false, resourceClass.getClassLoader());
         } catch (ClassNotFoundException _) {
             // Not yet defined — proceed with defineClass below.
         }
+
+        byte[] bytecode = toBytecode(resourceClass);
 
         // Define the adapter class in the resource's package.
         // We need a Lookup whose package matches the adapter's package (= resource's package).

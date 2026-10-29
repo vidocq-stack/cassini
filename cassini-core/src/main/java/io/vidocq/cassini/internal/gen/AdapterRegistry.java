@@ -173,6 +173,7 @@ public final class AdapterRegistry {
             ResourceAdapter adapter = (ResourceAdapter) adapterClass.getDeclaredConstructor().newInstance();
             RUNTIME_GENERATED_HITS.incrementAndGet();
             LOG.fine("Runtime-generated adapter used for " + beanClass.getName());
+            RuntimeGeneration.generated(beanClass);
             return Optional.of(adopt(beanClass, adapter, false));
         } catch (Exception e) {
             // The reflective fallback is a supported path: one actionable line at WARNING,
@@ -183,6 +184,21 @@ public final class AdapterRegistry {
                     + beanClass.getName());
             CACHE.putIfAbsent(beanClass, SENTINEL);
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Whether the build produced the adapter of {@code beanClass}: a {@link ServiceLoader} provider, or the class the
+     * annotation processor or the Maven plugin wrote next to it. Otherwise {@link #lookup} generates it at run time.
+     */
+    static boolean hasBuildTimeAdapter(Class<?> beanClass) {
+        if (serviceAdapters().containsKey(beanClass)) return true;
+        try {
+            Class.forName(beanClass.getName() + RuntimeAdapterGenerator.ADAPTER_SUFFIX, false,
+                    beanClass.getClassLoader());
+            return true;
+        } catch (ClassNotFoundException | LinkageError _) {
+            return false;
         }
     }
 

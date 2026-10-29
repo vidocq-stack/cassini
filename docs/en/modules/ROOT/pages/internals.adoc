@@ -134,6 +134,8 @@ Adapters come from one of three generators, most-preferred first (`AdapterRegist
 . **Maven plugin — build time** (`cassini-maven-plugin:generate`, bound to `process-classes`): pre-generates adapters for **external archives** (dependency JARs) by calling `RuntimeAdapterGenerator.toBytecode(cls)` and writing the `.class` files to `target/classes`. AOT-safe.
 . **Runtime generator** (`RuntimeAdapterGenerator.generate`, Class-File API / JEP 484): JVM-only fallback when neither of the above produced an adapter.
 
+The runtime generator is the exception, so Cassini announces it with a framed `WARNING` (`CASSINI — RUNTIME CODE GENERATION FALLBACK`, logger `io.vidocq.cassini.internal.gen.RuntimeGeneration`). When a stack is built, one warning lists the resource classes no build-time adapter serves. Each class generated later and not yet named, such as a sub-resource or a bean parameter, gets its own warning on first use. A class is announced once per JVM. The fix the warning gives is to put `cassini-processor` on the annotation processor path of the module that declares the classes, or to run the plugin's `generate` goal on the archive that holds them.
+
 `AdapterRegistry.lookup` first consults the map of **`ServiceLoader`-registered adapters** (module-path `provides ResourceAdapter with <Class>$$CassiniAdapter` or classpath `META-INF/services`, keyed by `ResourceAdapter.resourceClass()` — the only path that keeps a strict Java Modules resource package closed, with no `opens`/`exports`), then tries `Class.forName(<class>$$CassiniAdapter)` (APT/plugin output), then the runtime generator, then caches a `SENTINEL` so the request falls through to the reflective `FieldInjector` safety net without retrying.
 
 === Documented residual reflection

@@ -55,6 +55,8 @@ Three levels of adapter generation (`<Class>$$CassiniAdapter`), from most prefer
    archives (dep JARs). Calls `RuntimeAdapterGenerator.toBytecode(cls)` and writes the `.class`
    files to disk. AOT-safe.
 3. **Runtime generator (`RuntimeAdapterGenerator.generate`)** — JVM-only fallback. Not AOT-compatible.
+   Announced by a framed WARNING (`RuntimeGeneration`): once at stack build for the resource classes
+   without a build-time adapter, then once per class generated later and not yet named.
 
 `AdapterRegistry.lookup` resolves in this order: (0) a **`ServiceLoader`-registered adapter**
 (module-path `provides io.vidocq.cassini.spi.gen.ResourceAdapter with <Class>$$CassiniAdapter`, or
