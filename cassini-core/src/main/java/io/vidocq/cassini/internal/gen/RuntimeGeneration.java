@@ -24,6 +24,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 
@@ -43,7 +44,7 @@ public final class RuntimeGeneration {
 
     private static final Set<String> ANNOUNCED = ConcurrentHashMap.newKeySet();
 
-    private static volatile Consumer<String> warn = LOG::warning;
+    private static final AtomicReference<Consumer<String>> WARN = new AtomicReference<>(LOG::warning);
 
     private RuntimeGeneration() {
     }
@@ -57,14 +58,14 @@ public final class RuntimeGeneration {
             }
         }
         if (!generated.isEmpty()) {
-            warn.accept(warning(generated, "when the application starts"));
+            WARN.get().accept(warning(generated, "when the application starts"));
         }
     }
 
     /** An adapter generated at run time: warns unless a warning already named its class. */
     static void generated(Class<?> resource) {
         if (ANNOUNCED.add(resource.getName())) {
-            warn.accept(warning(List.of(resource.getName()), "on first use"));
+            WARN.get().accept(warning(List.of(resource.getName()), "on first use"));
         }
     }
 
@@ -88,7 +89,7 @@ public final class RuntimeGeneration {
 
     /** Routes the warnings to {@code sink}, and forgets what was announced; {@code null} restores the logger. */
     static void redirectForTests(Consumer<String> sink) {
-        warn = sink == null ? LOG::warning : sink;
+        WARN.set(sink == null ? LOG::warning : sink);
         ANNOUNCED.clear();
     }
 }
