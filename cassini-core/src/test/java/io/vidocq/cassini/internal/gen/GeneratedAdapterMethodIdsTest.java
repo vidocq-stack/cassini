@@ -19,30 +19,21 @@
  */
 package io.vidocq.cassini.internal.gen;
 
+import io.vidocq.cassini.internal.CompiledFixtures;
 import io.vidocq.cassini.spi.gen.ResourceAdapter;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
-import java.io.File;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.lang.reflect.Method;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.spi.ToolProvider;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * The adapter the annotation processor generates is dispatched with the method ids the registry assigns: each id
@@ -51,7 +42,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class GeneratedAdapterMethodIdsTest {
 
     private static final String PKG = "io.vidocq.cassini.test.ids";
-    private static final String PROCESSOR = "io.vidocq.cassini.processor.CassiniResourceProcessor";
 
     @TempDir
     Path dir;
@@ -142,39 +132,6 @@ class GeneratedAdapterMethodIdsTest {
 
     /** Compiles {@code sources}, through the annotation processor unless the adapter is left to run time. */
     private ClassLoader compile(Map<String, String> sources, Route route) throws Exception {
-        var src = Files.createDirectories(dir.resolve("src"));
-        var out = Files.createDirectories(dir.resolve("out"));
-        var files = new ArrayList<File>();
-        for (var entry : sources.entrySet()) {
-            var file = src.resolve(entry.getKey() + ".java");
-            Files.writeString(file, entry.getValue().formatted(PKG));
-            files.add(file.toFile());
-        }
-        var classPath = String.join(File.pathSeparator, locationOf(jakarta.ws.rs.Path.class.getName()),
-                locationOf(ResourceAdapter.class.getName()), locationOf(PROCESSOR));
-        var args = new ArrayList<>(List.of("-d", out.toString(), "-classpath", classPath));
-        if (route == Route.RUNTIME) {
-            args.add("-proc:none");
-        } else {
-            args.addAll(List.of("-processor", PROCESSOR, "-processorpath", classPath));
-        }
-        files.forEach(f -> args.add(f.getPath()));
-        var log = new StringWriter();
-        var javac = ToolProvider.findFirst("javac").orElseThrow();
-        int status = javac.run(new PrintWriter(log), new PrintWriter(log), args.toArray(String[]::new));
-        assertEquals(0, status, () -> "compilation failed:\n" + log);
-        return new URLClassLoader(new URL[]{out.toUri().toURL()}, getClass().getClassLoader());
-    }
-
-    /** The jar or directory a class is loaded from, found by its class file: no module needs to read it. */
-    private static String locationOf(String className) throws URISyntaxException {
-        var resource = className.replace('.', '/') + ".class";
-        var url = ClassLoader.getSystemClassLoader().getResource(resource);
-        assertNotNull(url, () -> resource + " is not on the test path");
-        var text = url.toString();
-        if (text.startsWith("jar:")) {
-            return new File(URI.create(text.substring(4, text.indexOf("!/")))).getPath();
-        }
-        return new File(url.toURI()).getPath().replace(resource.replace('/', File.separatorChar), "");
+        return CompiledFixtures.loaderOf(CompiledFixtures.compile(dir, PKG, sources, route != Route.RUNTIME));
     }
 }

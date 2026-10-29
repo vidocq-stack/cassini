@@ -256,7 +256,14 @@ public final class RouteRegistry {
         for (int i = 0; i < paramTypeNames.length; i++) {
             paramTypes[i] = resolveType(paramTypeNames[i], beanClass.getClassLoader());
         }
-        return beanClass.getDeclaredMethod(methodName, paramTypes);
+        Method method;
+        try {
+            method = beanClass.getMethod(methodName, paramTypes);
+        } catch (NoSuchMethodException _) {
+            method = beanClass.getDeclaredMethod(methodName, paramTypes);
+        }
+        // §3.6: the parameters' annotations may be those of the method it overrides or implements.
+        return ResourceScanner.annotatedMethod(method, beanClass);
     }
 
     private static Class<?> resolveType(String name, ClassLoader cl) throws ClassNotFoundException {

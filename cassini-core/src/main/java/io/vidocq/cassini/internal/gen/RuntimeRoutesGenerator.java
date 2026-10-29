@@ -166,9 +166,9 @@ public final class RuntimeRoutesGenerator {
         return c.isArray() ? typeName(c.getComponentType()) + "[]" : c.getName();
     }
 
-    /** A class has sub-resource locators if it declares a method with {@code @Path} but no HTTP verb. */
+    /** A class has sub-resource locators if it has a method with {@code @Path} but no HTTP verb, inherited ones included. */
     private static boolean hasSubResourceLocators(Class<?> cls) {
-        for (Method m : cls.getMethods()) {
+        for (Method m : ResourceScanner.resourceMethods(cls)) {
             if (m.isAnnotationPresent(Path.class) && !hasHttpVerb(m)) return true;
         }
         return false;

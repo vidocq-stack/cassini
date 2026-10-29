@@ -83,9 +83,11 @@ cassini-core `uses` both SPIs.
 locator gets a `<Class>$$CassiniRoutes` (SPI `RouteProvider`) exposing the route table as
 literals (`RouteDescriptor`). `RouteRegistry` resolves a provider the same way as `AdapterRegistry`
 (ServiceLoader by `RouteProvider.resourceClass()` first, then `Class.forName(<class>$$CassiniRoutes)`),
-then converts each descriptor into a `ResourceMethod` via a targeted `getDeclaredMethod(...)` (no
-annotation scan; the descriptor `Method`'s `setAccessible` is best-effort — a closed package relies on
-`adapter.invoke`). Classes with locators set `hasLocators()` and fall back to
+then converts each descriptor into a `ResourceMethod` via a targeted `getMethod(...)` (inherited methods
+included) and `ResourceScanner.annotatedMethod`, which follows §3.6 to the method carrying the JAX-RS
+annotations (no class scan; the descriptor `Method`'s `setAccessible` is best-effort — a closed package
+relies on `adapter.invoke`). Every route source picks a class's resource methods with the one rule of
+`ResourceScanner.resourceMethods` (the processor applies it on the language model, CASSINI-035). Classes with locators set `hasLocators()` and fall back to
 `ResourceScanner.discover`.
 
 **Java Modules named-module rule (plugin):** adapters live in the resource package.

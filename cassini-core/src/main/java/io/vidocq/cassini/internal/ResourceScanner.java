@@ -33,9 +33,15 @@ import jakarta.ws.rs.Produces;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -85,9 +91,8 @@ public final class ResourceScanner {
     private static void scanRootClass(Class<?> cls, String basePath, List<ResourceMethod> out) {
         int classLits = countLiterals(basePath);
         MediaRanges classMedia = MediaRanges.NONE.overriddenBy(cls);
-        for (Method m : collectInheritedMethods(cls)) {
-            // §3.3.1: a resource method must be public.
-            if (!java.lang.reflect.Modifier.isPublic(m.getModifiers())) continue;
+        // §3.3.1: a resource method must be public, as every method resourceMethods lists.
+        for (Method m : resourceMethods(cls)) {
             String verb = resolveHttpMethod(m);
             Path sub = m.getAnnotation(Path.class);
             if (verb != null) {
@@ -137,59 +142,89 @@ public final class ResourceScanner {
     }
 
     /**
-     * §3.6: JAX-RS annotations carried by a superclass or interface are
-     * inherited. We collect methods and replace each one with its most-derived
-     * version carrying at least one recognized JAX-RS annotation.
+     * The public instance methods of {@code cls} a resource may route to, each replaced by the method whose JAX-RS
+     * annotations it carries ({@link #annotatedMethod}). The one rule every route table follows: the scanner, the
+     * generated tables, and the classes a locator returns at run time. A bridge is left out when the method it
+     * stands for is listed; a visibility bridge, the only public form of its method, is kept.
      */
-    private static java.util.List<Method> collectInheritedMethods(Class<?> cls) {
-        java.util.LinkedHashMap<String, Method> merged = new java.util.LinkedHashMap<>();
-        // 1. methods declared directly
-        for (Method m : cls.getDeclaredMethods()) {
-            merged.put(signature(m), effectiveMethod(m, cls));
-        }
-        // 2. inherited hierarchy methods (superclasses + interfaces)
-        for (Method m : cls.getMethods()) {
-            if (m.getDeclaringClass() != Object.class) {
-                merged.computeIfAbsent(signature(m), _ -> effectiveMethod(m, cls));
+    public static List<Method> resourceMethods(Class<?> cls) {
+        Map<String, Method> bySignature = new LinkedHashMap<>();
+        Method[] methods = cls.getMethods();
+        for (Method m : methods) {
+            if (m.getDeclaringClass() == Object.class || Modifier.isStatic(m.getModifiers())
+                    || (m.isBridge() && hasNonBridgeTwin(m, methods))) {
+                continue;
             }
+            bySignature.putIfAbsent(signature(m), annotatedMethod(m, cls));
         }
-        return new java.util.ArrayList<>(merged.values());
+        return new ArrayList<>(bySignature.values());
     }
 
-    /** Signature = nom + types de param (ignore le type de retour). */
+    /**
+     * §3.6: the method whose JAX-RS annotations {@code m} carries. Its own, when it or one of its parameters has
+     * any; else those of the method it overrides or implements, from a superclass first, then from an interface,
+     * at any depth. {@code m} itself when none has any.
+     */
+    public static Method annotatedMethod(Method m, Class<?> cls) {
+        if (hasJaxrsAnnotation(m)) return m;
+        for (Class<?> c = cls; c != null && c != Object.class; c = c.getSuperclass()) {
+            Method declared = declaredIn(c, m);
+            if (declared != null && hasJaxrsAnnotation(declared)) return declared;
+        }
+        Deque<Class<?>> interfaces = new ArrayDeque<>();
+        for (Class<?> c = cls; c != null; c = c.getSuperclass()) interfaces.addAll(List.of(c.getInterfaces()));
+        Set<Class<?>> seen = new HashSet<>();
+        while (!interfaces.isEmpty()) {
+            Class<?> iface = interfaces.poll();
+            if (!seen.add(iface)) continue;
+            Method declared = declaredIn(iface, m);
+            if (declared != null && hasJaxrsAnnotation(declared)) return declared;
+            interfaces.addAll(List.of(iface.getInterfaces()));
+        }
+        return m;
+    }
+
+    private static Method declaredIn(Class<?> type, Method m) {
+        try {
+            return type.getDeclaredMethod(m.getName(), m.getParameterTypes());
+        } catch (NoSuchMethodException _) {
+            return null;
+        }
+    }
+
+    /** Whether a non-bridge method of the same name and arity is listed: the one a bridge {@code m} calls. */
+    private static boolean hasNonBridgeTwin(Method m, Method[] methods) {
+        for (Method other : methods) {
+            if (!other.isBridge() && other.getName().equals(m.getName())
+                    && other.getParameterCount() == m.getParameterCount()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Signature = name + parameter types (the return type is ignored). */
     private static String signature(Method m) {
         StringBuilder sb = new StringBuilder(m.getName()).append('(');
         for (Class<?> p : m.getParameterTypes()) sb.append(p.getName()).append(',');
         return sb.append(')').toString();
     }
 
-    /** Returns the most-derived method in the hierarchy of {@code cls}
-     *  matching the same signature as {@code m}, prioritizing the one
-     *  carrying a JAX-RS annotation (§3.6 inheritance). */
-    private static Method effectiveMethod(Method m, Class<?> cls) {
-        if (hasJaxrsAnnotation(m)) return m;
-        // Walk up super-classes
-        Class<?> sup = cls.getSuperclass();
-        while (sup != null && sup != Object.class) {
-            try {
-                Method parent = sup.getDeclaredMethod(m.getName(), m.getParameterTypes());
-                if (hasJaxrsAnnotation(parent)) return parent;
-            } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
-            sup = sup.getSuperclass();
+    /** A JAX-RS annotation on {@code m} or one of its parameters, a custom HTTP method designator included. */
+    private static boolean hasJaxrsAnnotation(Method m) {
+        if (anyJaxrs(m.getAnnotations())) return true;
+        for (Annotation[] parameter : m.getParameterAnnotations()) {
+            if (anyJaxrs(parameter)) return true;
         }
-        // Walk up interfaces
-        for (Class<?> iface : cls.getInterfaces()) {
-            try {
-                Method parent = iface.getDeclaredMethod(m.getName(), m.getParameterTypes());
-                if (hasJaxrsAnnotation(parent)) return parent;
-            } catch (NoSuchMethodException _) { /* not declared by this interface: the next one is tried */ }
-        }
-        return m;
+        return false;
     }
 
-    private static boolean hasJaxrsAnnotation(Method m) {
-        for (Annotation a : m.getAnnotations()) {
-            if (a.annotationType().getName().startsWith("jakarta.ws.rs.")) return true;
+    private static boolean anyJaxrs(Annotation[] annotations) {
+        for (Annotation a : annotations) {
+            Class<? extends Annotation> type = a.annotationType();
+            if (type.getName().startsWith("jakarta.ws.rs.") || type.isAnnotationPresent(HttpMethod.class)) {
+                return true;
+            }
         }
         return false;
     }
@@ -243,8 +278,7 @@ public final class ResourceScanner {
         }
         if (!visited.add(cls) && !mayRevisit(cls, locators.chain())) return;
         MediaRanges clsMedia = inherited.overriddenBy(cls);
-        for (Method m : collectInheritedMethods(cls)) {
-            if (!java.lang.reflect.Modifier.isPublic(m.getModifiers())) continue;
+        for (Method m : resourceMethods(cls)) {
             String verb = resolveHttpMethod(m);
             Path sub = m.getAnnotation(Path.class);
             if (verb != null) {

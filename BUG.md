@@ -361,3 +361,15 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: run the goal on a `target/classes` that already holds an adapter for the resource (`GenerateAdaptersMojoExecuteTest.aSecondRunReplacesTheAdapterItGeneratedBefore`).
 - **Cause**: `GenerateAdaptersMojo.writeAdapter` returned on `dest.exists()`, to leave the annotation processor's adapter in place, without telling it from one the goal itself wrote.
 - **Fix**: the goal keeps only an adapter javac compiled from the processor's source (it carries a `SourceFile` attribute, and javac regenerates it with its resource); it writes its own again on every run. Regression tests: `GenerateAdaptersMojoExecuteTest.aSecondRunReplacesTheAdapterItGeneratedBefore`, `anAdapterCompiledFromTheProcessorsSourceIsKept`.
+
+## CASSINI-035 — A method that inherits its JAX-RS annotations is lost or loses its parameters, depending on how the routes are built
+- **Date**: 2026-10-29 — **Status**: FIXED
+- **Severity**: high. §3.6 inheritance (an implementation of an annotated interface, a common way to share a REST contract) answered 404 or ran without its parameters, and each way of building the routes failed differently.
+- **Symptom**: with `interface Api { @GET @Path("{id}") String get(@PathParam("id") String id); }` and `@Path("/r") class R implements Api { public String get(String id) … }`:
+  - **annotation processor**: `GET /r/7` answered 404, the processor reading the annotations of the implementation only;
+  - **Maven plugin** (`RuntimeRoutesGenerator`): the route existed, but `id` did not receive the path segment (`interface:` instead of `interface:7`): `RouteRegistry` resolved the table's method on the resource class, whose parameters carry no `@PathParam`; and a method inherited without being overridden was not found by `getDeclaredMethod`, which sent the whole class back to the scanner with a warning;
+  - **scanner**: annotations were looked up on the direct interfaces only, so a method of a superinterface or of a superclass's interface answered 404;
+  - a locator, or a resource method of the class a locator returns at run time, inherited none (`DynamicLocatorDispatch` and `RuntimeRoutesGenerator.hasSubResourceLocators` read `Method.getAnnotation` on the implementation).
+- **Minimal repro**: `InheritedResourceMethodsTest`, through each of the three route sources.
+- **Cause**: four copies of the rule choosing a class's resource methods, three without §3.6 or with only part of it.
+- **Fix**: one rule, `ResourceScanner.resourceMethods`/`annotatedMethod` (its own annotations when the method or a parameter has any, else those of the overridden method, superclasses first, then every interface at any depth), used by the scanner, the run-time locator dispatch, the route generator and `RouteRegistry` (which now resolves the table's method with `getMethod`, inherited ones included). The processor applies the same rule on the language model. Regression tests: `InheritedResourceMethodsTest`.

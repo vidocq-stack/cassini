@@ -44,8 +44,10 @@ import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -423,12 +425,12 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         String resourceBinaryName = elements.getBinaryName(resourceType).toString();
         String beanClassLiteral = resourceBinaryName.replace('$', '.') + DOT_CLASS;
 
-        // Collect all public non-static methods (declared on this class only — no inheritance
-        // for route generation, consistent with how the TCK resources are structured).
-        // We process declared methods first, then inherited, deduplicating by signature.
+        // Collect all public non-static methods, the most derived first, deduplicating by signature.
         List<ExecutableElement> allMethods = collectPublicInstanceMethods(resourceType);
 
-        for (ExecutableElement m : allMethods) {
+        for (ExecutableElement method : allMethods) {
+            // §3.6: the annotations may be those of the method it overrides or implements.
+            ExecutableElement m = annotatedMethod(method, resourceType);
             String verb = resolveHttpVerb(m);
             String methodPathValue = annotationValue(m, JAKARTA_PATH, VALUE);
 
@@ -446,8 +448,8 @@ public class CassiniResourceProcessor extends AbstractProcessor {
 
             methods.add(new RouteMethodModel(
                     beanClassLiteral,
-                    m.getSimpleName().toString(),
-                    paramTypeNames(m),
+                    method.getSimpleName().toString(),
+                    paramTypeNames(method),
                     verb,
                     fullPath,
                     orElse(annotationValues(m, "jakarta.ws.rs.Produces", VALUE), classProduces),
@@ -456,6 +458,75 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             ));
         }
         return new RouteCollection(false, List.copyOf(methods));
+    }
+
+    /**
+     * §3.6, as {@code ResourceScanner.annotatedMethod} applies it at run time: the method whose JAX-RS
+     * annotations {@code m} carries. Its own, when it or one of its parameters has any; else those of the method
+     * it overrides or implements, from a superclass first, then from an interface, at any depth.
+     */
+    private ExecutableElement annotatedMethod(ExecutableElement m, TypeElement resourceType) {
+        if (hasJaxrsAnnotation(m)) return m;
+        List<TypeElement> classes = new ArrayList<>();
+        for (TypeElement c = resourceType; c != null && !isObjectType(c); c = superclassOf(c)) classes.add(c);
+        for (TypeElement c : classes) {
+            ExecutableElement found = annotatedOverridden(m, c, resourceType);
+            if (found != null) return found;
+        }
+        Deque<TypeElement> interfaces = new ArrayDeque<>();
+        classes.forEach(c -> interfaces.addAll(interfacesOf(c)));
+        Set<TypeElement> seen = new HashSet<>();
+        while (!interfaces.isEmpty()) {
+            TypeElement iface = interfaces.poll();
+            if (!seen.add(iface)) continue;
+            ExecutableElement found = annotatedOverridden(m, iface, resourceType);
+            if (found != null) return found;
+            interfaces.addAll(interfacesOf(iface));
+        }
+        return m;
+    }
+
+    /** The method of {@code type} that {@code m} is or overrides, when it carries JAX-RS annotations. */
+    private ExecutableElement annotatedOverridden(ExecutableElement m, TypeElement type, TypeElement resourceType) {
+        for (Element enc : type.getEnclosedElements()) {
+            if (enc.getKind() == ElementKind.METHOD && enc.getSimpleName().equals(m.getSimpleName())
+                    && (enc.equals(m) || elements.overrides(m, (ExecutableElement) enc, resourceType))
+                    && hasJaxrsAnnotation((ExecutableElement) enc)) {
+                return (ExecutableElement) enc;
+            }
+        }
+        return null;
+    }
+
+    /** A JAX-RS annotation on {@code m} or one of its parameters, a custom HTTP method designator included. */
+    private boolean hasJaxrsAnnotation(ExecutableElement m) {
+        if (anyJaxrs(m)) return true;
+        for (VariableElement parameter : m.getParameters()) {
+            if (anyJaxrs(parameter)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyJaxrs(Element e) {
+        for (var mirror : e.getAnnotationMirrors()) {
+            TypeElement type = (TypeElement) mirror.getAnnotationType().asElement();
+            if (type.getQualifiedName().toString().startsWith("jakarta.ws.rs.")
+                    || annotationValue(type, "jakarta.ws.rs.HttpMethod", VALUE) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<TypeElement> interfacesOf(TypeElement type) {
+        List<TypeElement> out = new ArrayList<>();
+        for (TypeMirror iface : type.getInterfaces()) {
+            if (iface.getKind() == TypeKind.DECLARED
+                    && ((DeclaredType) iface).asElement() instanceof TypeElement ifaceType) {
+                out.add(ifaceType);
+            }
+        }
+        return out;
     }
 
     /** The method's media types, or the class ones when the method declares none. */
@@ -501,17 +572,9 @@ public class CassiniResourceProcessor extends AbstractProcessor {
     /** The superclass of {@code type} (if any), then its declared interfaces (for default methods). */
     private static List<TypeElement> supertypes(TypeElement type) {
         List<TypeElement> out = new ArrayList<>();
-        TypeMirror superMirror = type.getSuperclass();
-        if (superMirror != null && superMirror.getKind() != TypeKind.NONE
-                && ((DeclaredType) superMirror).asElement() instanceof TypeElement superType) {
-            out.add(superType);
-        }
-        for (TypeMirror iface : type.getInterfaces()) {
-            if (iface.getKind() == TypeKind.DECLARED
-                    && ((DeclaredType) iface).asElement() instanceof TypeElement ifaceType) {
-                out.add(ifaceType);
-            }
-        }
+        TypeElement superType = superclassOf(type);
+        if (superType != null) out.add(superType);
+        out.addAll(interfacesOf(type));
         return out;
     }
 

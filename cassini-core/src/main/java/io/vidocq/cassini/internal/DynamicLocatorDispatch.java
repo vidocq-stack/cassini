@@ -31,7 +31,6 @@ import jakarta.ws.rs.core.MediaType;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -305,10 +304,8 @@ final class DynamicLocatorDispatch {
      *  they emit dynamic routes in turn. */
     private static List<ResourceMethod> scanSubResourceClass(Class<?> cls) {
         List<ResourceMethod> out = new ArrayList<>();
-        for (Method m : cls.getMethods()) {
-            if (Modifier.isPublic(m.getModifiers()) && m.getDeclaringClass() != Object.class) {
-                addRoutes(cls, m, out);
-            }
+        for (Method m : ResourceScanner.resourceMethods(cls)) {
+            addRoutes(cls, m, out);
         }
         return out;
     }
