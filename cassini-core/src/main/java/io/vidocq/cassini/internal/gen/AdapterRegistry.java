@@ -193,13 +193,11 @@ public final class AdapterRegistry {
      */
     static boolean hasBuildTimeAdapter(Class<?> beanClass) {
         if (serviceAdapters().containsKey(beanClass)) return true;
-        try {
-            Class.forName(beanClass.getName() + RuntimeAdapterGenerator.ADAPTER_SUFFIX, false,
-                    beanClass.getClassLoader());
-            return true;
-        } catch (ClassNotFoundException | LinkageError _) {
-            return false;
-        }
+        // The class file the processor or the plugin wrote: a class file is never encapsulated by a module, and an
+        // adapter generated at run time has none, so it is not mistaken for a build-time one once defined.
+        String file = beanClass.getName().replace('.', '/') + RuntimeAdapterGenerator.ADAPTER_SUFFIX + ".class";
+        ClassLoader loader = beanClass.getClassLoader();
+        return (loader != null ? loader.getResource(file) : ClassLoader.getSystemResource(file)) != null;
     }
 
     /**
