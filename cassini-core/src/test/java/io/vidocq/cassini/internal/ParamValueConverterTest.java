@@ -19,6 +19,9 @@
  */
 package io.vidocq.cassini.internal;
 
+import io.vidocq.cassini.internal.runtime.CassiniRuntimeDelegate;
+import jakarta.ws.rs.ext.RuntimeDelegate;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -33,6 +36,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ParamValueConverterTest {
+
+    @BeforeAll
+    static void runtimeDelegate() {
+        // A WebApplicationException builds its Response: run alone, the class needs a delegate of its own.
+        RuntimeDelegate.setInstance(new CassiniRuntimeDelegate());
+    }
 
     enum Kind { SMALL, LARGE }
 
@@ -136,5 +145,19 @@ class ParamValueConverterTest {
         assertEquals(0, ParamValueConverter.defaultForType(int.class));
         assertFalse((boolean) ParamValueConverter.defaultForType(boolean.class));
         assertNull(ParamValueConverter.defaultForType(Integer.class));
+    }
+
+    @Test
+    void aFactoryIsLookedUpOncePerType() {
+        // Each value used to look the factory up again: a NoSuchMethodException, stack trace included, for every
+        // candidate a type does not have (valueOf for UUID, valueOf and fromString for Label).
+        long uuid = Allocations.bytesPerCall(
+                () -> ParamValueConverter.coerceSingle(UUID.class, "6f1c9a2e-7b1d-4c3a-9e2f-1a2b3c4d5e6f"), 2_000, 10_000);
+        long label = Allocations.bytesPerCall(() -> ParamValueConverter.coerceSingle(Label.class, "x"), 2_000, 10_000);
+        long size = Allocations.bytesPerCall(() -> ParamValueConverter.coerceSingle(Size.class, "small"), 2_000, 10_000);
+
+        assertTrue(uuid < 256, () -> "UUID: " + uuid + " bytes per value");
+        assertTrue(label < 256, () -> "Label: " + label + " bytes per value");
+        assertTrue(size < 256, () -> "enum with fromString: " + size + " bytes per value");
     }
 }

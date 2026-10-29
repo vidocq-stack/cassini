@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.function.Function;
 
 /**
  * Coercion of a string (or list of strings) to the target Java type,
@@ -103,44 +104,62 @@ public final class ParamValueConverter {
         return coerceByFactory(type, raw);
     }
 
-    /** §3.2: an enum, then a static valueOf(String), a static fromString(String) or a String constructor. */
+    /**
+     * §3.2: an enum, then a static valueOf(String), a static fromString(String) or a String constructor. The
+     * factory of a type is looked up once: looking it up for every value threw a NoSuchMethodException for each
+     * candidate the type does not have.
+     */
     private static Object coerceByFactory(Class<?> type, String raw) {
-        if (type.isEnum()) return coerceEnum(type, raw);
-        try {
-            Method valueOf = type.getDeclaredMethod("valueOf", String.class);
-            if (Modifier.isStatic(valueOf.getModifiers())) {
-                return invokeOrPropagate(valueOf, null, raw);
-            }
-        } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
-        try {
-            Method fromString = type.getDeclaredMethod("fromString", String.class);
-            if (Modifier.isStatic(fromString.getModifiers())) {
-                return invokeOrPropagate(fromString, null, raw);
-            }
-        } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
+        return FACTORIES.get(type).apply(raw);
+    }
+
+    private static final ClassValue<Function<String, Object>> FACTORIES = new ClassValue<>() {
+        @Override
+        protected Function<String, Object> computeValue(Class<?> type) {
+            return factoryOf(type);
+        }
+    };
+
+    private static Function<String, Object> factoryOf(Class<?> type) {
+        if (type.isEnum()) return enumFactoryOf(type);
+        Method valueOf = staticMethod(type, "valueOf");
+        if (valueOf != null) return raw -> invokeOrPropagate(valueOf, null, raw);
+        Method fromString = staticMethod(type, "fromString");
+        if (fromString != null) return raw -> invokeOrPropagate(fromString, null, raw);
         try {
             Constructor<?> c = type.getDeclaredConstructor(String.class);
-            return newInstanceOrPropagate(c, raw);
-        } catch (NoSuchMethodException _) { /* no String constructor either: no converter */ }
-        throw badRequest("No converter for type " + type.getName());
+            return raw -> newInstanceOrPropagate(c, raw);
+        } catch (NoSuchMethodException _) {
+            return raw -> {
+                throw badRequest("No converter for type " + type.getName());
+            };
+        }
     }
 
     /**
      * §3.2: for an enum with fromString(String), it has priority over Enum.valueOf (otherwise a
      * built-in enum valueOf always wins); an unknown constant gives null.
      */
-    private static Object coerceEnum(Class<?> type, String raw) {
-        try {
-            Method fs = type.getDeclaredMethod("fromString", String.class);
-            if (Modifier.isStatic(fs.getModifiers())) {
-                return invokeOrPropagate(fs, null, raw);
+    private static Function<String, Object> enumFactoryOf(Class<?> type) {
+        Method fromString = staticMethod(type, "fromString");
+        if (fromString != null) return raw -> invokeOrPropagate(fromString, null, raw);
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        Class<Enum> enumType = (Class<Enum>) type.asSubclass(Enum.class);
+        return raw -> {
+            try {
+                return Enum.valueOf(enumType, raw);
+            } catch (IllegalArgumentException _) {
+                return null;
             }
-        } catch (NoSuchMethodException _) { /* no such method: the next candidate is tried */ }
+        };
+    }
+
+    /** The static {@code name(String)} method {@code type} declares, or {@code null}. */
+    private static Method staticMethod(Class<?> type, String name) {
         try {
-            @SuppressWarnings({"unchecked", "rawtypes"})
-            Enum<?> e = Enum.valueOf((Class<Enum>) type.asSubclass(Enum.class), raw);
-            return e;
-        } catch (IllegalArgumentException _) {
+            Method m = type.getDeclaredMethod(name, String.class);
+            return Modifier.isStatic(m.getModifiers()) ? m : null;
+        } catch (NoSuchMethodException _) {
             return null;
         }
     }

@@ -6,6 +6,39 @@ raw results, delta vs previous run).
 
 ---
 
+## 2026-10-29 — Parameter conversion: the §3.2 factory of a type looked up once
+
+**Purpose**: `ParamValueConverter` converts a method parameter, and a field the generated adapter cannot convert
+inline, through the type's `valueOf(String)`, `fromString(String)` or `String` constructor (§3.2). It looked the
+factory up for every value, and `getDeclaredMethod` throws a `NoSuchMethodException`, stack trace included, for
+each candidate the type does not have. The factory of each type is now resolved once (`ClassValue`).
+
+- **Commit**: `67a1e09` (main) against branch `perf/param-factory-cache`.
+- **Hardware / JVM**: Apple M5 Max, 18 cores, 128 GB RAM, OpenJDK 25 LTS (Temurin 25+36), macOS (Darwin 27.0.0).
+- **Harness**: `ParamValueConverterTest.aFactoryIsLookedUpOncePerType`, which reads the bytes the current thread
+  allocates (`Allocations.bytesPerCall`, HotSpot's exact per-thread accounting) over 10 000 conversions after
+  2 000 unmeasured ones. A `System.out` of the three figures was added for the measurement only; the "before" run
+  is the same test on main's `ParamValueConverter`.
+- **Command** (three runs each):
+  ```bash
+  ./mvnw -ntp test -pl cassini-core -Dtest='ParamValueConverterTest#aFactoryIsLookedUpOncePerType'
+  ```
+- **Raw results** (bytes allocated per converted value, three runs):
+
+  | Type | Factory | Before | After |
+  |---|---|---|---|
+  | `java.util.UUID` | `fromString` (no `valueOf`) | 3 056 / 3 054 / 3 055 B | 56 / 56 / 56 B |
+  | application class | `String` constructor (no `valueOf`, no `fromString`) | 5 921 / 5 930 / 5 928 B | 40 / 40 / 40 B |
+  | enum | `fromString` | 168 / 168 / 168 B | 24 / 24 / 24 B |
+
+  "After" is the converted value itself (a `UUID` and its two longs, the application object) plus the argument
+  array of `Method.invoke`.
+
+- **Delta vs previous run**: first entry for this measure.
+- **Conclusion**: a type without `valueOf` paid about 3 KB of garbage per value, and one with only a `String`
+  constructor about 6 KB: one exception per missing candidate. Both now allocate only their result. The conversion
+  rules and their order are unchanged.
+
 ## 2026-09-23 — Request counters (cassini#42): cost of `CassiniStack.statistics()`
 
 **Purpose**: cassini#42 adds counters to the request path (requests, in flight, by status class, total and max
