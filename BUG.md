@@ -389,3 +389,11 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: a response filter putting `uriInfo == null ? "none" : uriInfo.getPath()` in a header answers `none` (found while writing `ProviderContextInjectionTest`).
 - **Cause hypothesis**: `injectProviderContexts` is called for post-matching filters (`Invoker`) and message body providers (`ResponsePipeline`), not for response filters. To check against the TCK, which may cover it through CDI-managed filters.
 
+## CASSINI-038 — The default scopes are logged at INFO at every build of an application
+- **Date**: 2026-10-30 — **Status**: FIXED (fix/build-noise-26)
+- **Severity**: low (build noise)
+- **Symptom**: Vauban runs `CassiniScopeExtension` when an application compiles, and each resource or provider
+  without a scope printed an INFO line: `@Path class … has no CDI scope, defaulting to @RequestScoped`,
+  `@Provider class … has no CDI scope, defaulting to @Dependent` (vidocq BUG-20261030-26).
+- **Cause**: these are the specification's defaults, logged at INFO.
+- **Fix**: logged at DEBUG. Regression test: `CassiniScopeExtensionTest.theDefaultScopesAreSaidAtDebugLevel`.

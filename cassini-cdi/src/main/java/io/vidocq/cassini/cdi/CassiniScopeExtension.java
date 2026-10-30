@@ -73,7 +73,7 @@ public class CassiniScopeExtension implements BuildCompatibleExtension {
         }
         if (!hasAnyScope(clazz)) {
             clazz.addAnnotation(ApplicationScoped.class);
-            LOG.log(System.Logger.Level.INFO,
+            LOG.log(System.Logger.Level.DEBUG,
                     "  Application subclass {0} has no CDI scope, defaulting to @ApplicationScoped",
                     clazz.info().name());
         }
@@ -90,7 +90,7 @@ public class CassiniScopeExtension implements BuildCompatibleExtension {
         if (clazz.info().isInterface()) return;
         if (!hasAnyScope(clazz)) {
             clazz.addAnnotation(RequestScoped.class);
-            LOG.log(System.Logger.Level.INFO,
+            LOG.log(System.Logger.Level.DEBUG,
                     "  @Path class {0} has no CDI scope, defaulting to @RequestScoped",
                     clazz.info().name());
         }
@@ -105,7 +105,7 @@ public class CassiniScopeExtension implements BuildCompatibleExtension {
         if (clazz.info().hasAnnotation(Path.class)) return;
         if (!hasAnyScope(clazz)) {
             clazz.addAnnotation(Dependent.class);
-            LOG.log(System.Logger.Level.INFO,
+            LOG.log(System.Logger.Level.DEBUG,
                     "  @Provider class {0} has no CDI scope, defaulting to @Dependent",
                     clazz.info().name());
         }
