@@ -793,9 +793,11 @@ public final class Invoker {
      *  {@code injectParams=false} — providers carry only {@code @Context} fields,
      *  never {@code @PathParam}/{@code @QueryParam}/etc.</p> */
     void injectProviderContexts(Object provider, CassiniHttpExchange requestOpt) {
-        // Skip les classes builtin internes (pas de @Context dedans, optimisation).
+        // A provider without an injectable field has nothing to inject, so it needs no adapter: neither Cassini's
+        // own readers and writers nor the filters of the other bricks get one generated at run time (CASSINI-036).
+        // Read once per class.
         Class<?> cls = provider.getClass();
-        if (cls.getName().startsWith("io.vidocq.cassini.internal.MessageBodyRegistry$")) return;
+        if (!InjectableFields.declaredBy(cls)) return;
         CassiniHttpExchange req = requestOpt != null ? requestOpt : currentRequest();
         MatchResult match = currentMatch();
         if (req == null || match == null) return;

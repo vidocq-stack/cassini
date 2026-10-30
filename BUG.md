@@ -373,3 +373,19 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Minimal repro**: `InheritedResourceMethodsTest`, through each of the three route sources.
 - **Cause**: four copies of the rule choosing a class's resource methods, three without §3.6 or with only part of it.
 - **Fix**: one rule, `ResourceScanner.resourceMethods`/`annotatedMethod` (its own annotations when the method or a parameter has any, else those of the overridden method, superclasses first, then every interface at any depth), used by the scanner, the run-time locator dispatch, the route generator and `RouteRegistry` (which now resolves the table's method with `getMethod`, inherited ones included). The processor applies the same rule on the language model. Regression tests: `InheritedResourceMethodsTest`.
+
+## CASSINI-036 — A provider without `@Context` field gets an adapter generated at run time on the first request
+- **Date**: 2026-10-30 — **Status**: FIXED
+- **Severity**: medium. No wrong answer, but the ecosystem rule (generate at build time, never at run time) is broken on the first request of almost every application, the first request pays a Class-File generation, and the path has no ahead-of-time equivalent. Reported by the vidocq-benchmarks session (cassini#100).
+- **Symptom**: the first JSON request logs `CASSINI — RUNTIME CODE GENERATION FALLBACK … io.vidocq.cassini.internal.json.CassiniJsonbReaderWriter`, and the warning tells the application to add `cassini-processor`, which cannot help: the class is Cassini's own. The filters of other bricks built without the processor (Humboldt, Cervantes, the CDI request-scope filters) take the same path.
+- **Minimal repro**: `ProviderContextInjectionTest`: a JSON resource whose adapter comes from the build, plus a post-matching filter without `@Context`; two requests generated two adapters at run time.
+- **Cause**: `Invoker.injectProviderContexts` looked an adapter up for every reader, writer and post-matching filter it injects `@Context` fields into, and skipped only the `MessageBodyRegistry$` built-ins.
+- **Fix**: a provider whose class declares no injectable field (`InjectableFields.declaredBy`, read once per class, as for resources) is not injected and gets no adapter. A provider with `@Context` fields keeps its build-time adapter, or the run-time one as before (cassini#100, option 3, still open).
+
+## CASSINI-037 — The `@Context` fields of a response filter are not injected
+- **Date**: 2026-10-30 — **Status**: OPEN
+- **Severity**: to assess (§9.2: the `@Context` fields of every provider are injected).
+- **Symptom**: a `ContainerResponseFilter` with `@Context private UriInfo uriInfo` sees `null` in `filter(request, response)`, on the in-memory stack. Post-matching request filters, readers and writers are injected (`Invoker.injectProviderContexts`); response filters do not go through it.
+- **Minimal repro**: a response filter putting `uriInfo == null ? "none" : uriInfo.getPath()` in a header answers `none` (found while writing `ProviderContextInjectionTest`).
+- **Cause hypothesis**: `injectProviderContexts` is called for post-matching filters (`Invoker`) and message body providers (`ResponsePipeline`), not for response filters. To check against the TCK, which may cover it through CDI-managed filters.
+
