@@ -82,8 +82,8 @@ class CassiniScopeExtensionTest {
         logger.setLevel(java.util.logging.Level.ALL);
         // A filter, not a Handler subclass: JUnit loads nested classes before this method can make the module read
         // java.logging.
-        logger.setFilter(record -> {
-            levels.add(record.getLevel());
+        logger.setFilter(logRecord -> {
+            levels.add(logRecord.getLevel());
             return false;
         });
         try {
