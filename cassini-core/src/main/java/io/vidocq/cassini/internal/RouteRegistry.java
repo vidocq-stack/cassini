@@ -224,7 +224,7 @@ public final class RouteRegistry {
         List<ResourceMethod> routes = new ArrayList<>(descriptors.size());
         for (RouteDescriptor d : descriptors) {
             try {
-                Method m = resolveMethod(d.beanClass(), d.methodName(), d.paramTypeNames());
+                Method m = resolveMethod(d);
                 // Best-effort: a CLOSED resource package (zero-export Java Modules app) rejects setAccessible,
                 // but the generated adapter's invoke() handles dispatch, so reflective access is not
                 // required. Only the reflective-fallback path (methodId == -1) would need it.
@@ -248,6 +248,18 @@ public final class RouteRegistry {
             }
         }
         return routes;
+    }
+
+    /**
+     * The method of {@code d}, declared where its JAX-RS annotations are. The class literals the processor
+     * generated name it directly (CASSINI-042); without them, its parameter types are resolved by name and its
+     * annotations found by scanning, as before.
+     */
+    static Method resolveMethod(RouteDescriptor d) throws ReflectiveOperationException {
+        if (d.annotatedClass() != null && d.paramTypes() != null) {
+            return d.annotatedClass().getDeclaredMethod(d.methodName(), d.paramTypes());
+        }
+        return resolveMethod(d.beanClass(), d.methodName(), d.paramTypeNames());
     }
 
     private static Method resolveMethod(Class<?> beanClass, String methodName, String[] paramTypeNames)

@@ -32,6 +32,7 @@ import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.NestingKind;
+import javax.lang.model.element.PackageElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.ArrayType;
@@ -477,7 +478,9 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         // consumes
         emitStringArray(w, rm.consumes, INDENT_16);
         w.println(",");
-        w.print(INDENT_16 + rm.classPathLiterals + ")");
+        w.println(INDENT_16 + rm.classPathLiterals + ",");
+        w.println(INDENT_16 + rm.paramTypesLiteral + ",");
+        w.print(INDENT_16 + rm.annotatedClassLiteral + ")");
         if (!last) w.println(",");
         else w.println();
     }
@@ -493,6 +496,48 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             }
             w.print("}");
         }
+    }
+
+    /**
+     * The parameter types of {@code method} as a {@code Class<?>[]} expression, so that the route needs no name
+     * resolved at startup (CASSINI-042); {@code "null"} when a type cannot be named from {@code pkg}, or when the
+     * declaration carrying the annotations, {@code annotated}, erases its parameters differently (a generic
+     * supertype): the route then resolves the method by name, as before.
+     */
+    private String paramTypesLiteral(ExecutableElement method, ExecutableElement annotated, PackageElement pkg) {
+        List<String> literals = new ArrayList<>();
+        for (int i = 0; i < method.getParameters().size(); i++) {
+            TypeMirror type = types.erasure(method.getParameters().get(i).asType());
+            if (!types.isSameType(type, types.erasure(annotated.getParameters().get(i).asType()))) return "null";
+            String literal = typeLiteral(type, pkg);
+            if (literal == null) return "null";
+            literals.add(literal);
+        }
+        return "new Class<?>[]{" + String.join(", ", literals) + "}";
+    }
+
+    /** The class literal of an erased type, or {@code null} when it cannot be named from {@code pkg}. */
+    private String typeLiteral(TypeMirror type, PackageElement pkg) {
+        if (type.getKind().isPrimitive()) return type.toString() + DOT_CLASS;
+        if (type instanceof ArrayType array) {
+            String component = typeLiteral(array.getComponentType(), pkg);
+            return component == null ? null : component.replace(DOT_CLASS, "[]" + DOT_CLASS);
+        }
+        if (type instanceof DeclaredType declared) return classLiteral((TypeElement) declared.asElement(), pkg);
+        return null;
+    }
+
+    /** The class literal of {@code type}, or {@code null} when a class of {@code pkg} cannot name it. */
+    private String classLiteral(TypeElement type, PackageElement pkg) {
+        for (Element e = type; e instanceof TypeElement t; e = t.getEnclosingElement()) {
+            Set<Modifier> mods = t.getModifiers();
+            if (mods.contains(Modifier.PRIVATE) || t.getNestingKind() == NestingKind.LOCAL
+                    || t.getNestingKind() == NestingKind.ANONYMOUS
+                    || (!mods.contains(Modifier.PUBLIC) && !elements.getPackageOf(t).equals(pkg))) {
+                return null;
+            }
+        }
+        return type.getQualifiedName() + DOT_CLASS;
     }
 
     // -------------------------------------------------------------------------
@@ -542,7 +587,11 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                     fullPath,
                     orElse(annotationValues(m, "jakarta.ws.rs.Produces", VALUE), classProduces),
                     orElse(annotationValues(m, "jakarta.ws.rs.Consumes", VALUE), classConsumes),
-                    classPathLiterals
+                    classPathLiterals,
+                    paramTypesLiteral(method, m, elements.getPackageOf(resourceType)),
+                    java.util.Objects.requireNonNullElse(
+                            classLiteral((TypeElement) m.getEnclosingElement(), elements.getPackageOf(resourceType)),
+                            "null")
             ));
         }
         return new RouteCollection(false, List.copyOf(methods));
@@ -776,7 +825,9 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             String pathTemplate,
             List<String> produces,
             List<String> consumes,
-            int classPathLiterals
+            int classPathLiterals,
+            String paramTypesLiteral,
+            String annotatedClassLiteral
     ) {}
 
     // ---- Adapter generation -------------------------------------------------

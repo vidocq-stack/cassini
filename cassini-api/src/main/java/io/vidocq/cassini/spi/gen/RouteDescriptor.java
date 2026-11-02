@@ -45,6 +45,11 @@ package io.vidocq.cassini.spi.gen;
  * @param produces        {@code @Produces} media types (empty array = no restriction)
  * @param consumes        {@code @Consumes} media types (empty array = no restriction)
  * @param classPathLiterals number of literal characters in the class-level {@code @Path}
+ * @param paramTypes      the parameter types as class literals, so that no name is resolved at startup;
+ *                        {@code null} when the generated class cannot name one of them (CASSINI-042)
+ * @param annotatedClass  the class whose declaration of the method carries its JAX-RS annotations (§3.6: the
+ *                        method it overrides or implements may carry them), so that no annotation is scanned at
+ *                        startup; {@code null} when the generated class cannot name it (CASSINI-042)
  */
 public record RouteDescriptor(
         Class<?> beanClass,
@@ -54,15 +59,25 @@ public record RouteDescriptor(
         String pathTemplate,
         String[] produces,
         String[] consumes,
-        int classPathLiterals
+        int classPathLiterals,
+        Class<?>[] paramTypes,
+        Class<?> annotatedClass
 ) {
+
+    /** A descriptor without class literals, as {@code cassini-processor} generated them before CASSINI-042: the
+     *  method is resolved from {@code paramTypeNames} and its annotations found by scanning. */
+    public RouteDescriptor(Class<?> beanClass, String methodName, String[] paramTypeNames, String httpMethod,
+                           String pathTemplate, String[] produces, String[] consumes, int classPathLiterals) {
+        this(beanClass, methodName, paramTypeNames, httpMethod, pathTemplate, produces, consumes, classPathLiterals,
+                null, null);
+    }
 
     /** Value equality: the arrays are compared by content, not by identity. */
     @Override
     public boolean equals(Object o) {
         return o instanceof RouteDescriptor(Class<?> otherBean, String otherMethod, String[] otherParams,
                 String otherVerb, String otherTemplate, String[] otherProduces, String[] otherConsumes,
-                int otherLiterals)
+                int otherLiterals, Class<?>[] otherTypes, Class<?> otherAnnotated)
                 && classPathLiterals == otherLiterals
                 && java.util.Objects.equals(beanClass, otherBean)
                 && java.util.Objects.equals(methodName, otherMethod)
@@ -70,15 +85,19 @@ public record RouteDescriptor(
                 && java.util.Objects.equals(httpMethod, otherVerb)
                 && java.util.Objects.equals(pathTemplate, otherTemplate)
                 && java.util.Arrays.equals(produces, otherProduces)
-                && java.util.Arrays.equals(consumes, otherConsumes);
+                && java.util.Arrays.equals(consumes, otherConsumes)
+                && java.util.Arrays.equals(paramTypes, otherTypes)
+                && java.util.Objects.equals(annotatedClass, otherAnnotated);
     }
 
     @Override
     public int hashCode() {
-        int h = java.util.Objects.hash(beanClass, methodName, httpMethod, pathTemplate, classPathLiterals);
+        int h = java.util.Objects.hash(beanClass, methodName, httpMethod, pathTemplate, classPathLiterals,
+                annotatedClass);
         h = 31 * h + java.util.Arrays.hashCode(paramTypeNames);
         h = 31 * h + java.util.Arrays.hashCode(produces);
-        return 31 * h + java.util.Arrays.hashCode(consumes);
+        h = 31 * h + java.util.Arrays.hashCode(consumes);
+        return 31 * h + java.util.Arrays.hashCode(paramTypes);
     }
 
     @Override
@@ -90,6 +109,8 @@ public record RouteDescriptor(
                 + ", pathTemplate=" + pathTemplate
                 + ", produces=" + java.util.Arrays.toString(produces)
                 + ", consumes=" + java.util.Arrays.toString(consumes)
-                + ", classPathLiterals=" + classPathLiterals + "]";
+                + ", classPathLiterals=" + classPathLiterals
+                + ", paramTypes=" + java.util.Arrays.toString(paramTypes)
+                + ", annotatedClass=" + annotatedClass + "]";
     }
 }

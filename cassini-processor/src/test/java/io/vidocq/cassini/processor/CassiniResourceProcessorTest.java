@@ -416,6 +416,44 @@ class CassiniResourceProcessorTest {
     }
 
     @Test
+    void aGeneratedRouteNamesItsParameterTypesAndItsAnnotatedClass() throws Throwable {
+        // CASSINI-042: RouteRegistry then resolves no name and scans no annotation at startup.
+        File api = writeSource("io/vidocq/cassini/test/apt/lit/Api.java", """
+                package io.vidocq.cassini.test.apt.lit;
+
+                public interface Api {
+                    @jakarta.ws.rs.GET @jakarta.ws.rs.Path("item")
+                    String get(@jakarta.ws.rs.QueryParam("q") String q, int page, long[] ids);
+                }
+                """);
+        File impl = writeSource("io/vidocq/cassini/test/apt/lit/Impl.java", """
+                package io.vidocq.cassini.test.apt.lit;
+
+                @jakarta.ws.rs.Path("/lit")
+                public class Impl implements Api {
+                    @Override public String get(String q, int page, long[] ids) { return q; }
+
+                    @jakarta.ws.rs.POST
+                    public String post(java.util.List<String> body) { return ""; }
+                }
+                """);
+        File outDir = tempDir.resolve("out-lit").toFile();
+        outDir.mkdirs();
+
+        URLClassLoader loader = compileWithProcessor(outDir, api, impl);
+
+        var routes = ((io.vidocq.cassini.spi.gen.RouteProvider) loader
+                .loadClass("io.vidocq.cassini.test.apt.lit.Impl$$CassiniRoutes").getDeclaredConstructor().newInstance())
+                .routes();
+        var get = routes.stream().filter(r -> r.methodName().equals("get")).findFirst().orElseThrow();
+        assertArrayEquals(new Class<?>[] {String.class, int.class, long[].class}, get.paramTypes());
+        assertSame(loader.loadClass("io.vidocq.cassini.test.apt.lit.Api"), get.annotatedClass());
+        var post = routes.stream().filter(r -> r.methodName().equals("post")).findFirst().orElseThrow();
+        assertArrayEquals(new Class<?>[] {java.util.List.class}, post.paramTypes(), "erased");
+        assertSame(loader.loadClass("io.vidocq.cassini.test.apt.lit.Impl"), post.annotatedClass());
+    }
+
+    @Test
     void anAbstractResourceCompilesAndGetsNoNewInstance() throws Throwable {
         // The adapter used to emit `new Abstract()`: the application did not compile.
         File src = writeSource("io/vidocq/cassini/test/apt/Abstract.java", """
