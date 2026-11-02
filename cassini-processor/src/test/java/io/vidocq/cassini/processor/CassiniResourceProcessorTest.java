@@ -454,6 +454,44 @@ class CassiniResourceProcessorTest {
     }
 
     @Test
+    void aGeneratedRouteLeavesAGenericSupertypeToTheResolutionByName() throws Throwable {
+        // The interface method erases T to Object, the implementation takes a String: no literal could name both.
+        File api = writeSource("io/vidocq/cassini/test/apt/gen/Api.java", """
+                package io.vidocq.cassini.test.apt.gen;
+
+                public interface Api<T> {
+                    @jakarta.ws.rs.POST String create(T body);
+                }
+                """);
+        File impl = writeSource("io/vidocq/cassini/test/apt/gen/Impl.java", """
+                package io.vidocq.cassini.test.apt.gen;
+
+                @jakarta.ws.rs.Path("/gen")
+                public class Impl implements Api<String> {
+                    @Override public String create(String body) { return body; }
+
+                    @jakarta.ws.rs.PUT
+                    public String put(Local body) { return ""; }
+
+                    static class Local {}
+                }
+                """);
+        File outDir = tempDir.resolve("out-gen").toFile();
+        outDir.mkdirs();
+
+        URLClassLoader loader = compileWithProcessor(outDir, api, impl);
+
+        var routes = ((io.vidocq.cassini.spi.gen.RouteProvider) loader
+                .loadClass("io.vidocq.cassini.test.apt.gen.Impl$$CassiniRoutes").getDeclaredConstructor().newInstance())
+                .routes();
+        var create = routes.stream().filter(r -> r.methodName().equals("create")).findFirst().orElseThrow();
+        assertNull(create.paramTypes());
+        var put = routes.stream().filter(r -> r.methodName().equals("put")).findFirst().orElseThrow();
+        assertArrayEquals(new Class<?>[] {loader.loadClass("io.vidocq.cassini.test.apt.gen.Impl$Local")}, put.paramTypes(),
+                "a package-private class of the same package can be named");
+    }
+
+    @Test
     void anAbstractResourceCompilesAndGetsNoNewInstance() throws Throwable {
         // The adapter used to emit `new Abstract()`: the application did not compile.
         File src = writeSource("io/vidocq/cassini/test/apt/Abstract.java", """
