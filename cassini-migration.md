@@ -312,7 +312,7 @@ Sub-step D: tests
 
 | # | Question | Decision |
 |---|----------|----------|
-| Q1 | Git repo | **`forge.vidocq.dev/vidocq/cassini`** (Forgejo, consistent with chappe) |
+| Q1 | Git repo | **`codefloe.com/Vidocq/cassini`** (Forgejo, consistent with chappe) |
 | Q2 | License | **Apache 2.0** |
 | Q3 | Chappe groupId | **`io.vidocq.chappe`** (the chappe parent POM is canonical; vidocq will be updated to align) |
 | Q4 | Cassini-core unit-test transport | **Chappe** by default. `cassini-jdk-http` available if decoupling is needed |

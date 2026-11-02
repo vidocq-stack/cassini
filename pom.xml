@@ -56,7 +56,7 @@
 
     <scm>
         <connection>scm:git:https://codefloe.com/Vidocq/cassini.git</connection>
-        <developerConnection>scm:git:ssh://git@forge.vidocq.dev:vidocq/cassini.git</developerConnection>
+        <developerConnection>scm:git:ssh://git@codefloe.com/Vidocq/cassini.git</developerConnection>
         <url>https://codefloe.com/Vidocq/cassini</url>
     </scm>
 
