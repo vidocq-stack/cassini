@@ -19,6 +19,7 @@
  */
 package io.vidocq.cassini.client.internal;
 
+import io.vidocq.cassini.runtime.CassiniMaintenance;
 import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
 import jakarta.json.bind.JsonbException;
@@ -53,6 +54,12 @@ final class ClientEntityJsonb {
      * instances; one wins.
      */
     private static final AtomicReference<Jsonb> DEFAULT = new AtomicReference<>();
+
+    static {
+        // The instance holds the generated bindings of the application layer that built it (it is created under
+        // that layer's context class loader): dropped with the other caches when the host stops the layer.
+        CassiniMaintenance.onReset(() -> DEFAULT.set(null));
+    }
 
     private ClientEntityJsonb() {
     }

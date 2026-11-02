@@ -21,12 +21,17 @@ package io.vidocq.cassini.runtime;
 
 import io.vidocq.cassini.internal.RouteRegistry;
 import io.vidocq.cassini.internal.gen.AdapterRegistry;
+import io.vidocq.cassini.internal.json.CassiniJsonbReaderWriter;
+
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Maintenance entry points for runtimes that host Cassini across application reloads.
  *
  * <p>The route and adapter discovery caches ({@link RouteRegistry},
- * {@link AdapterRegistry}) are static and keyed by application {@code Class} objects.
+ * {@link AdapterRegistry}) and the default JSON-B instance of the built-in reader/writer are static and
+ * keyed by, or holding, application {@code Class} objects.
  * A host that hot-reloads the application <em>in the same JVM</em> — the Vidocq dev mode
  * re-creates the application module layer with a fresh class loader — must discard them
  * between two deployments, otherwise lookups miss (old-layer keys) and dispatch falls
@@ -34,11 +39,25 @@ import io.vidocq.cassini.internal.gen.AdapterRegistry;
  */
 public final class CassiniMaintenance {
 
+    /** What the modules built on this one asked to be dropped with the rest, see {@link #onReset(Runnable)}. */
+    private static final List<Runnable> HOOKS = new CopyOnWriteArrayList<>();
+
     private CassiniMaintenance() {}
 
-    /** Discards every discovery cache; the next deployment rebuilds them from scratch. */
+    /** Discards every discovery cache and shared JSON-B instance; the next deployment rebuilds them from scratch. */
     public static void resetDiscoveryCaches() {
         RouteRegistry.resetAll();
         AdapterRegistry.resetAll();
+        CassiniJsonbReaderWriter.resetDefaultJsonb();
+        HOOKS.forEach(Runnable::run);
+    }
+
+    /**
+     * Adds {@code hook} to what {@link #resetDiscoveryCaches()} runs: a module that keeps something shared for the
+     * life of the JVM and that depends on the application layer (the client's default JSON-B instance, say) drops it
+     * there, once, when it first needs it. The hook belongs to the library, never to the application.
+     */
+    public static void onReset(Runnable hook) {
+        HOOKS.add(hook);
     }
 }

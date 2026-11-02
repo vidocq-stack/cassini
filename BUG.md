@@ -478,3 +478,20 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   `cassini-cdi-vauban` also runs `cassini-processor` and provides the descriptor of `VaubanRequestScopeFilter`
   (`ProviderDescriptorProvidesTest`): with Cervantes and Humboldt shipping theirs, `FilterEntry` reads no annotation
   by reflection on the audit application (80 → 0).
+
+## CASSINI-044 — A hot reload keeps the previous application layers reachable through the default JSON-B instances
+- **Date**: 2026-11-02 — **Status**: FIXED (fix/layer-leaks-cassini)
+- **Severity**: medium in `vidocq dev` (about 0.8 MB of heap per hot reload, every discarded layer retained); none
+  in production
+- **Symptom**: the static audit of vidocq-workspace#40 (item 25): 15 hot reloads of the audit application left 16
+  live `VaubanClassLoader`s instead of one. The heap dump showed `CassiniJsonbReaderWriter.DefaultJsonb.INSTANCE`, a
+  JVM-wide static, holding a Champollion `Jsonb` whose index lists the generated JSON-B bindings of the first layer
+  (it is built by the first JSON request, under that layer's context class loader). `ClientEntityJsonb.DEFAULT` of
+  `cassini-client` did the same. The route and adapter caches were already reset by `CassiniMaintenance`.
+- **Repro**: `CassiniMaintenanceLayerLeakTest` (a layer whose generated binding wrote an entity is collectable once
+  `resetDiscoveryCaches()` ran; it failed before the fix) and `ClientEntityJsonbResetTest`.
+- **Fix**: the default instance of the built-in reader/writer is an `AtomicReference` that
+  `CassiniMaintenance.resetDiscoveryCaches()` clears (the Vidocq Cassini extension already calls it when a layer
+  stops); `cassini-client` registers its own reset through the new `CassiniMaintenance.onReset(Runnable)`. The next
+  JSON request builds a `Jsonb` for the layer then current. Champollion's later-layer lookup (champollion#82) stays
+  as a safety net, and the reflective paths are unchanged.

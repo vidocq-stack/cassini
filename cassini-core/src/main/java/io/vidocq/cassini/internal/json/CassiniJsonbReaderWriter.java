@@ -39,6 +39,7 @@ import java.io.OutputStream;
 import java.io.PushbackInputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * §4.2.3 / Core Profile: MBR/MBW for {@code application/json} (and the
@@ -58,9 +59,27 @@ public final class CassiniJsonbReaderWriter
      * Created on first use, not when the class loads: Cassini depends on the JSON-B API only, and
      * the implementation comes from the application or its runtime (Champollion in Vidocq). A
      * deployment without one still starts and serves everything but JSON.
+     *
+     * <p>The instance is built under the context class loader of the first JSON request, so it holds the
+     * generated bindings of the application layer then current: the host drops it when that layer stops
+     * ({@link #resetDefaultJsonb()}, called by {@code CassiniMaintenance}), or a hot reload would keep
+     * the discarded layer reachable from this static. A benign race may build two instances on the first
+     * use, one wins.</p>
      */
-    private static final class DefaultJsonb {
-        static final Jsonb INSTANCE = JsonbBuilder.create();
+    private static final AtomicReference<Jsonb> DEFAULT_JSONB = new AtomicReference<>();
+
+    private static Jsonb defaultJsonb() {
+        Jsonb jsonb = DEFAULT_JSONB.get();
+        if (jsonb != null) {
+            return jsonb;
+        }
+        DEFAULT_JSONB.compareAndSet(null, JsonbBuilder.create());
+        return DEFAULT_JSONB.get();
+    }
+
+    /** Forgets the default instance: the next JSON request builds one for the layer then current. */
+    public static void resetDefaultJsonb() {
+        DEFAULT_JSONB.set(null);
     }
 
     /**
@@ -130,7 +149,7 @@ public final class CassiniJsonbReaderWriter
                 }
             } catch (RuntimeException _) { /* a failing ContextResolver falls back to the default Jsonb */ }
         }
-        return DefaultJsonb.INSTANCE;
+        return defaultJsonb();
     }
 
     private static boolean isJson(MediaType mt) {
