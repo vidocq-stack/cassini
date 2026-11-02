@@ -30,6 +30,10 @@ module io.vidocq.cassini.cdi.vauban {
     provides io.vidocq.cassini.spi.bean.BeanProvider.Factory
             with io.vidocq.cassini.cdi.vauban.VaubanBeanProviderFactory;
 
+    // The descriptor of the request scope filter, which Cassini reads at startup instead of its annotations.
+    provides io.vidocq.cassini.spi.gen.ProviderDescriptor
+            with io.vidocq.cassini.cdi.vauban.VaubanRequestScopeFilter$$CassiniProvider;
+
     // The default scopes of @Path/@Provider classes (JAX-RS 4.0 §11.2.5) come from
     // io.vidocq.cassini.cdi, whose CassiniScopeExtension every CDI container runs (cassini#53).
 }

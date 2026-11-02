@@ -475,3 +475,6 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Fix**: the annotations come from the deployment's index, which Vauban built from the class files
   (`VaubanContainer.indexedAnnotationNames`). A class the index does not know is read by reflection, as before.
   Tests: `ResourceClassesFromIndexTest`. Audit application: 600 reflective calls at startup → 0.
+  `cassini-cdi-vauban` also runs `cassini-processor` and provides the descriptor of `VaubanRequestScopeFilter`
+  (`ProviderDescriptorProvidesTest`): with Cervantes and Humboldt shipping theirs, `FilterEntry` reads no annotation
+  by reflection on the audit application (80 → 0).

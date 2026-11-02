@@ -74,6 +74,13 @@
                             <artifactId>vauban-processor</artifactId>
                             <version>${vauban.version}</version>
                         </path>
+                        <!-- The descriptor of VaubanRequestScopeFilter, read at startup instead of its annotations
+                             (CASSINI-040); declared as `provides` in module-info.java. -->
+                        <path>
+                            <groupId>io.vidocq.cassini</groupId>
+                            <artifactId>cassini-processor</artifactId>
+                            <version>${project.version}</version>
+                        </path>
                     </annotationProcessorPaths>
                 </configuration>
                 <executions>
