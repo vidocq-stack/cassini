@@ -465,3 +465,13 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   processor, a type the generated class cannot name, a generic supertype erasing differently) is resolved by name
   and scanned, as before; the 8-argument constructor stays for older generated classes. Tests:
   `RouteMethodResolutionTest` (red first), `CassiniResourceProcessorTest.aGeneratedRouteNamesItsParameterTypesAndItsAnnotatedClass`.
+
+## CASSINI-043 — The Vauban bean provider reads two annotations of every bean by reflection at startup
+- **Date**: 2026-11-02 — **Status**: FIXED (feat/beans-from-index, with vauban `VaubanContainer.indexedAnnotationNames`)
+- **Severity**: low (startup reflection in the standard Vidocq path; no wrong answer)
+- **Symptom**: `VaubanBeanProvider.getResourceClasses` calls `isAnnotationPresent(@Path)` and
+  `isAnnotationPresent(@Provider)` on the class of every bean of the deployment: 300 + 300 reflective calls on the
+  audit application, for 4 resources and 6 providers.
+- **Fix**: the annotations come from the deployment's index, which Vauban built from the class files
+  (`VaubanContainer.indexedAnnotationNames`). A class the index does not know is read by reflection, as before.
+  Tests: `ResourceClassesFromIndexTest`. Audit application: 600 reflective calls at startup → 0.

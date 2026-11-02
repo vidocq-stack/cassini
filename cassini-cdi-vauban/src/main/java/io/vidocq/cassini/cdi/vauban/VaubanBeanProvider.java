@@ -51,6 +51,9 @@ public final class VaubanBeanProvider implements BeanProvider {
 
     private static final Resolution UNRESOLVED = new Resolution(null, null);
 
+    private static final String PATH = Path.class.getName();
+    private static final String PROVIDER = Provider.class.getName();
+
     private final VaubanContainer container;
     /** Singleton — will activate/deactivate the RequestContext around each HTTP dispatch. */
     private final VaubanRequestScopeFilter requestScopeFilter;
@@ -139,6 +142,20 @@ public final class VaubanBeanProvider implements BeanProvider {
         return ctx.get(bean, bm.createCreationalContext(bean));
     }
 
+    /**
+     * Whether {@code beanClass} is annotated {@code @Path} or {@code @Provider}: from the annotations the
+     * deployment's index read in its class file, without reflection; by reflection, as before, for a class the
+     * index does not know.
+     */
+    boolean isJaxrsClass(Class<?> beanClass) {
+        var indexed = container.indexedAnnotationNames(beanClass);
+        if (indexed.isPresent()) {
+            Set<String> names = indexed.get();
+            return names.contains(PATH) || names.contains(PROVIDER);
+        }
+        return beanClass.isAnnotationPresent(Path.class) || beanClass.isAnnotationPresent(Provider.class);
+    }
+
     @Override
     public Set<Class<?>> getResourceClasses() {
         Set<Class<?>> result = new LinkedHashSet<>();
@@ -146,8 +163,7 @@ public final class VaubanBeanProvider implements BeanProvider {
         for (Bean<?> bean : bm.getBeans(Object.class, ANY)) {
             Class<?> beanClass = bean.getBeanClass();
             if (beanClass == null) continue;
-            if (beanClass.isAnnotationPresent(Path.class)
-                    || beanClass.isAnnotationPresent(Provider.class)) {
+            if (isJaxrsClass(beanClass)) {
                 result.add(beanClass);
             }
         }
