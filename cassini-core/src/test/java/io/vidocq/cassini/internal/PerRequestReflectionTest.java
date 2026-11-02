@@ -19,9 +19,13 @@
  */
 package io.vidocq.cassini.internal;
 
+import io.vidocq.cassini.internal.runtime.CassiniRuntimeDelegate;
 import jakarta.ws.rs.Encoded;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.ext.RuntimeDelegate;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -31,6 +35,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -81,6 +86,12 @@ class PerRequestReflectionTest {
         }
     }
 
+    @BeforeAll
+    static void runtimeDelegate() {
+        // cassini-core registers no RuntimeDelegate, the transports do; a 400 response needs one.
+        RuntimeDelegate.setInstance(new CassiniRuntimeDelegate());
+    }
+
     @Test
     void theEncodedAnnotationsAreReadOnce() throws NoSuchMethodException {
         Method list = PlainResource.class.getMethod("list");
@@ -110,5 +121,54 @@ class PerRequestReflectionTest {
 
         assertEquals("abc", ((Token) converted).value);
         assertFalse(Token.calledThroughMethodInvoke, "valueOf(String) was called through Method.invoke");
+    }
+
+    /** Converted through its public constructor(String). */
+    public static final class Wrapped {
+        final String value;
+
+        public Wrapped(String value) {
+            this.value = value;
+        }
+    }
+
+    /** A valueOf(String) that fails, with a checked exception or with a runtime one. */
+    public static final class Failing {
+        public static Failing valueOf(String raw) throws Exception {
+            if (raw.equals("runtime")) throw new IllegalStateException("runtime failure");
+            throw new Exception("checked failure");
+        }
+    }
+
+    /** A private valueOf(String): no handle resolves, the reflective fallback runs as before. */
+    public static final class Hidden {
+        private static Hidden valueOf(String raw) {
+            return new Hidden();
+        }
+    }
+
+    @Test
+    void aStringConstructorConvertsThroughItsHandle() {
+        assertEquals("abc", ((Wrapped) ParamValueConverter.coerceSingle(Wrapped.class, "abc")).value);
+    }
+
+    @Test
+    void aFailingValueOfStillAnswersAsBefore() {
+        IllegalStateException runtime = assertThrows(IllegalStateException.class,
+                () -> ParamValueConverter.coerceSingle(Failing.class, "runtime"));
+        assertEquals("runtime failure", runtime.getMessage());
+
+        WebApplicationException checked = assertThrows(WebApplicationException.class,
+                () -> ParamValueConverter.coerceSingle(Failing.class, "checked"));
+        assertEquals(400, checked.getResponse().getStatus());
+        assertEquals("valueOf failed: checked failure", checked.getMessage());
+    }
+
+    @Test
+    void aValueOfWithoutHandleKeepsTheReflectiveFallback() {
+        WebApplicationException e = assertThrows(WebApplicationException.class,
+                () -> ParamValueConverter.coerceSingle(Hidden.class, "abc"));
+        assertEquals(400, e.getResponse().getStatus());
+        assertTrue(e.getMessage().startsWith("valueOf inaccessible"), e.getMessage());
     }
 }
