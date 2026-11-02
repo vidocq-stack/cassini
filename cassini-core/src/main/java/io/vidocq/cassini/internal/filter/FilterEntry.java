@@ -19,6 +19,8 @@
  */
 package io.vidocq.cassini.internal.filter;
 
+import io.vidocq.cassini.internal.gen.ProviderDescriptors;
+import io.vidocq.cassini.spi.gen.ProviderDescriptor;
 import jakarta.annotation.Priority;
 
 import java.lang.annotation.Annotation;
@@ -44,6 +46,12 @@ public record FilterEntry<T>(
     public static final int DEFAULT_PRIORITY = 5000;
 
     public static <T> FilterEntry<T> of(T instance) {
+        // CASSINI-040: the generated descriptor, when there is one, already holds what follows.
+        ProviderDescriptor described = described(instance.getClass());
+        if (described != null) {
+            return new FilterEntry<>(instance, described.providerClass(), priorityOf(described),
+                    described.preMatching(), Set.copyOf(described.nameBindings()), null);
+        }
         // §6: a filter provided by a CDI BeanProvider is a client proxy (e.g.
         // JwtAuthenticationFilter_ClientProxy extends JwtAuthenticationFilter). @Provider /
         // @PreMatching / @Priority / @NameBinding are not @Inherited, so we walk up the
@@ -61,11 +69,32 @@ public record FilterEntry<T>(
 
     /** §6.5.5: creates an entry bound to a specific target method (DynamicFeature). */
     public static <T> FilterEntry<T> dynamicFor(T instance, java.lang.reflect.Method target) {
+        ProviderDescriptor described = described(instance.getClass());
+        if (described != null) {
+            return new FilterEntry<>(instance, described.providerClass(), priorityOf(described), false, Set.of(),
+                    target);
+        }
         Class<?> cls = providerClass(instance.getClass());
         int prio = DEFAULT_PRIORITY;
         Priority p = cls.getAnnotation(Priority.class);
         if (p != null) prio = p.value();
         return new FilterEntry<>(instance, cls, prio, false, Set.of(), target);
+    }
+
+    /**
+     * The generated descriptor of the class or, behind a CDI client proxy, of the first superclass that has one;
+     * {@code null} when none has one, and the annotations are then read by reflection.
+     */
+    private static ProviderDescriptor described(Class<?> c) {
+        for (Class<?> cur = c; cur != null && cur != Object.class; cur = cur.getSuperclass()) {
+            ProviderDescriptor d = ProviderDescriptors.of(cur);
+            if (d != null) return d;
+        }
+        return null;
+    }
+
+    private static int priorityOf(ProviderDescriptor d) {
+        return d.priority() != null ? d.priority() : DEFAULT_PRIORITY;
     }
 
     /**

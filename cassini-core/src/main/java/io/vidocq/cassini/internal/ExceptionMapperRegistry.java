@@ -19,6 +19,8 @@
  */
 package io.vidocq.cassini.internal;
 
+import io.vidocq.cassini.internal.gen.ProviderDescriptors;
+import io.vidocq.cassini.spi.gen.ProviderDescriptor;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.ExceptionMapper;
 
@@ -49,7 +51,7 @@ public final class ExceptionMapperRegistry {
     @SuppressWarnings({"unchecked", "rawtypes"})
     public void register(Object instance) {
         if (!(instance instanceof ExceptionMapper)) return;
-        Class<? extends Throwable> excType = resolveExceptionType(instance.getClass());
+        Class<? extends Throwable> excType = exceptionType(instance.getClass());
         if (excType == null) return;
         mappers.add(new Registration(excType, (ExceptionMapper) instance));
     }
@@ -100,8 +102,22 @@ public final class ExceptionMapperRegistry {
     public int size() { return mappers.size(); }
 
     private static int priorityOf(Object o) {
+        // CASSINI-040: the generated descriptor first, the annotation read by reflection otherwise.
+        ProviderDescriptor d = ProviderDescriptors.of(o.getClass());
+        if (d != null) return d.priority() == null ? jakarta.ws.rs.Priorities.USER : d.priority();
         jakarta.annotation.Priority p = o.getClass().getAnnotation(jakarta.annotation.Priority.class);
         return p == null ? jakarta.ws.rs.Priorities.USER : p.value();
+    }
+
+    /** The exception type of the generated descriptor when it knows it, else read by reflection. */
+    @SuppressWarnings("unchecked")
+    private static Class<? extends Throwable> exceptionType(Class<?> mapperClass) {
+        ProviderDescriptor d = ProviderDescriptors.of(mapperClass);
+        Class<?> described = d == null ? null : d.typeArguments().get(ExceptionMapper.class);
+        if (described != null && Throwable.class.isAssignableFrom(described)) {
+            return (Class<? extends Throwable>) described;
+        }
+        return resolveExceptionType(mapperClass);
     }
 
     @SuppressWarnings("unchecked")

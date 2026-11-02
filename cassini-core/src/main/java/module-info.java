@@ -72,6 +72,7 @@ module io.vidocq.cassini.core {
     // never reflects into it — no `opens`, no `exports` required (AdapterRegistry / RouteRegistry).
     uses io.vidocq.cassini.spi.gen.ResourceAdapter;
     uses io.vidocq.cassini.spi.gen.RouteProvider;
+    uses io.vidocq.cassini.spi.gen.ProviderDescriptor;
 
     // jakarta.ws.rs.ext.RuntimeDelegate provided by cassini-chappe or
     // cassini-jdk-http (transport-specific for SeBootstrap). Cassini-core

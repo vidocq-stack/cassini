@@ -19,6 +19,8 @@
  */
 package io.vidocq.cassini.internal;
 
+import io.vidocq.cassini.internal.gen.ProviderDescriptors;
+import io.vidocq.cassini.spi.gen.ProviderDescriptor;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
@@ -74,8 +76,15 @@ public final class MessageBodyRegistry {
 
         Registered(P instance, Class<?> providerInterface, String[] declaredValues) {
             this.instance = instance;
-            this.entityType = resolveProviderType(instance.getClass(), providerInterface);
+            this.entityType = entityType(instance.getClass(), providerInterface);
             this.declared = parseDeclared(declaredValues);
+        }
+
+        /** CASSINI-040: the type argument of the generated descriptor, else read by reflection. */
+        private static Class<?> entityType(Class<?> cls, Class<?> providerInterface) {
+            ProviderDescriptor d = ProviderDescriptors.of(cls);
+            Class<?> described = d == null ? null : d.typeArguments().get(providerInterface);
+            return described != null ? described : resolveProviderType(cls, providerInterface);
         }
 
         /** §4.2.1 then §4.2.4 step 1: the provider takes {@code boxed} and the requested media type. */
@@ -146,22 +155,32 @@ public final class MessageBodyRegistry {
     }
 
     public void addReader(MessageBodyReader<?> r) {
-        jakarta.ws.rs.ConstrainedTo ct = r.getClass().getAnnotation(jakarta.ws.rs.ConstrainedTo.class);
-        if (ct != null && ct.value() == jakarta.ws.rs.RuntimeType.CLIENT) return;
+        if (clientOnly(r.getClass())) return;
         readers.add(0, registeredReader(r));
     }
     public void addWriter(MessageBodyWriter<?> w) {
-        jakarta.ws.rs.ConstrainedTo ct = w.getClass().getAnnotation(jakarta.ws.rs.ConstrainedTo.class);
-        if (ct != null && ct.value() == jakarta.ws.rs.RuntimeType.CLIENT) return;
+        if (clientOnly(w.getClass())) return;
         writers.add(0, registeredWriter(w));
     }
 
+    /** {@code @ConstrainedTo(CLIENT)}, from the generated descriptor when there is one (CASSINI-040). */
+    private static boolean clientOnly(Class<?> cls) {
+        ProviderDescriptor d = ProviderDescriptors.of(cls);
+        if (d != null) return jakarta.ws.rs.RuntimeType.CLIENT.name().equals(d.constrainedTo());
+        jakarta.ws.rs.ConstrainedTo ct = cls.getAnnotation(jakarta.ws.rs.ConstrainedTo.class);
+        return ct != null && ct.value() == jakarta.ws.rs.RuntimeType.CLIENT;
+    }
+
     private static Registered<MessageBodyReader<?>> registeredReader(MessageBodyReader<?> r) {
+        ProviderDescriptor d = ProviderDescriptors.of(r.getClass());
+        if (d != null) return new Registered<>(r, MessageBodyReader.class, d.consumes());
         Consumes consumes = r.getClass().getAnnotation(Consumes.class);
         return new Registered<>(r, MessageBodyReader.class, consumes == null ? null : consumes.value());
     }
 
     private static Registered<MessageBodyWriter<?>> registeredWriter(MessageBodyWriter<?> w) {
+        ProviderDescriptor d = ProviderDescriptors.of(w.getClass());
+        if (d != null) return new Registered<>(w, MessageBodyWriter.class, d.produces());
         Produces produces = w.getClass().getAnnotation(Produces.class);
         return new Registered<>(w, MessageBodyWriter.class, produces == null ? null : produces.value());
     }

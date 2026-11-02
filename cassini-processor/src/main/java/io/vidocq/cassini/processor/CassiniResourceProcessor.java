@@ -116,6 +116,8 @@ public class CassiniResourceProcessor extends AbstractProcessor {
     private final Set<String> generatedAdapters = new LinkedHashSet<>();
     private final Set<String> generatedRoutes = new LinkedHashSet<>();
     private final Set<String> generatedApplications = new LinkedHashSet<>();
+    private final Set<String> generatedProviders = new LinkedHashSet<>();
+    private ProviderDescriptorWriter providerDescriptors;
 
     /** Writes {@code META-INF/services/<service>} listing {@code providers} (if any). */
     private void writeServiceFile(String service, Set<String> providers) {
@@ -145,6 +147,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         this.messager = env.getMessager();
         this.elements = env.getElementUtils();
         this.types = env.getTypeUtils();
+        this.providerDescriptors = new ProviderDescriptorWriter(filer, elements, CassiniResourceProcessor::escapeString);
     }
 
     @Override
@@ -159,6 +162,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             writeServiceFile("io.vidocq.cassini.spi.gen.ResourceAdapter", generatedAdapters);
             writeServiceFile("io.vidocq.cassini.spi.gen.RouteProvider", generatedRoutes);
             writeServiceFile("io.vidocq.cassini.spi.gen.ApplicationDescriptor", generatedApplications);
+            writeServiceFile("io.vidocq.cassini.spi.gen.ProviderDescriptor", generatedProviders);
             return false;
         }
 
@@ -203,6 +207,9 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                             + binaryName + ": " + e.getMessage(),
                     resourceType);
         }
+        if (hasAnnotation(resourceType, "jakarta.ws.rs.ext.Provider")) {
+            generateProviderDescriptor(resourceType, binaryName);
+        }
         // Only generate $$CassiniRoutes for @Path classes (not @Provider-only classes)
         if (hasAnnotation(resourceType, JAKARTA_PATH)) {
             try {
@@ -214,6 +221,22 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                                 + binaryName + ": " + e.getMessage(),
                         resourceType);
             }
+        }
+    }
+
+    /**
+     * Generates the {@code $$CassiniProvider} descriptor of a {@code @Provider} class (CASSINI-040).
+     * Without one, Cassini reads the provider by reflection: a failure is only a warning.
+     */
+    private void generateProviderDescriptor(TypeElement providerType, String binaryName) {
+        try {
+            String name = providerDescriptors.write(providerType);
+            if (name != null) generatedProviders.add(name);
+        } catch (Exception e) {
+            messager.printMessage(Diagnostic.Kind.WARNING,
+                    "cassini-processor: failed to generate the provider descriptor of "
+                            + binaryName + ": " + e.getMessage(),
+                    providerType);
         }
     }
 

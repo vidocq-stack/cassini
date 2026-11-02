@@ -19,6 +19,8 @@
  */
 package io.vidocq.cassini.internal;
 
+import io.vidocq.cassini.internal.gen.ProviderDescriptors;
+import io.vidocq.cassini.spi.gen.ProviderDescriptor;
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import io.vidocq.cassini.internal.transport.CassiniHttpResponse;
 import io.vidocq.cassini.internal.filter.CassiniReaderInterceptorContext;
@@ -341,9 +343,17 @@ final class ResponsePipeline {
      *  selected writer declares in its @Produces. */
     private static MediaType producedMediaType(MediaType selected, MessageBodyWriter<?> writer) {
         if (!selected.isWildcardType()) return selected;
-        jakarta.ws.rs.Produces wp = writer.getClass().getAnnotation(jakarta.ws.rs.Produces.class);
-        if (wp == null || wp.value().length == 0) return selected;
-        MediaType inferred = MediaType.valueOf(wp.value()[0]);
+        // CASSINI-040: the generated descriptor first, the annotation read by reflection otherwise.
+        ProviderDescriptor d = ProviderDescriptors.of(writer.getClass());
+        String[] produces;
+        if (d != null) {
+            produces = d.produces();
+        } else {
+            jakarta.ws.rs.Produces wp = writer.getClass().getAnnotation(jakarta.ws.rs.Produces.class);
+            produces = wp == null ? null : wp.value();
+        }
+        if (produces == null || produces.length == 0) return selected;
+        MediaType inferred = MediaType.valueOf(produces[0]);
         return inferred.isWildcardType() ? selected : inferred;
     }
 

@@ -19,6 +19,8 @@
  */
 package io.vidocq.cassini.internal.filter;
 
+import io.vidocq.cassini.internal.gen.ProviderDescriptors;
+import io.vidocq.cassini.spi.gen.ProviderDescriptor;
 
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseFilter;
@@ -136,6 +138,9 @@ public final class FilterRegistry {
     public List<ParamConverterProvider> paramConverterProviders() { return paramConverterProviders; }
 
     private static int priorityOf(Object instance) {
+        // CASSINI-040: the generated descriptor first, the annotation read by reflection otherwise.
+        ProviderDescriptor d = ProviderDescriptors.of(instance.getClass());
+        if (d != null) return d.priority() == null ? jakarta.ws.rs.Priorities.USER : d.priority();
         jakarta.annotation.Priority p = instance.getClass().getAnnotation(jakarta.annotation.Priority.class);
         return p == null ? jakarta.ws.rs.Priorities.USER : p.value();
     }

@@ -148,9 +148,18 @@ public final class AdapterRegistry {
             return Optional.of(adoptServiceAdapter(beanClass, svc));
         }
 
+        // 1b. The adapter the build published in the layer of the resource class (CASSINI-040): the scan above
+        //     goes through the context class loader, which does not see an application layer's `provides`.
+        String aptName = beanClass.getName() + RuntimeAdapterGenerator.ADAPTER_SUFFIX;
+        ResourceAdapter published = GeneratedServices.find(beanClass, ResourceAdapter.class, aptName);
+        if (published != null && resourceClassOf(published) == beanClass) {
+            PRE_GENERATED_HITS.incrementAndGet();
+            LOG.fine("Layer-registered adapter used for " + beanClass.getName());
+            return Optional.of(adoptServiceAdapter(beanClass, published));
+        }
+
         // 2. Try APT/plugin pre-generated class (Class.forName succeeds when the adapter
         //    was written to disk by the APT processor or the cassini-maven-plugin).
-        String aptName = beanClass.getName() + RuntimeAdapterGenerator.ADAPTER_SUFFIX;
         try {
             Class<?> aptClass = Class.forName(aptName, false, beanClass.getClassLoader());
             ResourceAdapter adapter = (ResourceAdapter) aptClass.getDeclaredConstructor().newInstance();

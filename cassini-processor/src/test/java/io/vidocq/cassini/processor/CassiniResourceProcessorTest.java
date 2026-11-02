@@ -22,6 +22,7 @@ package io.vidocq.cassini.processor;
 import io.vidocq.cassini.spi.gen.ApplicationDescriptor;
 import io.vidocq.cassini.spi.gen.InjectionSupport;
 import io.vidocq.cassini.spi.gen.ParamKind;
+import io.vidocq.cassini.spi.gen.ProviderDescriptor;
 import io.vidocq.cassini.spi.gen.ResourceAdapter;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -264,6 +265,95 @@ class CassiniResourceProcessorTest {
         assertThrows(ClassNotFoundException.class,
                 () -> loader.loadClass("io.vidocq.cassini.test.apt.Api$$CassiniAdapter"),
                 "an Application is no resource: no adapter");
+    }
+
+    @Test
+    void aProviderGetsADescriptorOfWhatCassiniReadsOnIt() throws Throwable {
+        // CASSINI-040: what FilterEntry, MessageBodyRegistry, ExceptionMapperRegistry and
+        // CassiniProviders read by reflection at startup, read at build time instead.
+        File binding = writeSource("io/vidocq/cassini/test/apt/Audited.java", """
+                package io.vidocq.cassini.test.apt;
+
+                @jakarta.ws.rs.NameBinding
+                @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)
+                public @interface Audited {}
+                """);
+        File filter = writeSource("io/vidocq/cassini/test/apt/AuditFilter.java", """
+                package io.vidocq.cassini.test.apt;
+
+                @jakarta.ws.rs.ext.Provider
+                @jakarta.annotation.Priority(42)
+                @jakarta.ws.rs.container.PreMatching
+                @Audited
+                public class AuditFilter implements jakarta.ws.rs.container.ContainerRequestFilter {
+                    @Override public void filter(jakarta.ws.rs.container.ContainerRequestContext c) {}
+                }
+                """);
+        File writer = writeSource("io/vidocq/cassini/test/apt/Writers.java", """
+                package io.vidocq.cassini.test.apt;
+
+                public class Writers {
+                    @jakarta.ws.rs.ext.Provider
+                    @jakarta.ws.rs.Produces({"text/a", "text/\\b"})
+                    @jakarta.ws.rs.ConstrainedTo(jakarta.ws.rs.RuntimeType.SERVER)
+                    public static class TextWriter
+                            implements jakarta.ws.rs.ext.MessageBodyWriter<String>,
+                                       jakarta.ws.rs.ext.ExceptionMapper<IllegalStateException> {
+                        @Override public boolean isWriteable(Class<?> t, java.lang.reflect.Type g,
+                                java.lang.annotation.Annotation[] a, jakarta.ws.rs.core.MediaType m) { return true; }
+                        @Override public void writeTo(String s, Class<?> t, java.lang.reflect.Type g,
+                                java.lang.annotation.Annotation[] a, jakarta.ws.rs.core.MediaType m,
+                                jakarta.ws.rs.core.MultivaluedMap<String, Object> h, java.io.OutputStream o) {}
+                        @Override public jakarta.ws.rs.core.Response toResponse(IllegalStateException e) { return null; }
+                    }
+
+                    @jakarta.ws.rs.ext.Provider
+                    @jakarta.ws.rs.Consumes
+                    public static class ListReader<T> implements jakarta.ws.rs.ext.MessageBodyReader<java.util.List<T>> {
+                        @Override public boolean isReadable(Class<?> t, java.lang.reflect.Type g,
+                                java.lang.annotation.Annotation[] a, jakarta.ws.rs.core.MediaType m) { return true; }
+                        @Override public java.util.List<T> readFrom(Class<java.util.List<T>> t, java.lang.reflect.Type g,
+                                java.lang.annotation.Annotation[] a, jakarta.ws.rs.core.MediaType m,
+                                jakarta.ws.rs.core.MultivaluedMap<String, String> h, java.io.InputStream i) { return null; }
+                    }
+                }
+                """);
+        File outDir = tempDir.resolve("out-provider").toFile();
+        outDir.mkdirs();
+
+        URLClassLoader loader = compileWithProcessor(outDir, binding, filter, writer);
+
+        ProviderDescriptor f = (ProviderDescriptor) loader.loadClass("io.vidocq.cassini.test.apt.AuditFilter$$CassiniProvider")
+                .getDeclaredConstructor().newInstance();
+        assertSame(loader.loadClass("io.vidocq.cassini.test.apt.AuditFilter"), f.providerClass());
+        assertEquals(42, f.priority());
+        assertTrue(f.preMatching());
+        assertEquals(List.of(loader.loadClass("io.vidocq.cassini.test.apt.Audited")), f.nameBindings());
+        assertNull(f.produces());
+        assertNull(f.constrainedTo());
+        assertEquals(Map.of(), f.typeArguments());
+
+        ProviderDescriptor w = (ProviderDescriptor) loader
+                .loadClass("io.vidocq.cassini.test.apt.Writers$TextWriter$$CassiniProvider")
+                .getDeclaredConstructor().newInstance();
+        assertNull(w.priority());
+        assertFalse(w.preMatching());
+        assertArrayEquals(new String[] {"text/a", "text/\b"}, w.produces(), "escaped in the generated source");
+        assertEquals("SERVER", w.constrainedTo());
+        assertEquals(Map.of(jakarta.ws.rs.ext.MessageBodyWriter.class, String.class,
+                jakarta.ws.rs.ext.ExceptionMapper.class, IllegalStateException.class), w.typeArguments());
+
+        ProviderDescriptor r = (ProviderDescriptor) loader
+                .loadClass("io.vidocq.cassini.test.apt.Writers$ListReader$$CassiniProvider")
+                .getDeclaredConstructor().newInstance();
+        assertArrayEquals(new String[] {"*/*"}, r.consumes(), "@Consumes without value is */*, as reflection reads it");
+        assertEquals(Map.of(), r.typeArguments(), "a parameterized argument is left to reflection");
+
+        assertEquals(List.of("io.vidocq.cassini.test.apt.AuditFilter$$CassiniProvider",
+                        "io.vidocq.cassini.test.apt.Writers$TextWriter$$CassiniProvider",
+                        "io.vidocq.cassini.test.apt.Writers$ListReader$$CassiniProvider"),
+                java.nio.file.Files.readAllLines(outDir.toPath()
+                        .resolve("META-INF/services/io.vidocq.cassini.spi.gen.ProviderDescriptor")));
     }
 
     @Test

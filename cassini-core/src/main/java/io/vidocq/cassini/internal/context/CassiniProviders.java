@@ -19,6 +19,8 @@
  */
 package io.vidocq.cassini.internal.context;
 
+import io.vidocq.cassini.internal.gen.ProviderDescriptors;
+import io.vidocq.cassini.spi.gen.ProviderDescriptor;
 import io.vidocq.cassini.internal.ExceptionMapperRegistry;
 import io.vidocq.cassini.internal.MessageBodyRegistry;
 import jakarta.ws.rs.core.MediaType;
@@ -81,7 +83,7 @@ public final class CassiniProviders implements Providers {
         ContextResolver<?> best = null;
         int bestScore = -1;
         for (ContextResolver<?> cr : contextResolvers) {
-            Class<?> param = resolveContextType(cr.getClass());
+            Class<?> param = contextType(cr.getClass());
             int score = param != null && contextType.isAssignableFrom(param) ? producesScore(cr, mediaType) : -1;
             if (score > bestScore) {
                 best = cr;
@@ -95,11 +97,19 @@ public final class CassiniProviders implements Providers {
      *  {@code @Produces} (implicit wildcard), else the best of 2 for a concrete type plus 1 for a
      *  concrete subtype among the matching entries; -1 when none matches. */
     private static int producesScore(ContextResolver<?> cr, MediaType mediaType) {
-        jakarta.ws.rs.Produces prod = cr.getClass().getAnnotation(jakarta.ws.rs.Produces.class);
+        // CASSINI-040: the generated descriptor first, the annotation read by reflection otherwise.
+        ProviderDescriptor d = ProviderDescriptors.of(cr.getClass());
+        String[] produces;
+        if (d != null) {
+            produces = d.produces();
+        } else {
+            jakarta.ws.rs.Produces prod = cr.getClass().getAnnotation(jakarta.ws.rs.Produces.class);
+            produces = prod == null ? null : prod.value();
+        }
         // No @Produces → implicit wildcard, score 0
-        if (prod == null || prod.value().length == 0) return 0;
+        if (produces == null || produces.length == 0) return 0;
         int score = -1;
-        for (String mt : prod.value()) {
+        for (String mt : produces) {
             MediaType declared = io.vidocq.cassini.internal.MediaTypes.parse(mt);
             if (mediaType == null
                     || io.vidocq.cassini.internal.MediaTypes.matches(declared, mediaType)) {
@@ -110,6 +120,13 @@ public final class CassiniProviders implements Providers {
             }
         }
         return score;
+    }
+
+    /** The context type of the generated descriptor when it knows it, else read by reflection. */
+    private static Class<?> contextType(Class<?> cls) {
+        ProviderDescriptor d = ProviderDescriptors.of(cls);
+        Class<?> described = d == null ? null : d.typeArguments().get(ContextResolver.class);
+        return described != null ? described : resolveContextType(cls);
     }
 
     private static Class<?> resolveContextType(Class<?> cls) {

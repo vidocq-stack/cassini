@@ -413,3 +413,25 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   reflection did implicitly), and falls back to the reflective call only when the handle cannot be resolved.
   Regression test: `PerRequestReflectionTest` (red first); cassini-core 531 tests; official REST TCK 2670 run,
   0 failures, 131 skipped.
+
+## CASSINI-040 — Every provider is read by reflection at startup, even when `cassini-processor` ran on it
+- **Date**: 2026-11-02 — **Status**: FIXED (feat/provider-descriptors)
+- **Severity**: low (startup reflection in the standard Vidocq path; no wrong answer)
+- **Symptom**: the Vidocq reflection audit shows, at startup, `getAnnotation(@Priority / @PreMatching / @Produces /
+  @Consumes / @ConstrainedTo)`, `getAnnotations()` for name bindings and `getGenericInterfaces()` for the type
+  argument of every filter, interceptor, reader, writer, exception mapper, context resolver and param converter
+  provider (`FilterEntry`, `FilterRegistry`, `MessageBodyRegistry`, `ExceptionMapperRegistry`, `CassiniProviders`), and
+  `ResponsePipeline.producedMediaType` reads the writer's `@Produces` on every response without a content type.
+  Resources had build-time adapters; providers had nothing.
+- **Fix**: `cassini-processor` generates a `<provider>$$CassiniProvider` (`io.vidocq.cassini.spi.gen.ProviderDescriptor`,
+  listed in `META-INF/services`) holding what those sites read: priority, media types, pre-matching, constraint, name
+  bindings and the plain-class type arguments of the provider interfaces the class implements itself. Each site asks
+  `ProviderDescriptors.of(class)` first (found by type through the `ServiceLoader` of the class's layer, or of its class
+  loader outside a named module, cached in a `ClassValue`) and keeps its reflective reading, unchanged, when there is
+  no descriptor (Weld, Open Liberty, a class built without the processor, a provider registered by hand). The adapter
+  lookup also asks the layer of the resource class before `Class.forName`. Tests: `ProviderDescriptorsTest` (5 red
+  before the wiring, 2 fallback tests green both ways), `CassiniResourceProcessorTest.aProviderGetsADescriptorOfWhatCassiniReadsOnIt`.
+- **Limit**: a brick on the boot module path (Humboldt, Cervantes, ...) needs `provides
+  io.vidocq.cassini.spi.gen.ProviderDescriptor with ...` in its `module-info.java` for the descriptors to be found;
+  until then it keeps the reflective reading. With it, the audit application reads 18 fewer annotations for Humboldt's
+  three filters alone.
