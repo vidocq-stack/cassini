@@ -621,7 +621,7 @@ public final class Invoker {
         Class<?> declaring = step.getDeclaringClass();
         var adapter = AdapterRegistry.lookup(declaring);
         int mid = adapter.isPresent() ? AdapterRegistry.methodId(declaring, step) : -1;
-        if (mid >= 0) {
+        if (adapter.isPresent() && mid >= 0) {
             try {
                 return adapter.get().invoke(mid, target, args);
             } catch (Throwable t) {

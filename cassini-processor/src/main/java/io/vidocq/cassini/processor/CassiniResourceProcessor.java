@@ -87,6 +87,7 @@ import java.util.Set;
 public class CassiniResourceProcessor extends AbstractProcessor {
     private static final String JAVA_LANG_STRING = "java.lang.String";
     private static final String JAKARTA_PATH = "jakarta.ws.rs.Path";
+    private static final String BEAN_PARAM = "jakarta.ws.rs.BeanParam";
     private static final String VALUE = "value";
     private static final String PACKAGE = "package ";
     private static final String PUBLIC_FINAL_CLASS = "public final class ";
@@ -259,22 +260,23 @@ public class CassiniResourceProcessor extends AbstractProcessor {
     private Set<TypeElement> reachedTypes(TypeElement type) {
         Set<TypeElement> out = new LinkedHashSet<>();
         for (TypeElement c = type; c != null && !isObjectType(c); c = superclassOf(c)) {
-            for (Element enc : c.getEnclosedElements()) {
-                if (enc.getKind() == ElementKind.FIELD && hasAnnotation(enc, "jakarta.ws.rs.BeanParam")) {
-                    addReached(enc.asType(), out);
-                }
-            }
+            addBeanParams(c.getEnclosedElements(), ElementKind.FIELD, out);
         }
         for (ExecutableElement method : collectPublicInstanceMethods(type)) {
             ExecutableElement m = annotatedMethod(method, type);
-            for (VariableElement p : m.getParameters()) {
-                if (hasAnnotation(p, "jakarta.ws.rs.BeanParam")) addReached(p.asType(), out);
-            }
+            addBeanParams(m.getParameters(), ElementKind.PARAMETER, out);
             if (resolveHttpVerb(m) == null && annotationValue(m, JAKARTA_PATH, VALUE) != null) {
                 addReached(method.getReturnType(), out);
             }
         }
         return out;
+    }
+
+    /** Adds the types of the {@code @BeanParam} elements of {@code kind} among {@code elements}. */
+    private void addBeanParams(List<? extends Element> elements, ElementKind kind, Set<TypeElement> out) {
+        for (Element e : elements) {
+            if (e.getKind() == kind && hasAnnotation(e, BEAN_PARAM)) addReached(e.asType(), out);
+        }
     }
 
     private void addReached(TypeMirror type, Set<TypeElement> out) {
@@ -1254,7 +1256,7 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                     true, false, null, null, false, null, rawTypeLiteral, elementTypeLiteral,
                     InlineStrategy.FALLBACK, InlineStrategy.FALLBACK, null, null, false);
         }
-        if (hasAnnotation(ve, "jakarta.ws.rs.BeanParam")) {
+        if (hasAnnotation(ve, BEAN_PARAM)) {
             return new FieldModel(vhName, declaringBinary, javaName, fieldTypeLiteral,
                     false, true, null, null, false, null, rawTypeLiteral, elementTypeLiteral,
                     InlineStrategy.FALLBACK, InlineStrategy.FALLBACK, null, null, false);
