@@ -131,6 +131,18 @@ public final class ParamExtractor {
 
     private ParamExtractor() {}
 
+    /** Whether a resource class is annotated {@code @Encoded}, read once per class (BUG-20261102-01). */
+    private static final ClassValue<Boolean> CLASS_ENCODED = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> type) {
+            return type.isAnnotationPresent(jakarta.ws.rs.Encoded.class);
+        }
+    };
+
+    static boolean classEncoded(Class<?> type) {
+        return type != null && CLASS_ENCODED.get(type);
+    }
+
     /**
      * Resolves the arguments of a sub-resource locator (§3.4.1) or a resource constructor (§3.1.1).
      * Parameters without a JAX-RS annotation receive their default value
@@ -151,8 +163,7 @@ public final class ParamExtractor {
         MethodParameters declared = MethodParameters.of(route.javaMethod());
         Object[] args = new Object[declared.size()];
         int bodyIndex = -1;
-        boolean methodEncoded = route.javaMethod().getAnnotation(jakarta.ws.rs.Encoded.class) != null
-                || route.beanClass().getAnnotation(jakarta.ws.rs.Encoded.class) != null;
+        boolean methodEncoded = declared.encoded() || classEncoded(route.beanClass());
         RequestValues values = null;
 
         for (int i = 0; i < args.length; i++) {

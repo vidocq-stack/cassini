@@ -105,8 +105,9 @@ final class ResponsePipeline {
         Annotation[] explicit = result instanceof io.vidocq.cassini.internal.runtime.CassiniResponse cr
                 ? cr.entityAnnotations() : null;
         if (route.javaMethod() == null) return explicit;
-        Annotation[] methodAnns = route.javaMethod().getAnnotations();
-        if (explicit == null || explicit.length == 0) return methodAnns;
+        Annotation[] methodAnns = MethodParameters.of(route.javaMethod()).annotations();
+        // a filter receives this array (getEntityAnnotations): never the shared one
+        if (explicit == null || explicit.length == 0) return methodAnns.clone();
         Annotation[] merged = java.util.Arrays.copyOf(methodAnns, methodAnns.length + explicit.length);
         System.arraycopy(explicit, 0, merged, methodAnns.length, explicit.length);
         return merged;
@@ -291,8 +292,9 @@ final class ResponsePipeline {
         if (result instanceof jakarta.ws.rs.core.Response jr) {
             return fromJaxRs(jr, route, chosen);
         }
-        return writeEntity(result, route.javaMethod().getGenericReturnType(),
-                route.javaMethod().getAnnotations(), chosen, 200, Map.of(), route);
+        MethodParameters method = MethodParameters.of(route.javaMethod());
+        return writeEntity(result, method.genericReturnType(), method.annotations().clone(), chosen, 200, Map.of(),
+                route);
     }
 
     private CassiniHttpResponse writeEntity(Object entity, Type genericType, Annotation[] anns,
@@ -370,7 +372,7 @@ final class ResponsePipeline {
      *  to MBW / WriterInterceptorContext is that of the real entity, not Response.class. */
     private static Type entityGenericType(Object entity, ResourceMethod route) {
         if (route == null) return entity.getClass();
-        Type ret = route.javaMethod().getGenericReturnType();
+        Type ret = MethodParameters.of(route.javaMethod()).genericReturnType();
         return ret == jakarta.ws.rs.core.Response.class ? entity.getClass() : ret;
     }
 
@@ -381,7 +383,7 @@ final class ResponsePipeline {
             Annotation[] entAnns = cr.entityAnnotations();
             if (entAnns != null && entAnns.length > 0) return entAnns;
         }
-        return route == null ? new Annotation[0] : route.javaMethod().getAnnotations();
+        return route == null ? new Annotation[0] : MethodParameters.of(route.javaMethod()).annotations().clone();
     }
 
     /**

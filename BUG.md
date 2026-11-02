@@ -397,3 +397,19 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   `@Provider class … has no CDI scope, defaulting to @Dependent` (vidocq BUG-20261030-26).
 - **Cause**: these are the specification's defaults, logged at INFO.
 - **Fix**: logged at DEBUG. Regression test: `CassiniScopeExtensionTest.theDefaultScopesAreSaidAtDebugLevel`.
+
+## CASSINI-039 — Every request re-reads its resource method's annotations and converts parameters by reflection
+- **Date**: 2026-11-02 — **Status**: FIXED (fix/reflection-per-request)
+- **Severity**: medium (reflection on the request path of a Vidocq application)
+- **Symptom**: the Vidocq reflection audit (tracing agent on a multi-extension application) shows, at every request,
+  `getAnnotation(@Encoded)` on the resource method and its class (`ParamExtractor.resolve`), `getAnnotations()` and
+  `getGenericReturnType()` on the method (`ResponsePipeline`), and `Method.invoke` / `Constructor.newInstance` for a
+  parameter converted through its `valueOf` / `fromString` / `String` constructor (`ParamValueConverter`).
+- **Cause**: these values never change but were read again for each request; the converter factory, resolved once
+  per type, still called the factory by reflection.
+- **Fix**: `MethodParameters` (already cached per method) holds `encoded()`, `annotations()` and
+  `genericReturnType()`; the class-level `@Encoded` is cached in a `ClassValue`; the arrays handed to writers and
+  filters are copies. The converter calls a `MethodHandle` resolved once (Cassini reads the type's module first, as
+  reflection did implicitly), and falls back to the reflective call only when the handle cannot be resolved.
+  Regression test: `PerRequestReflectionTest` (red first); cassini-core 531 tests; official REST TCK 2670 run,
+  0 failures, 131 skipped.

@@ -69,8 +69,14 @@ final class MethodParameters {
     private final Param[] params;
     private final int suspended;
     private final int sseSink;
+    private final boolean encoded;
+    private final java.lang.annotation.Annotation[] annotations;
+    private final java.lang.reflect.Type genericReturnType;
 
     private MethodParameters(Executable executable) {
+        encoded = executable.isAnnotationPresent(jakarta.ws.rs.Encoded.class);
+        annotations = executable.getAnnotations();
+        genericReturnType = executable instanceof java.lang.reflect.Method m ? m.getGenericReturnType() : null;
         Parameter[] declared = executable.getParameters();
         params = new Param[declared.length];
         int suspendedAt = -1;
@@ -108,6 +114,24 @@ final class MethodParameters {
     /** The index of the first {@code SseEventSink} parameter (§9.5), or -1. */
     int sseSink() {
         return sseSink;
+    }
+
+    /** Whether the executable is annotated {@code @Encoded} (§3.2), read once (BUG-20261102-01). */
+    boolean encoded() {
+        return encoded;
+    }
+
+    /**
+     * The annotations of the executable, read once and shared (BUG-20261102-01): {@code getAnnotations()} copies
+     * its array at every call. Callers must not modify it.
+     */
+    java.lang.annotation.Annotation[] annotations() {
+        return annotations;
+    }
+
+    /** The generic return type of a method, read once (BUG-20261102-01); {@code null} for a constructor. */
+    java.lang.reflect.Type genericReturnType() {
+        return genericReturnType;
     }
 
     /** One parameter: its type, its annotations, and what they say about its value. */

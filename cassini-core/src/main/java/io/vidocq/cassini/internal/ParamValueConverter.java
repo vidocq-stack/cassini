@@ -25,6 +25,8 @@ import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.PathSegment;
 import jakarta.ws.rs.core.Response;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -123,11 +125,13 @@ public final class ParamValueConverter {
     private static Function<String, Object> factoryOf(Class<?> type) {
         if (type.isEnum()) return enumFactoryOf(type);
         Method valueOf = staticMethod(type, "valueOf");
-        if (valueOf != null) return raw -> invokeOrPropagate(valueOf, null, raw);
+        if (valueOf != null) return methodFactory(valueOf);
         Method fromString = staticMethod(type, "fromString");
-        if (fromString != null) return raw -> invokeOrPropagate(fromString, null, raw);
+        if (fromString != null) return methodFactory(fromString);
         try {
             Constructor<?> c = type.getDeclaredConstructor(String.class);
+            MethodHandle handle = handle(c.getDeclaringClass(), lookup -> lookup.unreflectConstructor(c));
+            if (handle != null) return raw -> invokeHandle(handle, "Constructor(String)", raw);
             return raw -> newInstanceOrPropagate(c, raw);
         } catch (NoSuchMethodException _) {
             return raw -> {
@@ -142,7 +146,7 @@ public final class ParamValueConverter {
      */
     private static Function<String, Object> enumFactoryOf(Class<?> type) {
         Method fromString = staticMethod(type, "fromString");
-        if (fromString != null) return raw -> invokeOrPropagate(fromString, null, raw);
+        if (fromString != null) return methodFactory(fromString);
         @SuppressWarnings({"unchecked", "rawtypes"})
         Class<Enum> enumType = (Class<Enum>) type.asSubclass(Enum.class);
         return raw -> {
@@ -152,6 +156,42 @@ public final class ParamValueConverter {
                 return null;
             }
         };
+    }
+
+    /**
+     * Calls {@code factory} through a method handle resolved once, so that converting a value is no reflective
+     * call (BUG-20261102-01); through {@link Method#invoke} only when the handle cannot be resolved, where the
+     * call then fails the way it always did.
+     */
+    private static Function<String, Object> methodFactory(Method factory) {
+        MethodHandle handle = handle(factory.getDeclaringClass(), lookup -> lookup.unreflect(factory));
+        if (handle != null) return raw -> invokeHandle(handle, factory.getName(), raw);
+        return raw -> invokeOrPropagate(factory, null, raw);
+    }
+
+    private interface Unreflect {
+        MethodHandle apply(MethodHandles.Lookup lookup) throws IllegalAccessException;
+    }
+
+    /** The handle {@code unreflect} gives through Cassini's lookup, once Cassini reads {@code owner}'s module. */
+    private static MethodHandle handle(Class<?> owner, Unreflect unreflect) {
+        try {
+            ParamValueConverter.class.getModule().addReads(owner.getModule());
+            return unreflect.apply(MethodHandles.lookup());
+        } catch (IllegalAccessException | RuntimeException _) {
+            return null;
+        }
+    }
+
+    /** As {@link #invokeOrPropagate}: a {@link WebApplicationException} or a runtime exception passes as is (§3.2). */
+    private static Object invokeHandle(MethodHandle handle, String name, String raw) {
+        try {
+            return handle.invoke(raw);
+        } catch (RuntimeException | Error e) {
+            throw e;
+        } catch (Throwable t) {
+            throw badRequest(name + " failed: " + t.getMessage());
+        }
     }
 
     /** The static {@code name(String)} method {@code type} declares, or {@code null}. */
