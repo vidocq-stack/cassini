@@ -142,8 +142,15 @@ class PerRequestReflectionTest {
 
     /** A private valueOf(String): no handle resolves, the reflective fallback runs as before. */
     public static final class Hidden {
+        final String value;
+
+        private Hidden(String value) {
+            this.value = value;
+        }
+
+        @SuppressWarnings({"unused", "java:S1144"}) // reached only by the converter, through reflection
         private static Hidden valueOf(String raw) {
-            return new Hidden();
+            return new Hidden(raw);
         }
     }
 
