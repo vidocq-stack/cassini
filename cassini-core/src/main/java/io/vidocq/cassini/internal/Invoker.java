@@ -590,8 +590,7 @@ public final class Invoker {
         Object intermediate = root;
         for (Method locStep : route.locatorChain()) {
             Object[] lArgs = ParamExtractor.resolveConstructorArgs(locStep.getParameters(), inv.match, inv.request);
-            // Made accessible once, when the scanner built the route (§3.4.1).
-            intermediate = locStep.invoke(intermediate, lArgs);
+            intermediate = invokeLocator(locStep, intermediate, lArgs);
             if (intermediate == null) {
                 return renderWebAppException(
                         new WebApplicationException("Sub-resource locator returned null", 404),
@@ -610,6 +609,27 @@ public final class Invoker {
         }
         inv.target = intermediate;
         return null;
+    }
+
+    /**
+     * Calls a sub-resource locator through the adapter of the class that declares it, as a resource method is
+     * called; by reflection, as before, when that adapter does not number it. A failure of the locator comes
+     * out wrapped in an {@link InvocationTargetException} either way.
+     */
+    static Object invokeLocator(Method step, Object target, Object[] args)
+            throws IllegalAccessException, InvocationTargetException {
+        Class<?> declaring = step.getDeclaringClass();
+        var adapter = AdapterRegistry.lookup(declaring);
+        int mid = adapter.isPresent() ? AdapterRegistry.methodId(declaring, step) : -1;
+        if (mid >= 0) {
+            try {
+                return adapter.get().invoke(mid, target, args);
+            } catch (Throwable t) {
+                throw new InvocationTargetException(t);
+            }
+        }
+        // Made accessible once, when the scanner built the route (§3.4.1).
+        return step.invoke(target, args);
     }
 
     /** 4. Runs the resource method: through its generated adapter when there is one (P1b), by

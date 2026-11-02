@@ -435,3 +435,19 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   io.vidocq.cassini.spi.gen.ProviderDescriptor with ...` in its `module-info.java` for the descriptors to be found;
   until then it keeps the reflective reading. With it, the audit application reads 18 fewer annotations for Humboldt's
   three filters alone.
+
+## CASSINI-041 — Sub-resource locators and `@BeanParam` classes run on run-time adapters or reflection
+- **Date**: 2026-11-02 — **Status**: FIXED (feat/build-time-subresources)
+- **Severity**: low (run-time code generation and per-request reflection in the standard Vidocq path; no wrong answer)
+- **Symptom**: every request through a sub-resource locator called it with `Method.invoke` (`Invoker.walkLocators`,
+  `DynamicLocatorDispatch.walkLocators`); a `@BeanParam` method parameter was created with
+  `getDeclaredConstructor().newInstance()` and filled by `FieldInjector` on every request; the sub-resource classes
+  and `@BeanParam` classes, which carry neither `@Path` nor `@Provider`, got their adapter from the Class-File
+  generator at run time, with the `RUNTIME CODE GENERATION FALLBACK` warning.
+- **Fix**: `cassini-processor` also generates the adapter of each class of the build a processed class reaches: the
+  types of its `@BeanParam` fields and parameters and the declared return types of its locators, transitively. A
+  locator is called through the adapter of the class that declares it when that adapter numbers it, by
+  `Method.invoke` otherwise; a `@BeanParam` parameter whose class has a build-time adapter is created and filled
+  through it, by reflection otherwise. Tests: `LocatorDispatchTest` (red first for the locator and the bean
+  parameter; the bean without build-time adapter keeps the reflective path),
+  `CassiniResourceProcessorTest.theBeanParamAndSubResourceClassesAResourceReachesGetTheirAdapter`.

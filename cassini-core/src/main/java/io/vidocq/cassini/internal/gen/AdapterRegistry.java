@@ -196,6 +196,18 @@ public final class AdapterRegistry {
         }
     }
 
+    private static final ClassValue<Boolean> BUILD_TIME = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> type) {
+            return hasBuildTimeAdapter(type);
+        }
+    };
+
+    /** {@link #hasBuildTimeAdapter}, read once per class: a request may ask it. */
+    public static boolean generatedAtBuildTime(Class<?> beanClass) {
+        return BUILD_TIME.get(beanClass);
+    }
+
     /**
      * Whether the build produced the adapter of {@code beanClass}: a {@link ServiceLoader} provider, or the class the
      * annotation processor or the Maven plugin wrote next to it. Otherwise {@link #lookup} generates it at run time.

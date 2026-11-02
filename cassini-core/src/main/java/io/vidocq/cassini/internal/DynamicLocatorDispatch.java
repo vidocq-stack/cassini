@@ -120,8 +120,7 @@ final class DynamicLocatorDispatch {
         Object intermediate = start;
         for (Method locStep : route.locatorChain()) {
             Object[] lArgs = ParamExtractor.resolveConstructorArgs(locStep.getParameters(), match, request);
-            // Made accessible once, when its class was scanned (§3.4.1).
-            intermediate = locStep.invoke(intermediate, lArgs);
+            intermediate = Invoker.invokeLocator(locStep, intermediate, lArgs);
             if (intermediate == null) {
                 return host.renderWebAppException(
                         new WebApplicationException("Sub-resource locator returned null", 404),

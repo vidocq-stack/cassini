@@ -19,6 +19,8 @@
  */
 package io.vidocq.cassini.internal;
 
+import io.vidocq.cassini.internal.gen.AdapterRegistry;
+import io.vidocq.cassini.internal.gen.InjectionSupportImpl;
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import io.vidocq.cassini.internal.context.CassiniHttpHeaders;
 import io.vidocq.cassini.internal.context.CassiniRequest;
@@ -186,7 +188,11 @@ public final class ParamExtractor {
             // §8.2: @Suspended AsyncResponse — injected from the exchange attribute
             // set by the Invoker before parameter extraction.
             case SUSPENDED -> request.getAttribute(CassiniAsyncResponseImpl.ATTR_KEY);
-            case BEAN -> instantiateBeanParam(p.type(), match, request);
+            // Through the adapter the build generated for the bean class when there is one; by reflection, as
+            // before, otherwise.
+            case BEAN -> AdapterRegistry.generatedAtBuildTime(p.type())
+                    ? new InjectionSupportImpl(match, request).beanParam(p.type())
+                    : instantiateBeanParam(p.type(), match, request);
             case PATH -> pathValue(p, match, encoded);
             case QUERY -> listValue(p, (values == null ? parsedQueryFromRequest(request, encoded) : values.query(encoded))
                     .getOrDefault(p.name(), List.of()));

@@ -131,7 +131,7 @@ Rather than reflecting on every dispatch, Cassini generates two artefacts per re
 
 Adapters come from one of three generators, most-preferred first (`AdapterRegistry.lookup`):
 
-. **APT — compile time** (`cassini-processor`): emits `+$$CassiniAdapter+` / `+$$CassiniRoutes+` *source* via `Filer` for every `@Path` / `@Provider` of the current build. Plain Java, no bytecode manipulation, AOT-safe.
+. **APT — compile time** (`cassini-processor`): emits `+$$CassiniAdapter+` / `+$$CassiniRoutes+` *source* via `Filer` for every `@Path` / `@Provider` of the current build, and an adapter for each class of the build they reach through a `@BeanParam` field or parameter or a sub-resource locator's declared return type [.tag-new]#NEW#. Plain Java, no bytecode manipulation, AOT-safe.
 . **Maven plugin — build time** (`cassini-maven-plugin:generate`, bound to `process-classes`): pre-generates adapters for **external archives** (dependency JARs) by calling `RuntimeAdapterGenerator.toBytecode(cls)` and writing the `.class` files to `target/classes`. AOT-safe.
 . **Runtime generator** (`RuntimeAdapterGenerator.generate`, Class-File API / JEP 484): JVM-only fallback when neither of the above produced an adapter.
 

@@ -118,6 +118,8 @@ public class CassiniResourceProcessor extends AbstractProcessor {
     private final Set<String> generatedApplications = new LinkedHashSet<>();
     private final Set<String> generatedProviders = new LinkedHashSet<>();
     private ProviderDescriptorWriter providerDescriptors;
+    /** The top-level types compiled in this build, by qualified name: only these get the adapters of reached types. */
+    private final Set<String> compiledTypes = new HashSet<>();
 
     /** Writes {@code META-INF/services/<service>} listing {@code providers} (if any). */
     private void writeServiceFile(String service, Set<String> providers) {
@@ -166,6 +168,9 @@ public class CassiniResourceProcessor extends AbstractProcessor {
             return false;
         }
 
+        for (Element root : roundEnv.getRootElements()) {
+            if (root instanceof TypeElement t) compiledTypes.add(t.getQualifiedName().toString());
+        }
         for (TypeElement resourceType : collectResourceTypes(annotations, roundEnv)) {
             generateForResource(resourceType);
         }
@@ -210,6 +215,11 @@ public class CassiniResourceProcessor extends AbstractProcessor {
         if (hasAnnotation(resourceType, "jakarta.ws.rs.ext.Provider")) {
             generateProviderDescriptor(resourceType, binaryName);
         }
+        // The @BeanParam classes and sub-resource classes it reaches get their adapter at build time too, instead
+        // of one generated at run time on their first request.
+        for (TypeElement reached : reachedTypes(resourceType)) {
+            generateForResource(reached);
+        }
         // Only generate $$CassiniRoutes for @Path classes (not @Provider-only classes)
         if (hasAnnotation(resourceType, JAKARTA_PATH)) {
             try {
@@ -238,6 +248,59 @@ public class CassiniResourceProcessor extends AbstractProcessor {
                             + binaryName + ": " + e.getMessage(),
                     providerType);
         }
+    }
+
+    /**
+     * The classes of this build that {@code type} reaches at run time without naming them in {@code @Path} or
+     * {@code @Provider}: the types of its {@code @BeanParam} fields and parameters, and the declared return types
+     * of its sub-resource locators. An interface, {@code Object}, a class of another build or one the adapter
+     * cannot name is left out: Cassini generates its adapter at run time, as before.
+     */
+    private Set<TypeElement> reachedTypes(TypeElement type) {
+        Set<TypeElement> out = new LinkedHashSet<>();
+        for (TypeElement c = type; c != null && !isObjectType(c); c = superclassOf(c)) {
+            for (Element enc : c.getEnclosedElements()) {
+                if (enc.getKind() == ElementKind.FIELD && hasAnnotation(enc, "jakarta.ws.rs.BeanParam")) {
+                    addReached(enc.asType(), out);
+                }
+            }
+        }
+        for (ExecutableElement method : collectPublicInstanceMethods(type)) {
+            ExecutableElement m = annotatedMethod(method, type);
+            for (VariableElement p : m.getParameters()) {
+                if (hasAnnotation(p, "jakarta.ws.rs.BeanParam")) addReached(p.asType(), out);
+            }
+            if (resolveHttpVerb(m) == null && annotationValue(m, JAKARTA_PATH, VALUE) != null) {
+                addReached(method.getReturnType(), out);
+            }
+        }
+        return out;
+    }
+
+    private void addReached(TypeMirror type, Set<TypeElement> out) {
+        if (type.getKind() != TypeKind.DECLARED) return;
+        TypeElement t = (TypeElement) ((DeclaredType) type).asElement();
+        if (t.getKind() == ElementKind.CLASS && compiledTypes.contains(topLevel(t).getQualifiedName().toString())
+                && nameable(t)) {
+            out.add(t);
+        }
+    }
+
+    private static TypeElement topLevel(TypeElement type) {
+        TypeElement t = type;
+        while (t.getEnclosingElement() instanceof TypeElement outer) t = outer;
+        return t;
+    }
+
+    /** True when an adapter in the package of {@code type} can name it: no private or local class on the way. */
+    private static boolean nameable(TypeElement type) {
+        for (Element e = type; e instanceof TypeElement t; e = t.getEnclosingElement()) {
+            if (t.getModifiers().contains(Modifier.PRIVATE)
+                    || t.getNestingKind() == NestingKind.LOCAL || t.getNestingKind() == NestingKind.ANONYMOUS) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // -------------------------------------------------------------------------

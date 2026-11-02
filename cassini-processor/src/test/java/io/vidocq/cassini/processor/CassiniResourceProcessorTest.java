@@ -357,6 +357,65 @@ class CassiniResourceProcessorTest {
     }
 
     @Test
+    void theBeanParamAndSubResourceClassesAResourceReachesGetTheirAdapter() throws Throwable {
+        // Without it, each of them got an adapter generated at run time on its first request.
+        File params = writeSource("io/vidocq/cassini/test/apt/reach/Params.java", """
+                package io.vidocq.cassini.test.apt.reach;
+
+                public class Params {
+                    @jakarta.ws.rs.QueryParam("q") public String q;
+                }
+                """);
+        File form = writeSource("io/vidocq/cassini/test/apt/reach/Form.java", """
+                package io.vidocq.cassini.test.apt.reach;
+
+                public class Form {
+                    @jakarta.ws.rs.HeaderParam("h") public String h;
+                }
+                """);
+        File sub = writeSource("io/vidocq/cassini/test/apt/reach/Sub.java", """
+                package io.vidocq.cassini.test.apt.reach;
+
+                public class Sub {
+                    @jakarta.ws.rs.BeanParam public Form form;
+                    @jakarta.ws.rs.GET public String get() { return "sub"; }
+                    @jakarta.ws.rs.Path("deeper") public Deeper deeper() { return new Deeper(); }
+
+                    public static class Deeper {
+                        @jakarta.ws.rs.GET public String get() { return "deeper"; }
+                    }
+                }
+                """);
+        File root = writeSource("io/vidocq/cassini/test/apt/reach/Root.java", """
+                package io.vidocq.cassini.test.apt.reach;
+
+                @jakarta.ws.rs.Path("/reach")
+                public class Root {
+                    @jakarta.ws.rs.BeanParam public Params params;
+                    @jakarta.ws.rs.Path("sub") public Sub sub() { return new Sub(); }
+                    @jakarta.ws.rs.Path("any") public Object any() { return new Sub(); }
+                    @jakarta.ws.rs.GET public String get(@jakarta.ws.rs.BeanParam Form form) { return "root"; }
+                }
+                """);
+        File outDir = tempDir.resolve("out-reach").toFile();
+        outDir.mkdirs();
+
+        URLClassLoader loader = compileWithProcessor(outDir, params, form, sub, root);
+
+        for (String reached : List.of("Params", "Form", "Sub", "Sub$Deeper")) {
+            assertNotNull(loader.loadClass("io.vidocq.cassini.test.apt.reach." + reached + "$$CassiniAdapter"), reached);
+        }
+        List<String> services = java.nio.file.Files.readAllLines(
+                outDir.toPath().resolve("META-INF/services/io.vidocq.cassini.spi.gen.ResourceAdapter"));
+        assertTrue(services.containsAll(List.of("io.vidocq.cassini.test.apt.reach.Root$$CassiniAdapter",
+                "io.vidocq.cassini.test.apt.reach.Params$$CassiniAdapter",
+                "io.vidocq.cassini.test.apt.reach.Form$$CassiniAdapter",
+                "io.vidocq.cassini.test.apt.reach.Sub$$CassiniAdapter",
+                "io.vidocq.cassini.test.apt.reach.Sub$Deeper$$CassiniAdapter")), services.toString());
+        assertEquals(5, services.size(), "no adapter for Object, which a dynamic locator declares");
+    }
+
+    @Test
     void anAbstractResourceCompilesAndGetsNoNewInstance() throws Throwable {
         // The adapter used to emit `new Abstract()`: the application did not compile.
         File src = writeSource("io/vidocq/cassini/test/apt/Abstract.java", """
