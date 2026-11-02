@@ -341,7 +341,7 @@ final class ResponsePipeline {
 
     /** §4.2.4: when the method did not specify a Content-Type, the first concrete media type the
      *  selected writer declares in its @Produces. */
-    private static MediaType producedMediaType(MediaType selected, MessageBodyWriter<?> writer) {
+    static MediaType producedMediaType(MediaType selected, MessageBodyWriter<?> writer) {
         if (!selected.isWildcardType()) return selected;
         // CASSINI-040: the generated descriptor first, the annotation read by reflection otherwise.
         ProviderDescriptor d = ProviderDescriptors.of(writer.getClass());

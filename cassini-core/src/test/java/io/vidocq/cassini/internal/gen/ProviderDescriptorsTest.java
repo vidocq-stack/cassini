@@ -21,6 +21,7 @@ package io.vidocq.cassini.internal.gen;
 
 import io.vidocq.cassini.internal.ExceptionMapperRegistry;
 import io.vidocq.cassini.internal.MessageBodyRegistry;
+import io.vidocq.cassini.internal.ResponsePipelineAccess;
 import io.vidocq.cassini.internal.context.CassiniProviders;
 import io.vidocq.cassini.internal.filter.FilterEntry;
 import io.vidocq.cassini.internal.filter.FilterRegistry;
@@ -52,6 +53,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -68,6 +70,7 @@ class ProviderDescriptorsTest {
     public static class Described implements ContainerRequestFilter {
         @Override
         public void filter(ContainerRequestContext requestContext) {
+            // only its registration is read
         }
     }
 
@@ -80,6 +83,7 @@ class ProviderDescriptorsTest {
     public static class NotDescribed implements ContainerRequestFilter {
         @Override
         public void filter(ContainerRequestContext requestContext) {
+            // only its registration is read
         }
     }
 
@@ -94,6 +98,7 @@ class ProviderDescriptorsTest {
         @Override
         public void writeTo(String s, Class<?> type, Type genericType, Annotation[] annotations, MediaType mediaType,
                             MultivaluedMap<String, Object> httpHeaders, OutputStream entityStream) {
+            // only its selection is read
         }
     }
 
@@ -112,6 +117,15 @@ class ProviderDescriptorsTest {
         @Override
         public Long getContext(Class<?> type) {
             return 1L;
+        }
+    }
+
+    @Provider
+    @Priority(1)
+    public static class OtherMapper implements ExceptionMapper<IllegalArgumentException> {
+        @Override
+        public Response toResponse(IllegalArgumentException exception) {
+            return Response.ok().build();
         }
     }
 
@@ -222,7 +236,7 @@ class ProviderDescriptorsTest {
         CassiniProviders providers = new CassiniProviders(new MessageBodyRegistry(), mappers,
                 java.util.List.of(new Resolver()));
 
-        assertTrue(providers.getContextResolver(Integer.class, MediaType.valueOf("text/b")) != null);
+        assertNotNull(providers.getContextResolver(Integer.class, MediaType.valueOf("text/b")));
     }
 
     @Test
@@ -233,5 +247,35 @@ class ProviderDescriptorsTest {
         registry.addParamConverterProvider(new LowConverters());
 
         assertTrue(registry.paramConverterProviders().getFirst() instanceof LowConverters);
+    }
+
+    @Test
+    void aDynamicallyBoundFilterTakesItsPriorityFromItsDescriptor() throws NoSuchMethodException {
+        ProviderDescriptors.register(descriptor(Described.class, 42, null, true, Map.of()));
+
+        FilterEntry<?> entry = FilterEntry.dynamicFor(new DescribedProxy(), Object.class.getMethod("toString"));
+
+        assertEquals(42, entry.priority());
+        assertSame(Described.class, entry.implClass());
+    }
+
+    @Test
+    void anExceptionMapperIsChosenOnItsDescriptorsPriority() {
+        ProviderDescriptors.register(descriptor(Mapper.class, 0, null, false,
+                Map.of(ExceptionMapper.class, IllegalArgumentException.class)));
+        ExceptionMapperRegistry registry = new ExceptionMapperRegistry();
+        registry.register(new OtherMapper());
+        registry.register(new Mapper());
+
+        Object mapper = registry.findMapper(IllegalArgumentException.class);
+
+        assertTrue(mapper instanceof Mapper, "the descriptor's priority 0 wins over @Priority(1)");
+    }
+
+    @Test
+    void theMediaTypeAWriterProducesIsReadFromItsDescriptor() {
+        ProviderDescriptors.register(descriptor(AWriter.class, null, new String[] {"text/b"}, false, Map.of()));
+
+        assertEquals(MediaType.valueOf("text/b"), ResponsePipelineAccess.producedMediaType(MediaType.WILDCARD_TYPE, new AWriter()));
     }
 }

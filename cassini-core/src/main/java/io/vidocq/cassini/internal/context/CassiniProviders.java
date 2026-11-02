@@ -97,15 +97,7 @@ public final class CassiniProviders implements Providers {
      *  {@code @Produces} (implicit wildcard), else the best of 2 for a concrete type plus 1 for a
      *  concrete subtype among the matching entries; -1 when none matches. */
     private static int producesScore(ContextResolver<?> cr, MediaType mediaType) {
-        // CASSINI-040: the generated descriptor first, the annotation read by reflection otherwise.
-        ProviderDescriptor d = ProviderDescriptors.of(cr.getClass());
-        String[] produces;
-        if (d != null) {
-            produces = d.produces();
-        } else {
-            jakarta.ws.rs.Produces prod = cr.getClass().getAnnotation(jakarta.ws.rs.Produces.class);
-            produces = prod == null ? null : prod.value();
-        }
+        String[] produces = declaredProduces(cr.getClass());
         // No @Produces → implicit wildcard, score 0
         if (produces == null || produces.length == 0) return 0;
         int score = -1;
@@ -127,6 +119,15 @@ public final class CassiniProviders implements Providers {
         ProviderDescriptor d = ProviderDescriptors.of(cls);
         Class<?> described = d == null ? null : d.typeArguments().get(ContextResolver.class);
         return described != null ? described : resolveContextType(cls);
+    }
+
+    /** The {@code @Produces} values of {@code cls}: its generated descriptor first (CASSINI-040), the annotation
+     *  read by reflection otherwise; {@code null} when it declares none. */
+    private static String[] declaredProduces(Class<?> cls) {
+        ProviderDescriptor d = ProviderDescriptors.of(cls);
+        if (d != null) return d.produces();
+        jakarta.ws.rs.Produces prod = cls.getAnnotation(jakarta.ws.rs.Produces.class);
+        return prod == null ? null : prod.value();
     }
 
     private static Class<?> resolveContextType(Class<?> cls) {
