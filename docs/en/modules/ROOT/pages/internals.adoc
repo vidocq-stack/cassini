@@ -4,6 +4,63 @@
 [.lead]
 This page describes how an HTTP request flows through Cassini, the codegen-side implementation choices, and the integrations with xref:champollion::index.adoc[Champollion] (JSON) and xref:vauban::index.adoc[Vauban] (CDI). Source of truth: `cassini-core/src/main/java/io/vidocq/cassini/internal`.
 
+[#generated-code]
+== Generated code and reflective fallback [.tag-new]#NEW#
+
+Every brick of the suite documents, in a section of this name, what it generates, who generates it and when, what
+looks it up at run time, and what runs instead when it is missing. Cassini generates the dispatch of each resource
+and the description of each provider at build time; the reflective path stays as the fallback, unchanged. The details
+are in <<_static_resource_codegen>>.
+
+[cols="2,2,3,3"]
+|===
+| Generated | By, and when | Used at run time by | Without it
+
+| `<Resource>$$CassiniAdapter`, a `ResourceAdapter`: direct method calls, `@Context` and `@*Param` field injection,
+  parameter coercion
+| `cassini-processor` in javac, for every `@Path` and `@Provider` class and the classes they reach (`@BeanParam`,
+  sub-resource locators); `cassini-maven-plugin:generate` (`process-classes`) for a dependency jar
+| `AdapterRegistry`, when a stack is built or a class is first used: the `ServiceLoader` providers (the module's
+  `provides`), then the class's module layer, then `Class.forName(<class>$$CassiniAdapter)`
+| Generated at run time with the Class-File API and announced; if that fails too, `Method.invoke` and the
+  reflective `FieldInjector`.
+
+| `<Resource>$$CassiniRoutes`, a `RouteProvider`: the route table as literals
+| `cassini-processor`
+| `RouteRegistry` at startup, the same way: `ServiceLoader`, then by name
+| `ResourceScanner` reads the class's annotations once at startup. A class with sub-resource locators is still
+  scanned that way.
+
+| `<Provider>$$CassiniProvider`, a `ProviderDescriptor`: priority, media types, name bindings, the type it handles
+| `cassini-processor`
+| The provider registries (message bodies, exception mappers, filters, context resolvers) when they register a
+  provider, through the `ServiceLoader` of its layer or class loader
+| The provider's annotations and generic types are read by reflection.
+
+| `<Application>$$CassiniApplication`, an `ApplicationDescriptor`
+| `cassini-processor`
+| A host that needs the `@ApplicationPath`, through `ServiceLoader`
+| The host reads the annotation.
+|===
+
+`cassini-processor` also runs in the bricks that ship JAX-RS classes: Grimm, Humboldt, Knock and Cervantes generate
+these classes for their own resources and providers at their build.
+
+=== When the fallback runs
+
+* A resource or provider compiled without `cassini-processor` and not processed by the plugin: a jar of another
+  build, an instance registered by hand, another container (the generated classes mean nothing to it).
+* A resource class with sub-resource locators: its routes come from `ResourceScanner`.
+* A closed application module without `opens`, for the run-time generator: it cannot get the private lookup it needs,
+  and the request goes through `FieldInjector`.
+
+=== Which path ran
+
+* A framed `WARNING`, _CASSINI — RUNTIME CODE GENERATION FALLBACK_ (logger
+  `io.vidocq.cassini.internal.gen.RuntimeGeneration`), lists the resource classes no build-time adapter serves when
+  a stack is built; a class generated later gets its own warning, once per JVM.
+* `Runtime adapter generation failed for <class> — using reflective fallback` at `WARNING` when even that failed.
+
 == Overview
 
 [plantuml]
@@ -120,7 +177,7 @@ sequenceDiagram
 
 == Static resource codegen
 
-Rather than reflecting on every dispatch, Cassini generates two artefacts per resource class, both resolved by name (`Class.forName`) at startup — never a classpath annotation scan:
+Rather than reflecting on every dispatch, Cassini generates its artefacts at build time, found at startup through `ServiceLoader` and, failing that, by name (`Class.forName`) — never a classpath annotation scan:
 
 * `<ResourceClass>$$CassiniAdapter` — a `ResourceAdapter` (SPI `cassini-api`, package `io.vidocq.cassini.spi.gen`) that performs **direct method invocation** (no `Method.invoke`), **field injection** of `@Context` / `@*Param`, and **inline `@*Param` coercion**: String/CharSequence, primitives + wrappers, enums (`fromString` or `Enum.valueOf`), public `valueOf`/`fromString`/`(String)`-ctor types, and `List`/`Set`/`SortedSet`/`Collection` of those.
 * `<ResourceClass>$$CassiniRoutes` — a `RouteProvider` exposing the route table as string/class literals (`RouteDescriptor`). `RouteRegistry` converts each to a `ResourceMethod` via a targeted `getDeclaredMethod(...)` plus `UriTemplate.compile(...)` — no annotation scan. The descriptor names the parameter types and the class whose declaration carries the method's annotations as class literals [.tag-new]#NEW#, so no type is resolved by name either; a descriptor from an older processor is resolved by name and scanned. Classes carrying sub-resource locators set `hasLocators()` and fall back to `ResourceScanner` for the whole class.
@@ -155,7 +212,7 @@ Benefits: cold start under ~50 ms, **AOT**-compatible (GraalVM `native-image`, L
 
 `CassiniJsonbReaderWriter` (in `cassini-core/internal`) implements `MessageBodyReader<Object>` + `MessageBodyWriter<Object>` for `application/json` and delegates to the JSON-B implementation that `JsonbBuilder.create()` finds, on first use: xref:champollion::index.adoc[Champollion] in Vidocq. `cassini-core` depends on the JSON-P and JSON-B APIs only.
 
-The binding itself is static: `champollion-codegen-apt` emits a `<Type>_Binding` at compile time per serializable type. No runtime reflection, no on-the-fly `setAccessible`.
+The binding itself is static: `champollion-codegen-apt` emits a `<Type>$$Binding` at compile time for each `@JsonbStatic` record and for the types the application's resources exchange (xref:champollion::reference.adoc#rest-bindings[REST bindings]). No runtime reflection, no on-the-fly `setAccessible`. A type without a binding keeps the reflective JSON-B mapping.
 
 == Vauban integration (CDI)
 
