@@ -45,6 +45,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 /**
@@ -121,6 +122,15 @@ class RequestCompletionTest {
             request.setProperty(RequestCompletion.PROPERTY, (Runnable) () -> {
                 throw new Fatal("the action");
             });
+        }
+    }
+
+    @Provider
+    @PreMatching
+    public static class RegistersNotAnAction implements ContainerRequestFilter {
+        @Override
+        public void filter(ContainerRequestContext request) {
+            request.setProperty(RequestCompletion.PROPERTY, "not a Runnable");
         }
     }
 
@@ -266,5 +276,34 @@ class RequestCompletionTest {
     void anErrorOfTheActionIsNotSwallowedWhenTheRequestSucceeded() {
         Fatal failure = assertThrows(Fatal.class, () -> get("/done/write", RegistersAnActionThatThrowsAnError.class));
         assertEquals("the action", failure.getMessage());
+    }
+
+    @Test
+    void aPropertyThatIsNotARunnableIsReported() {
+        java.util.logging.Logger logger = java.util.logging.Logger.getLogger(RequestCompletion.class.getName());
+        List<java.util.logging.LogRecord> records = new CopyOnWriteArrayList<>();
+        java.util.logging.Handler handler = new java.util.logging.Handler() {
+            @Override
+            public void publish(java.util.logging.LogRecord record) {
+                records.add(record);
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        logger.addHandler(handler);
+        try {
+            InMemoryExchange exchange = get("/done/write", RegistersNotAnAction.class);
+            assertEquals(200, exchange.status(), exchange::responseText);
+        } finally {
+            logger.removeHandler(handler);
+        }
+        assertTrue(records.stream().anyMatch(r -> r.getLevel() == java.util.logging.Level.WARNING
+                && r.getMessage().contains("not a Runnable")), () -> "no warning among " + records);
     }
 }

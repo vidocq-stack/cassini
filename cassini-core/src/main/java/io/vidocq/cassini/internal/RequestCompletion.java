@@ -46,7 +46,13 @@ final class RequestCompletion {
      * logged and rethrown.</p>
      */
     static void run(CassiniHttpExchange exchange, Error pending) {
-        if (RequestProperties.take(exchange, PROPERTY) instanceof Runnable action) {
+        Object registered = RequestProperties.take(exchange, PROPERTY);
+        if (registered != null && !(registered instanceof Runnable)) {
+            // A scope that never ends would be a silent leak: say that the contract was not honoured.
+            LOG.log(System.Logger.Level.WARNING, "The {0} request property holds a {1}, not a Runnable: ignored",
+                    PROPERTY, registered.getClass().getName());
+        }
+        if (registered instanceof Runnable action) {
             try {
                 action.run();
             } catch (RuntimeException e) {
