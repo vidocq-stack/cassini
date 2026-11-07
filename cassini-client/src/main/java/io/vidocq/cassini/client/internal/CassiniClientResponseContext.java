@@ -148,14 +148,10 @@ final class CassiniClientResponseContext implements ClientResponseContext {
     }
 
     @Override public Set<Link> getLinks() { return HeaderValues.links(objects()); }
-    @Override public boolean hasLink(String relation) { return getLink(relation) != null; }
-    @Override public Link getLink(String relation) { return HeaderValues.link(getLinks(), relation); }
+    @Override public boolean hasLink(String relation) { return ClientHeaders.link(objects(), relation) != null; }
+    @Override public Link getLink(String relation) { return ClientHeaders.link(objects(), relation); }
 
-    @Override
-    public Link.Builder getLinkBuilder(String relation) {
-        Link link = getLink(relation);
-        return link == null ? null : Link.fromLink(link);
-    }
+    @Override public Link.Builder getLinkBuilder(String relation) { return ClientHeaders.linkBuilder(objects(), relation); }
 
     /** The headers as the filters left them, in the form the shared header readers take. */
     private MultivaluedMap<String, Object> objects() { return ClientHeaders.asObjects(headers); }

@@ -20,7 +20,9 @@
 package io.vidocq.cassini.client.internal;
 
 import jakarta.ws.rs.core.AbstractMultivaluedMap;
+import io.vidocq.cassini.internal.runtime.HeaderValues;
 import jakarta.ws.rs.core.Cookie;
+import jakarta.ws.rs.core.Link;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.NewCookie;
 import jakarta.ws.rs.ext.RuntimeDelegate;
@@ -124,5 +126,16 @@ final class ClientHeaders {
             String cookieValue = eq < 0 ? "" : pair.substring(eq + 1).trim();
             into.put(name, new Cookie.Builder(name).value(cookieValue).build());
         }
+    }
+
+    /** The link of relation {@code relation} among the {@code Link} headers; {@code null} when there is none. */
+    static Link link(MultivaluedMap<String, Object> headers, String relation) {
+        return HeaderValues.link(HeaderValues.links(headers), relation);
+    }
+
+    /** A builder pre-filled from that link; {@code null} when there is none. */
+    static Link.Builder linkBuilder(MultivaluedMap<String, Object> headers, String relation) {
+        Link link = link(headers, relation);
+        return link == null ? null : Link.fromLink(link);
     }
 }

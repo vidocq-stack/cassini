@@ -167,14 +167,10 @@ final class CassiniClientResponse extends Response {
     }
 
     @Override public Set<Link> getLinks() { return HeaderValues.links(headers); }
-    @Override public boolean hasLink(String relation) { return getLink(relation) != null; }
-    @Override public Link getLink(String relation) { return HeaderValues.link(getLinks(), relation); }
+    @Override public boolean hasLink(String relation) { return ClientHeaders.link(headers, relation) != null; }
+    @Override public Link getLink(String relation) { return ClientHeaders.link(headers, relation); }
 
-    @Override
-    public Link.Builder getLinkBuilder(String relation) {
-        Link link = getLink(relation);
-        return link == null ? null : Link.fromLink(link);
-    }
+    @Override public Link.Builder getLinkBuilder(String relation) { return ClientHeaders.linkBuilder(headers, relation); }
 
     @Override public MultivaluedMap<String, Object> getMetadata() { return headers; }
     @Override public MultivaluedMap<String, String> getStringHeaders() { return stringHeaders; }
