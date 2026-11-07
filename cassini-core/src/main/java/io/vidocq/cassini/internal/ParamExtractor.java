@@ -42,7 +42,6 @@ import jakarta.ws.rs.core.Configuration;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.core.UriInfo;
-import jakarta.ws.rs.ext.ContextResolver;
 import jakarta.ws.rs.ext.ParamConverter;
 import jakarta.ws.rs.ext.ParamConverterProvider;
 import jakarta.ws.rs.ext.Providers;
@@ -283,7 +282,6 @@ public final class ParamExtractor {
             Map.entry(ContainerRequestContext.class, ParamExtractor::requestContext),
             Map.entry(ResourceInfo.class, (match, _) -> resourceInfo(match.method())),
             Map.entry(Application.class, ParamExtractor::application),
-            Map.entry(ContextResolver.class, (_, _) -> currentProviders()),
             Map.entry(ResourceContext.class, ParamExtractor::resourceContext),
             Map.entry(Sse.class, (_, _) -> new io.vidocq.cassini.internal.sse.CassiniSse()),
             Map.entry(SseEventSink.class, (_, _) -> currentSinkOrNew()),
