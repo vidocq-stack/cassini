@@ -184,7 +184,8 @@ class ClientResponseTest {
         assertNull(response.getLink(NEXT));
         assertNull(response.getLinkBuilder(NEXT));
         assertNull(response.getEntityTag());
-        assertNull(response.getDate());
+        // the test server stamps every reply with a Date header, which the response now reads
+        assertNotNull(response.getDate());
         assertNull(response.getLastModified());
     }
 }

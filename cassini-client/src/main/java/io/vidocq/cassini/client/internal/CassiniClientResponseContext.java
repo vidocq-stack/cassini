@@ -19,8 +19,10 @@
  */
 package io.vidocq.cassini.client.internal;
 
+import io.vidocq.cassini.internal.runtime.HeaderValues;
 import jakarta.ws.rs.client.ClientResponseContext;
 import jakarta.ws.rs.core.EntityTag;
+import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Link;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedMap;
@@ -124,9 +126,9 @@ final class CassiniClientResponseContext implements ClientResponseContext {
         return false;
     }
 
-    @Override public Set<String> getAllowedMethods() { return Set.of(); }
-    @Override public Date getDate() { return null; }
-    @Override public Locale getLanguage() { return null; }
+    @Override public Set<String> getAllowedMethods() { return ClientHeaders.allowedMethods(objects()); }
+    @Override public Date getDate() { return HeaderValues.httpDate(headers.getFirst(HttpHeaders.DATE)); }
+    @Override public Locale getLanguage() { return HeaderValues.language(objects()); }
     @Override public int getLength() { return body().length; }
 
     @Override
@@ -135,9 +137,9 @@ final class CassiniClientResponseContext implements ClientResponseContext {
         return ct == null ? null : MediaType.valueOf(ct);
     }
 
-    @Override public Map<String, NewCookie> getCookies() { return Map.of(); }
-    @Override public EntityTag getEntityTag() { return null; }
-    @Override public Date getLastModified() { return null; }
+    @Override public Map<String, NewCookie> getCookies() { return ClientHeaders.responseCookies(objects()); }
+    @Override public EntityTag getEntityTag() { return HeaderValues.entityTag(objects()); }
+    @Override public Date getLastModified() { return HeaderValues.httpDate(headers.getFirst(HttpHeaders.LAST_MODIFIED)); }
 
     @Override
     public URI getLocation() {
@@ -145,10 +147,18 @@ final class CassiniClientResponseContext implements ClientResponseContext {
         return l == null ? null : URI.create(l);
     }
 
-    @Override public Set<Link> getLinks() { return Set.of(); }
-    @Override public boolean hasLink(String relation) { return false; }
-    @Override public Link getLink(String relation) { return null; }
-    @Override public Link.Builder getLinkBuilder(String relation) { return null; }
+    @Override public Set<Link> getLinks() { return HeaderValues.links(objects()); }
+    @Override public boolean hasLink(String relation) { return getLink(relation) != null; }
+    @Override public Link getLink(String relation) { return HeaderValues.link(getLinks(), relation); }
+
+    @Override
+    public Link.Builder getLinkBuilder(String relation) {
+        Link link = getLink(relation);
+        return link == null ? null : Link.fromLink(link);
+    }
+
+    /** The headers as the filters left them, in the form the shared header readers take. */
+    private MultivaluedMap<String, Object> objects() { return ClientHeaders.asObjects(headers); }
 
     @Override public boolean hasEntity() {
         if (entityStreamOverride != null) return true;

@@ -22,9 +22,14 @@ package io.vidocq.cassini.client.internal;
 import jakarta.ws.rs.core.AbstractMultivaluedMap;
 import jakarta.ws.rs.core.Cookie;
 import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.NewCookie;
+import jakarta.ws.rs.ext.RuntimeDelegate;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -43,6 +48,52 @@ final class ClientHeaders {
      */
     static <V> MultivaluedMap<String, V> map() {
         return new AbstractMultivaluedMap<>(new TreeMap<>(String.CASE_INSENSITIVE_ORDER)) { };
+    }
+
+    /** The same headers with Object values, the form {@code HeaderValues} reads. */
+    static MultivaluedMap<String, Object> asObjects(MultivaluedMap<String, String> headers) {
+        MultivaluedMap<String, Object> out = map();
+        headers.forEach((name, values) -> values.forEach(v -> out.add(name, v)));
+        return out;
+    }
+
+    /** The methods of the {@code Allow} header(s), upper-cased; empty when absent. */
+    static Set<String> allowedMethods(MultivaluedMap<String, Object> headers) {
+        Set<String> out = new LinkedHashSet<>();
+        var values = headers.get("Allow");
+        if (values == null) return out;
+        for (Object value : values) {
+            if (value == null) continue;
+            for (String token : value.toString().split(",")) {
+                String method = token.trim();
+                if (!method.isEmpty()) out.add(method.toUpperCase(Locale.ROOT));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The cookies a response sets, one per {@code Set-Cookie} header value (a {@link NewCookie}
+     * as is, a string parsed); a malformed value is skipped, the last cookie of a name wins.
+     */
+    static Map<String, NewCookie> responseCookies(MultivaluedMap<String, Object> headers) {
+        Map<String, NewCookie> out = new LinkedHashMap<>();
+        var values = headers.get("Set-Cookie");
+        if (values == null) return out;
+        for (Object value : values) {
+            NewCookie cookie = value instanceof NewCookie nc ? nc : parseNewCookie(value);
+            if (cookie != null) out.put(cookie.getName(), cookie);
+        }
+        return out;
+    }
+
+    private static NewCookie parseNewCookie(Object value) {
+        if (value == null) return null;
+        try {
+            return RuntimeDelegate.getInstance().createHeaderDelegate(NewCookie.class).fromString(value.toString());
+        } catch (RuntimeException _) {
+            return null;
+        }
     }
 
     /**

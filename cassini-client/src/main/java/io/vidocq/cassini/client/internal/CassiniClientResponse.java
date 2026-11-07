@@ -19,6 +19,7 @@
  */
 package io.vidocq.cassini.client.internal;
 
+import io.vidocq.cassini.internal.runtime.HeaderValues;
 import jakarta.ws.rs.ProcessingException;
 import jakarta.ws.rs.core.EntityTag;
 import jakarta.ws.rs.core.GenericType;
@@ -153,11 +154,11 @@ final class CassiniClientResponse extends Response {
     }
 
     @Override public int getLength() { return body.length; }
-    @Override public Set<String> getAllowedMethods() { return Set.of(); }
-    @Override public Map<String, NewCookie> getCookies() { return Map.of(); }
-    @Override public EntityTag getEntityTag() { return null; }
-    @Override public Date getDate() { return null; }
-    @Override public Date getLastModified() { return null; }
+    @Override public Set<String> getAllowedMethods() { return ClientHeaders.allowedMethods(headers); }
+    @Override public Map<String, NewCookie> getCookies() { return ClientHeaders.responseCookies(headers); }
+    @Override public EntityTag getEntityTag() { return HeaderValues.entityTag(headers); }
+    @Override public Date getDate() { return HeaderValues.httpDate(headers.getFirst(HttpHeaders.DATE)); }
+    @Override public Date getLastModified() { return HeaderValues.httpDate(headers.getFirst(HttpHeaders.LAST_MODIFIED)); }
 
     @Override
     public URI getLocation() {
@@ -165,10 +166,15 @@ final class CassiniClientResponse extends Response {
         return l == null ? null : URI.create(l);
     }
 
-    @Override public Set<Link> getLinks() { return Set.of(); }
-    @Override public boolean hasLink(String relation) { return false; }
-    @Override public Link getLink(String relation) { return null; }
-    @Override public Link.Builder getLinkBuilder(String relation) { return null; }
+    @Override public Set<Link> getLinks() { return HeaderValues.links(headers); }
+    @Override public boolean hasLink(String relation) { return getLink(relation) != null; }
+    @Override public Link getLink(String relation) { return HeaderValues.link(getLinks(), relation); }
+
+    @Override
+    public Link.Builder getLinkBuilder(String relation) {
+        Link link = getLink(relation);
+        return link == null ? null : Link.fromLink(link);
+    }
 
     @Override public MultivaluedMap<String, Object> getMetadata() { return headers; }
     @Override public MultivaluedMap<String, String> getStringHeaders() { return stringHeaders; }

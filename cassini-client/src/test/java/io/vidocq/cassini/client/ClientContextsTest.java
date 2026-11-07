@@ -199,7 +199,8 @@ class ClientContextsTest {
                 check(p, "link", null, ctx.getLink(NEXT));
                 check(p, "link builder", null, ctx.getLinkBuilder(NEXT));
                 check(p, "etag", null, ctx.getEntityTag());
-                check(p, "date", null, ctx.getDate());
+                // the test server stamps every reply with a Date header: the context now reads it
+                check(p, "date", true, ctx.getDate() != null);
                 check(p, "last modified", null, ctx.getLastModified());
                 check(p, "language", null, ctx.getLanguage());
                 problems.set(p.toString());
