@@ -116,21 +116,13 @@ final class CassiniClient implements Client {
     }
 
     @Override public Client register(Class<?> componentClass) { configuration.registerComponent(componentClass, null); return this; }
-    @Override public Client register(Class<?> componentClass, int priority) { configuration.registerComponent(componentClass, priorityMap(componentClass.getInterfaces(), priority)); return this; }
-    @Override public Client register(Class<?> componentClass, Class<?>... contracts) { configuration.registerComponent(componentClass, defaultPriorityMap(contracts)); return this; }
+    @Override public Client register(Class<?> componentClass, int priority) { configuration.registerComponent(componentClass, CassiniClientConfiguration.contractsOf(componentClass, priority)); return this; }
+    @Override public Client register(Class<?> componentClass, Class<?>... contracts) { configuration.registerComponent(componentClass, CassiniClientConfiguration.contractsOf(contracts, jakarta.ws.rs.Priorities.USER)); return this; }
     @Override public Client register(Class<?> componentClass, Map<Class<?>, Integer> contracts) { configuration.registerComponent(componentClass, contracts); return this; }
     @Override public Client register(Object component) { configuration.registerComponent(component, null); return this; }
-    @Override public Client register(Object component, int priority) { configuration.registerComponent(component, priorityMap(component.getClass().getInterfaces(), priority)); return this; }
-    @Override public Client register(Object component, Class<?>... contracts) { configuration.registerComponent(component, defaultPriorityMap(contracts)); return this; }
+    @Override public Client register(Object component, int priority) { configuration.registerComponent(component, CassiniClientConfiguration.contractsOf(component.getClass(), priority)); return this; }
+    @Override public Client register(Object component, Class<?>... contracts) { configuration.registerComponent(component, CassiniClientConfiguration.contractsOf(contracts, jakarta.ws.rs.Priorities.USER)); return this; }
     @Override public Client register(Object component, Map<Class<?>, Integer> contracts) { configuration.registerComponent(component, contracts); return this; }
 
-    private static Map<Class<?>, Integer> priorityMap(Class<?>[] contracts, int priority) {
-        Map<Class<?>, Integer> m = new HashMap<>();
-        for (Class<?> c : contracts) m.put(c, priority);
-        return m;
-    }
 
-    private static Map<Class<?>, Integer> defaultPriorityMap(Class<?>[] contracts) {
-        return priorityMap(contracts, jakarta.ws.rs.Priorities.USER);
-    }
 }

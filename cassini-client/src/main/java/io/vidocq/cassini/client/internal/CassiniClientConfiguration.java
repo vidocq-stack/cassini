@@ -61,6 +61,28 @@ final class CassiniClientConfiguration implements Configuration {
         else properties.put(name, value);
     }
 
+    /** Every contract (interface, at any depth, of the class or of its superclasses) bound to {@code priority}. */
+    static Map<Class<?>, Integer> contractsOf(Class<?> componentClass, int priority) {
+        Map<Class<?>, Integer> all = new HashMap<>();
+        for (Class<?> c = componentClass; c != null && c != Object.class; c = c.getSuperclass()) {
+            collectInterfaces(c, priority, all);
+        }
+        return all;
+    }
+
+    /** The explicitly listed contracts, all bound to {@code priority}. */
+    static Map<Class<?>, Integer> contractsOf(Class<?>[] contractTypes, int priority) {
+        Map<Class<?>, Integer> all = new HashMap<>();
+        for (Class<?> c : contractTypes) all.put(c, priority);
+        return all;
+    }
+
+    private static void collectInterfaces(Class<?> type, int priority, Map<Class<?>, Integer> into) {
+        for (Class<?> i : type.getInterfaces()) {
+            if (into.putIfAbsent(i, priority) == null) collectInterfaces(i, priority, into);
+        }
+    }
+
     void registerComponent(Object instance, Map<Class<?>, Integer> componentContracts) {
         if (instance == null) return;
         instancesByClass.put(instance.getClass(), instance);

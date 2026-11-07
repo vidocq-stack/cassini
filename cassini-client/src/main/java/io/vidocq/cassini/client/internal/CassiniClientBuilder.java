@@ -27,7 +27,6 @@ import jakarta.ws.rs.core.Feature;
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
 import java.security.KeyStore;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.concurrent.ExecutorService;
@@ -144,13 +143,13 @@ public final class CassiniClientBuilder extends ClientBuilder {
 
     @Override
     public ClientBuilder register(Class<?> componentClass, int priority) {
-        configuration.registerComponent(componentClass, priorityMap(componentClass.getInterfaces(), priority));
+        configuration.registerComponent(componentClass, CassiniClientConfiguration.contractsOf(componentClass, priority));
         return this;
     }
 
     @Override
     public ClientBuilder register(Class<?> componentClass, Class<?>... contractTypes) {
-        configuration.registerComponent(componentClass, defaultPriorityMap(contractTypes));
+        configuration.registerComponent(componentClass, CassiniClientConfiguration.contractsOf(contractTypes, jakarta.ws.rs.Priorities.USER));
         return this;
     }
 
@@ -168,13 +167,13 @@ public final class CassiniClientBuilder extends ClientBuilder {
 
     @Override
     public ClientBuilder register(Object component, int priority) {
-        configuration.registerComponent(component, priorityMap(component.getClass().getInterfaces(), priority));
+        configuration.registerComponent(component, CassiniClientConfiguration.contractsOf(component.getClass(), priority));
         return this;
     }
 
     @Override
     public ClientBuilder register(Object component, Class<?>... contractTypes) {
-        configuration.registerComponent(component, defaultPriorityMap(contractTypes));
+        configuration.registerComponent(component, CassiniClientConfiguration.contractsOf(contractTypes, jakarta.ws.rs.Priorities.USER));
         return this;
     }
 
@@ -184,13 +183,5 @@ public final class CassiniClientBuilder extends ClientBuilder {
         return this;
     }
 
-    private static Map<Class<?>, Integer> priorityMap(Class<?>[] contracts, int priority) {
-        Map<Class<?>, Integer> m = new HashMap<>();
-        for (Class<?> c : contracts) m.put(c, priority);
-        return m;
-    }
 
-    private static Map<Class<?>, Integer> defaultPriorityMap(Class<?>[] contracts) {
-        return priorityMap(contracts, jakarta.ws.rs.Priorities.USER);
-    }
 }
