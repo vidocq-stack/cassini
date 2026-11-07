@@ -137,10 +137,10 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
         if (delegate == null) return null;
         String ifMatch = delegate.firstHeader("If-Match");
         String ifNoneMatch = delegate.firstHeader("If-None-Match");
-        if (ifMatch != null && !matchesEtag(ifMatch, eTag)) {
+        if (ifMatch != null && !matchesEtag(ifMatch, eTag, true)) {
             return Response.status(Response.Status.PRECONDITION_FAILED).tag(eTag);
         }
-        if (ifNoneMatch != null && matchesEtag(ifNoneMatch, eTag)) {
+        if (ifNoneMatch != null && matchesEtag(ifNoneMatch, eTag, false)) {
             boolean safe = "GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method);
             return Response.status(safe ? Response.Status.NOT_MODIFIED
                     : Response.Status.PRECONDITION_FAILED).tag(eTag);
@@ -178,13 +178,20 @@ public final class CassiniRequest implements jakarta.ws.rs.core.Request {
         return null;
     }
 
-    private static boolean matchesEtag(String header, EntityTag eTag) {
+    /**
+     * Compares the entity tags of a conditional header with the current one (RFC 9110 §8.8.3.2): {@code If-Match}
+     * uses the strong comparison (a weak tag on either side never matches, §13.1.1), {@code If-None-Match} the weak
+     * one (the {@code W/} prefix is ignored, §13.1.2).
+     */
+    private static boolean matchesEtag(String header, EntityTag eTag, boolean strong) {
         if (header.trim().equals("*")) return true;
+        if (strong && eTag.isWeak()) return false;
         String tag = HeaderValues.format(eTag);
-        for (String tok : header.split(",")) {
-            if (tok.trim().equals(tag)) return true;
-            // ignore weak/strong distinction in MVP
-            if (tok.trim().replace("W/", "").equals(tag.replace("W/", ""))) return true;
+        for (String token : header.split(",")) {
+            String candidate = token.trim();
+            if (strong ? candidate.equals(tag) : candidate.replace("W/", "").equals(tag.replace("W/", ""))) {
+                return true;
+            }
         }
         return false;
     }
