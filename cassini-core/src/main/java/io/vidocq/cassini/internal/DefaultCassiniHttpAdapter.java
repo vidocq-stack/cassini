@@ -119,6 +119,10 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
             } catch (IOException _) {
                 // The transport cannot take the error either: it answers its own 500.
             }
+        } finally {
+            // The last word, on every path (a match, a 404, a mapped or unmapped failure, an async response
+            // resumed elsewhere): the entity is written and the dispatch thread is the one that ran the filters.
+            RequestCompletion.run(exchange);
         }
         return CompletableFuture.completedFuture(null);
     }

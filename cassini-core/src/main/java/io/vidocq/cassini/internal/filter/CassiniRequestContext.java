@@ -151,6 +151,15 @@ public final class CassiniRequestContext implements ContainerRequestContext {
         return (Map<String, Object>) shared;
     }
 
+    /**
+     * Removes a property of the request and returns its value, without building a context: the dispatch asks for
+     * the end-of-request action once the request is over. {@code null} when the request has no such property.
+     */
+    public static Object takeProperty(CassiniHttpExchange exchange, String name) {
+        Object shared = exchange.getAttribute(ATTR_PROPERTIES);
+        return shared instanceof Map<?, ?> properties ? properties.remove(name) : null;
+    }
+
     @Override public Object getProperty(String name) {
         Map<String, Object> properties = properties(false);
         return properties == null ? null : properties.get(name);
