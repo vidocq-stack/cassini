@@ -33,6 +33,7 @@ import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 final class CassiniClient implements Client {
@@ -41,6 +42,10 @@ final class CassiniClient implements Client {
     private final SSLContext sslContext;
     private final HostnameVerifier hostnameVerifier;
     private final HttpClient httpClient;
+    /** Runs the {@link HttpClient}'s own tasks: always internal, so a small user pool cannot starve a blocked send. */
+    private final ExecutorService httpExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    /** Runs the asynchronous and reactive invocations: the one given to the builder, else the internal one. */
+    private final ExecutorService executor;
     private volatile boolean closed;
 
     CassiniClient(CassiniClientConfiguration configuration,
@@ -49,10 +54,10 @@ final class CassiniClient implements Client {
         this.configuration = configuration;
         this.sslContext = sslContext;
         this.hostnameVerifier = hostnameVerifier;
+        ExecutorService supplied = configuration.getExecutorService();
+        this.executor = supplied != null ? supplied : httpExecutor;
         var builder = HttpClient.newBuilder()
-                .executor(configuration.getExecutorService() != null
-                        ? configuration.getExecutorService()
-                        : Executors.newVirtualThreadPerTaskExecutor())
+                .executor(httpExecutor)
                 .version(HttpClient.Version.HTTP_2);
         if (configuration.getConnectTimeoutMs() > 0) {
             builder.connectTimeout(Duration.ofMillis(configuration.getConnectTimeoutMs()));
@@ -66,6 +71,7 @@ final class CassiniClient implements Client {
         if (closed) return;
         closed = true;
         httpClient.close();
+        httpExecutor.shutdown();
     }
 
     @Override
@@ -103,6 +109,7 @@ final class CassiniClient implements Client {
     @Override public Configuration getConfiguration() { return configuration; }
 
     HttpClient httpClient() { return httpClient; }
+    ExecutorService executor() { return executor; }
     CassiniClientConfiguration cassiniConfiguration() { return configuration; }
 
     /** {@link Client#close()}: once closed, everything derived from the client refuses to work. */

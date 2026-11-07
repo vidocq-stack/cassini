@@ -39,6 +39,7 @@ import jakarta.ws.rs.client.CompletionStageRxInvoker;
 import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.client.Invocation;
 import jakarta.ws.rs.client.RxInvoker;
+import jakarta.ws.rs.client.RxInvokerProvider;
 import jakarta.ws.rs.core.CacheControl;
 import jakarta.ws.rs.core.Cookie;
 import jakarta.ws.rs.core.GenericType;
@@ -64,6 +65,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.function.Function;
 
 final class CassiniInvocationBuilder implements Invocation.Builder {
 
@@ -210,12 +216,20 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
 
     @Override
     public CompletionStageRxInvoker rx() {
-        throw new UnsupportedOperationException("Rx invoker not supported in Cassini Client MVP");
+        return new CassiniRxInvoker(this);
     }
 
     @Override
     public <T extends RxInvoker> T rx(Class<T> clazz) {
-        throw new UnsupportedOperationException("Rx invoker not supported in Cassini Client MVP");
+        Objects.requireNonNull(clazz, "clazz");
+        CompletionStageRxInvoker builtIn = rx();
+        if (clazz.isInstance(builtIn)) return clazz.cast(builtIn);
+        for (Object component : client.cassiniConfiguration().getInstances()) {
+            if (component instanceof RxInvokerProvider<?> provider && provider.isProviderFor(clazz)) {
+                return clazz.cast(provider.getRxInvoker(this, client.executor()));
+            }
+        }
+        throw new IllegalStateException("No RxInvokerProvider registered for " + clazz.getName());
     }
 
     // ---- Internal -------------------------------------------------------------------------
@@ -277,6 +291,24 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
      * </ol>
      */
     void ensureOpen() { client.ensureOpen(); }
+
+    ExecutorService executor() { return client.executor(); }
+
+    /**
+     * Runs {@link #invoke} on {@code executor}, with the caller's OpenTelemetry context re-attached
+     * (see {@link AsyncContextPropagator}); a closed client refuses before anything is scheduled.
+     * Shared by the asynchronous and the reactive invokers.
+     */
+    <T> CompletableFuture<T> supplyAsync(Executor executor, String method, Entity<?> entity,
+                                         Function<Response, T> reader) {
+        ensureOpen();
+        Object ctx = AsyncContextPropagator.capture();
+        return CompletableFuture.supplyAsync(() -> {
+            try (var _ = AsyncContextPropagator.activate(ctx)) {
+                return reader.apply(invoke(method, entity));
+            }
+        }, executor);
+    }
 
     Response invoke(String method, Entity<?> entity) {
         ensureOpen();

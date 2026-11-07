@@ -30,8 +30,6 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Function;
 
@@ -55,11 +53,9 @@ final class CassiniAsyncInvoker implements AsyncInvoker {
     private static final String TRACE = "TRACE";
 
     private final CassiniInvocationBuilder builder;
-    private final Executor executor;
 
     CassiniAsyncInvoker(CassiniInvocationBuilder builder) {
         this.builder = builder;
-        this.executor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
     // ---- helpers ---------------------------------------------------------------------------
@@ -76,13 +72,7 @@ final class CassiniAsyncInvoker implements AsyncInvoker {
      * {@link jakarta.ws.rs.WebApplicationException} (CASSINI-022).</p>
      */
     private <T> CompletableFuture<T> supply(String method, Entity<?> entity, Function<Response, T> reader) {
-        builder.ensureOpen();
-        Object ctx = AsyncContextPropagator.capture();
-        return CompletableFuture.supplyAsync(() -> {
-            try (var _ = AsyncContextPropagator.activate(ctx)) {
-                return reader.apply(builder.invoke(method, entity));
-            }
-        }, executor);
+        return builder.supplyAsync(builder.executor(), method, entity, reader);
     }
 
     private Future<Response> async(String method, Entity<?> entity) {
