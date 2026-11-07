@@ -101,6 +101,10 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
             // state (matched route, providers, base URI, SSE sink) lives in
             // the RequestScope instead of ThreadLocals.
             RequestScope.<Void, Exception>call(() -> {
+                // The exchange is the request being processed from the first moment, not only once a route
+                // matched: a 404, a 405, a 415 or a 406 is rendered with no match and no request context, and
+                // its writer interceptors must still share the properties the filters set (CASSINI-007).
+                Invoker.publishCurrent(null, exchange);
                 int status = dispatchInternal(exchange);
                 // Counted in here, as an int: carrying the status out would box it on every request.
                 // end() is the last statement and does not throw, so the catch below never counts it twice.

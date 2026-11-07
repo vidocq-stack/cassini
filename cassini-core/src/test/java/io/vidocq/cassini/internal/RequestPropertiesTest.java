@@ -31,6 +31,7 @@ import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.container.PreMatching;
 import jakarta.ws.rs.core.Application;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.Provider;
 import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
@@ -130,6 +131,26 @@ class RequestPropertiesTest {
         }
     }
 
+    /** The resource of the routes that refuse the request before any request context exists: 415 and 406. */
+    @Path("/strict")
+    public static class Strict {
+        @POST
+        @jakarta.ws.rs.Consumes("text/plain")
+        @jakarta.ws.rs.Produces("text/plain")
+        public String post(String body) {
+            return body;
+        }
+    }
+
+    /** Gives every refusal an entity, so that the writer interceptors run on it. */
+    @Provider
+    public static class MapsRefusals implements jakarta.ws.rs.ext.ExceptionMapper<WebApplicationException> {
+        @Override
+        public Response toResponse(WebApplicationException failure) {
+            return Response.status(failure.getResponse().getStatus()).entity("refused").type("text/plain").build();
+        }
+    }
+
     /** Sets a property in a response filter: the writer interceptors run after the response filters. */
     @Provider
     public static class SetsInResponseFilter implements ContainerResponseFilter {
@@ -180,6 +201,47 @@ class RequestPropertiesTest {
         InMemoryExchange exchange = post(Early.class, SetsInResponseFilter.class, WritesProperties.class);
         assertEquals(200, exchange.status(), exchange::responseText);
         assertEquals("e|null|f|null", exchange.responseHeader("X-Writer"));
+    }
+
+    private static InMemoryExchange refused(String path, String contentType, String accept) {
+        Set<Class<?>> classes = Set.of(Echo.class, Strict.class, Early.class, WritesProperties.class, MapsRefusals.class);
+        CassiniStack stack = new CassiniStackBuilderImpl().application(new Application() {
+            @Override
+            public Set<Class<?>> getClasses() {
+                return classes;
+            }
+        }).build();
+        InMemoryExchange exchange = InMemoryExchange.request("POST", path, contentType, "hello");
+        if (accept != null) exchange.header("Accept", accept);
+        stack.adapter().dispatch(exchange).toCompletableFuture().join();
+        return exchange;
+    }
+
+    /** What the global writer interceptor saw of the property a pre-matching filter set: "e", or "null" when its store
+     *  was not the request's. */
+    private static String seenByTheWriter(InMemoryExchange exchange) {
+        return String.valueOf(exchange.responseHeader("X-Writer")).split("\\|")[0];
+    }
+
+    @Test
+    void aWriterInterceptorSeesThePropertiesOnA404() {
+        InMemoryExchange exchange = refused("/nothing-here", "text/plain", null);
+        assertEquals(404, exchange.status(), exchange::responseText);
+        assertEquals("e", seenByTheWriter(exchange));
+    }
+
+    @Test
+    void aWriterInterceptorSeesThePropertiesOnA415() {
+        InMemoryExchange exchange = refused("/strict", "application/json", null);
+        assertEquals(415, exchange.status(), exchange::responseText);
+        assertEquals("e", seenByTheWriter(exchange));
+    }
+
+    @Test
+    void aWriterInterceptorSeesThePropertiesOnA406() {
+        InMemoryExchange exchange = refused("/strict", "text/plain", "application/json");
+        assertEquals(406, exchange.status(), exchange::responseText);
+        assertEquals("e", seenByTheWriter(exchange));
     }
 
     @Test
