@@ -242,6 +242,16 @@ Cassini discovers Vauban via `ServiceLoader`, walks the `BeanManager` at stack c
 
 The `CassiniScopeExtension` (Vauban Build Compatible Extension) adds `@RequestScoped` to `@Path` classes lacking an explicit scope — automatic alignment with the semantics filters and interceptors expect. Interfaces, such as MicroProfile Rest Client contracts, keep no scope.
 
+=== The request scope ends with the request
+
+`CdiRequestScopeFilter` (`cassini-cdi`) and `VaubanRequestScopeFilter` (`cassini-cdi-vauban`) activate the request scope in a pre-matching request filter that runs before every other filter. They do not end it in a response filter, which runs before the entity is written and not on every path. They hand the request an end-of-request action instead, as the `io.vidocq.cassini.requestCompleted` property (a `Runnable`), and `DefaultCassiniHttpAdapter.dispatch` runs it in a `finally`, once the dispatch is over, on the thread that ran the filters. So:
+
+* a `MessageBodyWriter`, a `WriterInterceptor` or a `StreamingOutput` still sees the scope and the `@RequestScoped` beans;
+* the scope ends exactly once on every path: a match, a 404 or 405, a mapped or unmapped failure (500), a failed write, and an async response resumed from another thread (the dispatch thread waits for it);
+* a scope that is already active on the thread is not the filter's: under the Vidocq runtime, whose hook (`RequestContext#runInScope`) opens and ends the scope itself, the Vauban filter does nothing; on an application server `RequestContextController#activate` answers `false` and nothing is ended.
+
+The scope of a streamed SSE response ends with the resource method that opened the sink, not with the last event. The properties of a request are one store, an exchange attribute built by the first property set (a request allocates nothing for it before) and shared by the request and response contexts of the filters and by the reader and writer interceptor contexts.
+
 == JAX-RS Client (`cassini-client`)
 
 `cassini-client` is a standalone implementation of the Jakarta REST 4.0 **Client API** with no external dependency: it builds on the JDK `java.net.http.HttpClient` running on virtual threads. It exposes no public package — the whole surface is consumed through `jakarta.ws.rs.client.*` and discovered via `ServiceLoader`:
@@ -255,7 +265,7 @@ It reuses `MessageBodyRegistry`, `CassiniResponse`, `CassiniUriBuilder` and `Cas
 == Virtual threads and async
 
 * All blocking I/O (body read, backend wait, SSE) runs on a virtual thread created by `Executors.newVirtualThreadPerTaskExecutor()`.
-*On Chappe, when a request scope hook (`ChappeHttpAdapter.Scoped`, which the Vidocq runtime installs) bounds the request scope by the dispatch, a request is dispatched on the virtual thread of its connection, unless the deployment may stream: a resource method with an `SseEventSink`, or a sub-resource locator resolved at run time (`CassiniHttpAdapter.mayStream()`). Otherwise `ChappeHttpAdapter` starts a virtual thread per request, as every request did until 0.4.0-RC1: Chappe can then send a stream while the method goes on writing events, and a CDI request context that a filter left on the thread ends with it.
+*On Chappe, when a request scope hook (`ChappeHttpAdapter.Scoped`, which the Vidocq runtime installs) bounds the request scope by the dispatch, a request is dispatched on the virtual thread of its connection, unless the deployment may stream: a resource method with an `SseEventSink`, or a sub-resource locator resolved at run time (`CassiniHttpAdapter.mayStream()`). Otherwise `ChappeHttpAdapter` starts a virtual thread per request, as every request did until 0.4.0-RC1: Chappe can then send a stream while the method goes on writing events.
 * `@Suspended AsyncResponse` immediately releases the carrier thread; resolution is posted by user code on a VT.
 * A `CompletionStage` returned by a resource method is propagated down to the transport via `CassiniAsyncContext`.
 

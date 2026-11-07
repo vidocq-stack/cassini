@@ -159,7 +159,7 @@ CDI (with `cassini-cdi` or `cassini-cdi-vauban`): `@ApplicationScoped`, `@Reques
 
 Cassini does not need Vauban. `cassini-cdi` finds the running container through `CDI.current()` and resolves the resources and providers as its beans; with Vauban, `cassini-cdi-vauban` outranks it. With no container running, Cassini runs without CDI, as before (cassini#53).
 
-`cassini-it-weld`, part of every build and never published, runs Cassini on Chappe with Weld SE 6.0 (CDI 4.1) on a class path: a resource gets an injected bean, a `@RequestScoped` bean is one instance per request, and an interceptor on a resource method applies. Without `cassini-cdi`, the same resources answer 404.
+`cassini-it-weld`, part of every build and never published, runs Cassini on Chappe with Weld SE 6.0 (CDI 4.1) on a class path: a resource gets an injected bean, a `@RequestScoped` bean is one instance per request, and an interceptor on a resource method applies. Without `cassini-cdi`, the same resources answer 404. The request scope outlives the entity writers and ends once with every request, a 404 or a failure included: `WeldRequestScopeLifetimeTest` proves it on Weld, and `cassini-it-vauban`, also never published, on Vauban, with the filter alone and under the request-scope hook of the Vidocq runtime.
 
 * **Start the container first**, then build the `CassiniStack`: the provider is chosen when the stack is built.
 * **`annotated` discovery mode** — `CassiniScopeExtension` gives a `@Path` class without a scope `@RequestScoped`, but a container in `annotated` mode only visits classes that already have a bean-defining annotation. Give your resources a scope, or use `bean-discovery-mode="all"` for the archive that holds them.
