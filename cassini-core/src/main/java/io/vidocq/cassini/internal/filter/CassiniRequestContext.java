@@ -57,8 +57,6 @@ public final class CassiniRequestContext implements ContainerRequestContext {
 
     private final CassiniHttpExchange exchange;
     private final CassiniHttpHeaders httpHeaders;
-    /** The request's properties, one store for every context of the request (CASSINI-007). */
-    private final RequestProperties properties;
     /** The mutable copy of the request headers, built the first time a filter asks for it: most
      *  filters never do, and the copy walks every header of the exchange. */
     private MultivaluedMap<String, String> headers;
@@ -96,7 +94,6 @@ public final class CassiniRequestContext implements ContainerRequestContext {
 
     public CassiniRequestContext(CassiniHttpExchange exchange, UriInfo uriInfo) {
         this.exchange = exchange;
-        this.properties = RequestProperties.of(exchange);
         this.httpHeaders = new CassiniHttpHeaders(exchange);
         this.method = exchange.method();
         this.entityStream = exchange.requestBody() == null ? new ByteArrayInputStream(new byte[0])
@@ -135,11 +132,13 @@ public final class CassiniRequestContext implements ContainerRequestContext {
         return h;
     }
 
-    @Override public Object getProperty(String name) { return properties.get(name); }
-    @Override public Collection<String> getPropertyNames() { return properties.names(); }
+    // The properties belong to the request, not to this context: every context of the request shares them
+    // (CASSINI-007), and none allocates anything for them until a property is set.
+    @Override public Object getProperty(String name) { return RequestProperties.get(exchange, name); }
+    @Override public Collection<String> getPropertyNames() { return RequestProperties.names(exchange); }
     /** A {@code null} value removes the property (ContainerRequestContext#setProperty). */
-    @Override public void setProperty(String name, Object value) { properties.set(name, value); }
-    @Override public void removeProperty(String name) { properties.remove(name); }
+    @Override public void setProperty(String name, Object value) { RequestProperties.set(exchange, name, value); }
+    @Override public void removeProperty(String name) { RequestProperties.remove(exchange, name); }
 
     @Override public UriInfo getUriInfo() {
         // §6.6.1: if setRequestUri was called, UriInfo must reflect the

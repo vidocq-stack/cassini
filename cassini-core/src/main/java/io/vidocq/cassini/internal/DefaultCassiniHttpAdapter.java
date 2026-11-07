@@ -20,7 +20,6 @@
 package io.vidocq.cassini.internal;
 
 import io.vidocq.cassini.internal.filter.CassiniRequestContext;
-import io.vidocq.cassini.internal.filter.RequestProperties;
 import io.vidocq.cassini.internal.transport.CassiniHttpResponse;
 import io.vidocq.cassini.spi.http.CassiniHttpAdapter;
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
@@ -97,8 +96,6 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
     public CompletionStage<Void> dispatch(CassiniHttpExchange exchange) {
         final RequestStatistics stats = statistics;
         final long start = stats == null ? 0L : stats.begin();
-        // The properties of the request, before any filter runs: one store for every context of the request.
-        RequestProperties.install(exchange);
         try {
             // M2h: one request-scope binding per dispatch — all per-request
             // state (matched route, providers, base URI, SSE sink) lives in

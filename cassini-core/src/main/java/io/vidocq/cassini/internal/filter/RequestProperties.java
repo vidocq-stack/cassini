@@ -35,9 +35,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * the interceptors and the other way round (CASSINI-007; JAX-RS 4.0 {@code InterceptorContext#getProperty}: the
  * properties of the current request/response exchange).
  *
- * <p>The dispatch {@linkplain #install installs} the store before any filter runs, on the dispatch thread: its
- * creation needs no atomic operation of the exchange. A context built without an exchange keeps a store of its
- * own, as a context built outside a request does.</p>
+ * <p>The store is built by the first property set, not before: most requests never set one, and a request
+ * context allocates nothing for it. The contexts of a request run one after the other on the dispatch thread
+ * and JAX-RS contexts are not thread-safe, so the first {@code set} has no race to lose; the store itself is a
+ * concurrent map. The {@code CassiniHttpExchange} SPI has no atomic "create if absent" for an attribute, which
+ * is why no stronger promise is made.</p>
+ *
+ * <p>The static methods work on an exchange; an instance made with {@link #of} does the same for a context
+ * that may have no exchange, and then keeps a store of its own, as a context built outside a request does.</p>
  */
 public final class RequestProperties {
 
@@ -57,14 +62,36 @@ public final class RequestProperties {
         return new RequestProperties(exchange);
     }
 
-    /**
-     * Installs the store of the request. Called once, before any filter, on the dispatch thread: the store is then
-     * there for every context, and no two threads race to create it.
-     */
-    public static void install(CassiniHttpExchange exchange) {
-        if (exchange.getAttribute(ATTR_PROPERTIES) == null) {
-            exchange.setAttribute(ATTR_PROPERTIES, new ConcurrentHashMap<String, Object>());
+    /** @return the value of the property, or {@code null}; a {@code null} name asks for nothing */
+    public static Object get(CassiniHttpExchange exchange, String name) {
+        Map<String, Object> properties = store(exchange);
+        return properties == null || name == null ? null : properties.get(name);
+    }
+
+    public static Collection<String> names(CassiniHttpExchange exchange) {
+        Map<String, Object> properties = store(exchange);
+        return properties == null ? Collections.emptySet() : Collections.unmodifiableSet(properties.keySet());
+    }
+
+    /** A {@code null} value removes the property (as {@code ContainerRequestContext#setProperty}). */
+    public static void set(CassiniHttpExchange exchange, String name, Object value) {
+        if (value == null) {
+            remove(exchange, name);
+            return;
         }
+        Objects.requireNonNull(name, "name");
+        Map<String, Object> properties = store(exchange);
+        if (properties == null) {
+            properties = new ConcurrentHashMap<>();
+            exchange.setAttribute(ATTR_PROPERTIES, properties);
+        }
+        properties.put(name, value);
+    }
+
+    /** A {@code null} name removes nothing. */
+    public static void remove(CassiniHttpExchange exchange, String name) {
+        Map<String, Object> properties = store(exchange);
+        if (properties != null && name != null) properties.remove(name);
     }
 
     /**
@@ -72,50 +99,42 @@ public final class RequestProperties {
      * the end-of-request action once the request is over. {@code null} when the request has no such property.
      */
     public static Object take(CassiniHttpExchange exchange, String name) {
-        Object shared = exchange.getAttribute(ATTR_PROPERTIES);
-        return shared instanceof Map<?, ?> properties ? properties.remove(name) : null;
+        Map<String, Object> properties = store(exchange);
+        return properties == null || name == null ? null : properties.remove(name);
     }
 
-    /** @return the value of the property, or {@code null}; a {@code null} name asks for nothing */
     public Object get(String name) {
-        Map<String, Object> properties = store(false);
-        return properties == null || name == null ? null : properties.get(name);
+        if (exchange != null) return get(exchange, name);
+        return detached == null || name == null ? null : detached.get(name);
     }
 
     public Collection<String> names() {
-        Map<String, Object> properties = store(false);
-        return properties == null ? Collections.emptySet() : Collections.unmodifiableSet(properties.keySet());
+        if (exchange != null) return names(exchange);
+        return detached == null ? Collections.emptySet() : Collections.unmodifiableSet(detached.keySet());
     }
 
-    /** A {@code null} value removes the property (as {@code ContainerRequestContext#setProperty}). */
     public void set(String name, Object value) {
-        if (value == null) {
+        if (exchange != null) {
+            set(exchange, name, value);
+        } else if (value == null) {
             remove(name);
-            return;
+        } else {
+            Objects.requireNonNull(name, "name");
+            if (detached == null) detached = new HashMap<>();
+            detached.put(name, value);
         }
-        Objects.requireNonNull(name, "name");
-        store(true).put(name, value);
     }
 
-    /** A {@code null} name removes nothing. */
     public void remove(String name) {
-        Map<String, Object> properties = store(false);
-        if (properties != null && name != null) properties.remove(name);
+        if (exchange != null) {
+            remove(exchange, name);
+        } else if (detached != null && name != null) {
+            detached.remove(name);
+        }
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> store(boolean create) {
-        if (exchange == null) {
-            if (detached == null && create) detached = new HashMap<>();
-            return detached;
-        }
-        Object shared = exchange.getAttribute(ATTR_PROPERTIES);
-        if (shared == null && create) {
-            // A request not dispatched through Cassini's adapter (a context built by hand): the store is
-            // created by the first property, on the thread that builds the contexts.
-            shared = new ConcurrentHashMap<String, Object>();
-            exchange.setAttribute(ATTR_PROPERTIES, shared);
-        }
-        return (Map<String, Object>) shared;
+    private static Map<String, Object> store(CassiniHttpExchange exchange) {
+        return (Map<String, Object>) exchange.getAttribute(ATTR_PROPERTIES);
     }
 }

@@ -40,19 +40,30 @@ class RequestPropertiesStoreTest {
     @Test
     void everyViewOfTheSameExchangeSharesTheStore() {
         InMemoryExchange exchange = exchange();
-        RequestProperties.install(exchange);
         RequestProperties.of(exchange).set("a", "1");
         assertEquals("1", RequestProperties.of(exchange).get("a"));
         assertEquals(Set.of("a"), Set.copyOf(RequestProperties.of(exchange).names()));
     }
 
     @Test
-    void installingTwiceKeepsTheStoreAndItsProperties() {
+    void theStaticAndTheInstanceViewsShareTheStore() {
         InMemoryExchange exchange = exchange();
-        RequestProperties.install(exchange);
-        RequestProperties.of(exchange).set("a", "1");
-        RequestProperties.install(exchange);
+        RequestProperties.set(exchange, "a", "1");
         assertEquals("1", RequestProperties.of(exchange).get("a"));
+        RequestProperties.of(exchange).set("b", "2");
+        assertEquals("2", RequestProperties.get(exchange, "b"));
+        assertEquals(Set.of("a", "b"), Set.copyOf(RequestProperties.names(exchange)));
+    }
+
+    @Test
+    void noStoreIsBuiltUntilAPropertyIsSet() {
+        InMemoryExchange exchange = exchange();
+        assertNull(RequestProperties.get(exchange, "a"));
+        assertTrue(RequestProperties.names(exchange).isEmpty());
+        RequestProperties.remove(exchange, "a");
+        assertNull(exchange.getAttribute("io.vidocq.cassini.requestProperties"));
+        RequestProperties.set(exchange, "a", "1");
+        assertTrue(exchange.getAttribute("io.vidocq.cassini.requestProperties") instanceof java.util.concurrent.ConcurrentMap);
     }
 
     @Test
@@ -70,7 +81,6 @@ class RequestPropertiesStoreTest {
     @Test
     void aNullNameAsksForNothingAndRemovesNothing() {
         InMemoryExchange exchange = exchange();
-        RequestProperties.install(exchange);
         RequestProperties properties = RequestProperties.of(exchange);
         properties.set("a", "1");
         assertNull(properties.get(null));

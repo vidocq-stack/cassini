@@ -73,7 +73,13 @@ final class ResponsePipeline {
         CassiniResponseContext response = new CassiniResponseContext(userResp.getStatus(), entity,
                 entity == null ? null : entity.getClass(), headers);
         runResponseFilters(rctx, response, route);
-        return writeFromContext(response, route, chosen, rctx.exchange());
+        return writeFromContext(response, route, chosen, exchangeOf(rctx));
+    }
+
+    /** The exchange of the request: the one of its context, or the request being dispatched when a failure
+     *  is rendered before any request context exists. May be {@code null} outside a dispatch. */
+    private static CassiniHttpExchange exchangeOf(CassiniRequestContext rctx) {
+        return rctx != null ? rctx.exchange() : Invoker.currentRequest();
     }
 
     CassiniHttpResponse runResponseFiltersForResult(CassiniRequestContext rctx, Object result,
@@ -89,7 +95,7 @@ final class ResponsePipeline {
         CassiniResponseContext response = new CassiniResponseContext(status, entity,
                 entity == null ? null : entity.getClass(), entityAnnotations(result, route), headers);
         runResponseFilters(rctx, response, route);
-        return writeFromContext(response, route, chosen, rctx.exchange());
+        return writeFromContext(response, route, chosen, exchangeOf(rctx));
     }
 
     private static void copyStringHeaders(jakarta.ws.rs.core.Response from, MultivaluedMap<String, Object> to) {
