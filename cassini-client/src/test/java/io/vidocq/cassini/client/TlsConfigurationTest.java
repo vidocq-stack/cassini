@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -145,6 +146,20 @@ class TlsConfigurationTest {
                     .sslContext(untrusting).build()) {
                 assertFails(client, server.urlByName());
             }
+        }
+    }
+
+    @Test
+    void a_key_store_that_cannot_be_used_is_reported_when_the_client_is_built() throws Exception {
+        java.security.KeyStore unloaded = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+        ClientBuilder builder = ClientBuilder.newBuilder().keyStore(unloaded, "changeit".toCharArray());
+        assertThrows(IllegalStateException.class, builder::build);
+    }
+
+    @Test
+    void a_hostname_verifier_alone_runs_on_the_default_ssl_context() {
+        try (Client client = ClientBuilder.newBuilder().hostnameVerifier((host, session) -> true).build()) {
+            assertNotNull(client);
         }
     }
 }

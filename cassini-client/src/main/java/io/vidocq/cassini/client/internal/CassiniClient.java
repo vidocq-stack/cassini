@@ -29,7 +29,6 @@ import jakarta.ws.rs.core.UriBuilder;
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
 import java.net.URI;
-import java.security.NoSuchAlgorithmException;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.HashMap;
@@ -74,10 +73,14 @@ final class CassiniClient implements Client {
      */
     private static SSLContext verifiedContext(SSLContext sslContext, HostnameVerifier verifier) {
         if (verifier == null) return sslContext;
-        try {
-            return HostnameVerifyingSslContext.wrap(sslContext != null ? sslContext : SSLContext.getDefault(), verifier);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("No default SSL context for the hostname verifier", e);
+        // HttpClient.newHttpClient() carries the JVM default context, without a checked exception.
+        SSLContext base = sslContext != null ? sslContext : defaultContext();
+        return HostnameVerifyingSslContext.wrap(base, verifier);
+    }
+
+    private static SSLContext defaultContext() {
+        try (HttpClient probe = HttpClient.newHttpClient()) {
+            return probe.sslContext();
         }
     }
 
