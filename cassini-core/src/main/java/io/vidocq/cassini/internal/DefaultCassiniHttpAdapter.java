@@ -96,6 +96,7 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
     public CompletionStage<Void> dispatch(CassiniHttpExchange exchange) {
         final RequestStatistics stats = statistics;
         final long start = stats == null ? 0L : stats.begin();
+        Error pending = null;
         try {
             // M2h: one request-scope binding per dispatch — all per-request
             // state (matched route, providers, base URI, SSE sink) lives in
@@ -123,10 +124,14 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
             } catch (IOException _) {
                 // The transport cannot take the error either: it answers its own 500.
             }
+        } catch (Error e) {
+            pending = e;
+            throw e;
         } finally {
             // The last word, on every path (a match, a 404, a mapped or unmapped failure, an async response
             // resumed elsewhere): the entity is written and the dispatch thread is the one that ran the filters.
-            RequestCompletion.run(exchange);
+            // An Error in flight is handed over, so that a failing action cannot replace it.
+            RequestCompletion.run(exchange, pending);
         }
         return CompletableFuture.completedFuture(null);
     }

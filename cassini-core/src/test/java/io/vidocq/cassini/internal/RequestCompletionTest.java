@@ -44,6 +44,7 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 /**
@@ -105,8 +106,38 @@ class RequestCompletionTest {
         }
     }
 
+    /** An error the JVM would not recover from, to stand for the ones nobody may swallow. */
+    static final class Fatal extends Error {
+        Fatal(String message) {
+            super(message);
+        }
+    }
+
+    @Provider
+    @PreMatching
+    public static class RegistersAnActionThatThrowsAnError implements ContainerRequestFilter {
+        @Override
+        public void filter(ContainerRequestContext request) {
+            request.setProperty(RequestCompletion.PROPERTY, (Runnable) () -> {
+                throw new Fatal("the action");
+            });
+        }
+    }
+
+    /** Registers the failing action, then fails itself: a filter is not guarded the way a resource method is. */
+    @Provider
+    @PreMatching
+    public static class FailsAfterRegisteringAnActionThatFails extends RegistersAnActionThatThrowsAnError {
+        @Override
+        public void filter(ContainerRequestContext request) {
+            super.filter(request);
+            throw new Fatal("the request");
+        }
+    }
+
     @Path("/done")
     public static class Resource {
+
         @GET
         @Path("write")
         public Response write() {
@@ -221,5 +252,19 @@ class RequestCompletionTest {
         InMemoryExchange exchange = get("/done/write", RegistersAFailingAction.class);
         assertEquals(200, exchange.status(), exchange::responseText);
         assertEquals(List.of("written"), events());
+    }
+
+    @Test
+    void anErrorOfTheActionDoesNotMaskTheErrorOfTheRequest() {
+        Fatal original = assertThrows(Fatal.class, () -> get("/done/write", FailsAfterRegisteringAnActionThatFails.class));
+        assertEquals("the request", original.getMessage());
+        assertEquals(1, original.getSuppressed().length, "the action's error is kept, not lost");
+        assertEquals("the action", original.getSuppressed()[0].getMessage());
+    }
+
+    @Test
+    void anErrorOfTheActionIsNotSwallowedWhenTheRequestSucceeded() {
+        Fatal failure = assertThrows(Fatal.class, () -> get("/done/write", RegistersAnActionThatThrowsAnError.class));
+        assertEquals("the action", failure.getMessage());
     }
 }

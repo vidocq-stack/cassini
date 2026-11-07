@@ -40,13 +40,21 @@ final class RequestCompletion {
     /**
      * Runs the action the request holds, if any, and forgets it, so it never runs twice. A failure of the action is
      * logged and goes no further: the response is already written.
+     *
+     * <p>An {@link Error} is never swallowed. When one is already in flight ({@code pending}), the action's error
+     * is logged and attached to it as suppressed, so that the original reaches the caller; otherwise it is
+     * logged and rethrown.</p>
      */
-    static void run(CassiniHttpExchange exchange) {
+    static void run(CassiniHttpExchange exchange, Error pending) {
         if (RequestProperties.take(exchange, PROPERTY) instanceof Runnable action) {
             try {
                 action.run();
             } catch (RuntimeException e) {
                 LOG.log(System.Logger.Level.WARNING, "An end-of-request action failed", e);
+            } catch (Error e) {
+                LOG.log(System.Logger.Level.ERROR, "An end-of-request action failed with an error", e);
+                if (pending == null) throw e;
+                pending.addSuppressed(e);
             }
         }
     }
