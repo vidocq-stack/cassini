@@ -60,7 +60,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class RxInvokerTest {
 
-    private static final long TIMEOUT_S = 5;
+    /** Only a guard against a hang: no assertion depends on how long a call takes, so a loaded CI cannot trip it. */
+    private static final long TIMEOUT_S = 60;
 
     private static RecordingServer server;
 
@@ -171,6 +172,52 @@ class RxInvokerTest {
     @Test
     void rx_class_without_a_provider_is_an_illegal_state() {
         try (Client client = ClientBuilder.newClient()) {
+            Invocation.Builder builder = request(client, "/");
+            assertThrows(IllegalStateException.class, () -> builder.rx(CustomRxInvoker.class));
+        }
+    }
+
+    private static final GenericType<String> STRING = new GenericType<>(String.class);
+
+    private static String body(Response response) {
+        try (response) {
+            return response.readEntity(String.class);
+        }
+    }
+
+    @Test
+    void every_typed_and_untyped_variant_sends_the_method_and_the_entity() throws Exception {
+        try (Client client = ClientBuilder.newClient()) {
+            Entity<String> x = Entity.text("x");
+            CompletionStageRxInvoker rx = request(client, "/").rx();
+            assertEquals("PUT:x", body(await(rx.put(x))));
+            assertEquals("PUT:x", await(rx.put(x, STRING)));
+            assertEquals("POST:x", body(await(rx.post(x))));
+            assertEquals("POST:x", await(rx.post(x, STRING)));
+            assertEquals("DELETE:", body(await(rx.delete())));
+            assertEquals("DELETE:", await(rx.delete(STRING)));
+            assertEquals("OPTIONS:", body(await(rx.options())));
+            assertEquals("OPTIONS:", await(rx.options(STRING)));
+            assertEquals("TRACE:", body(await(rx.trace())));
+            assertEquals("TRACE:", await(rx.trace(STRING)));
+            assertEquals("PATCH:", body(await(rx.method("PATCH"))));
+            assertEquals("PATCH:", await(rx.method("PATCH", String.class)));
+            assertEquals("PATCH:", await(rx.method("PATCH", STRING)));
+            assertEquals("PATCH:x", body(await(rx.method("PATCH", x))));
+            assertEquals("PATCH:x", await(rx.method("PATCH", x, STRING)));
+        }
+    }
+
+    @Test
+    void rx_class_skips_the_registered_components_that_are_not_providers_for_the_type() {
+        RxInvokerProvider<CustomRxInvoker> other = new RxInvokerProvider<>() {
+            @Override public boolean isProviderFor(Class<?> clazz) { return false; }
+            @Override public CustomRxInvoker getRxInvoker(SyncInvoker sync, ExecutorService exec) {
+                throw new AssertionError("not a provider for this type");
+            }
+        };
+        try (Client client = ClientBuilder.newClient().register(other)
+                .register((ClientRequestFilter) ctx -> { })) {
             Invocation.Builder builder = request(client, "/");
             assertThrows(IllegalStateException.class, () -> builder.rx(CustomRxInvoker.class));
         }
