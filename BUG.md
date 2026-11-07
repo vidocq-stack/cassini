@@ -140,12 +140,12 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Fix to do**: keep the properties on the exchange so that every context of a request shares them. It changes when the scope filters end the request scope (before the entity is written instead of after the dispatch), which needs its own review of the request-scoped beans used while writing an entity.
 
 ## CASSINI-008 — `@Context ContextResolver` injects the `Providers` and fails the invocation
-- **Date**: 2026-10-27 — **Status**: OPEN (found while covering the request path with unit tests)
+- **Date**: 2026-10-27 — **Status**: FIXED 69b8dd1 (cassini#117, `fix/context-resolver-param`; found while covering the request path with unit tests)
 - **Severity**: low. `ContextResolver` is not among the `@Context` types of §9.2; an application that asks for one gets a 500 instead of a clear "unsupported" error.
 - **Symptom**: a resource method parameter `@Context ContextResolver<?> cr` receives the request's `CassiniProviders`, which is not a `ContextResolver`: the reflective invocation throws a `ClassCastException`, answered 500.
 - **Minimal repro**: `@GET public String get(@Context ContextResolver<?> cr)`, then any request to it.
 - **Cause**: `ParamExtractor` maps `ContextResolver.class` to `currentProviders()`, a copy of the `Providers` case.
-- **Fix to do**: drop the mapping, so that the parameter ends in "Unsupported @Context type" like any other type outside §9.2; or, if a `ContextResolver` is meant to be injectable, resolve it through `Providers.getContextResolver` with the parameter's generic type.
+- **Fix**: dropped the mapping (`ContextResolverParameterTest`), so that the parameter ends in "Unsupported @Context type" like any other type outside §9.2; or, if a `ContextResolver` is meant to be injectable, resolve it through `Providers.getContextResolver` with the parameter's generic type.
 
 ## CASSINI-009 — `UriBuilder` glues a relative path to the authority (`http://ha`)
 - **Date**: 2026-10-27 — **Status**: FIXED (found while covering `CassiniUriBuilder` with unit tests)
