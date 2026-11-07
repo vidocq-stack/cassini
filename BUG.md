@@ -212,7 +212,7 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Fix**: clear the accumulated variants after copying them. Regression test: `CassiniRuntimeDelegateTest.variantListBuilder_is_reset_by_build`.
 
 ## CASSINI-017 — `Request.evaluatePreconditions(EntityTag)` compares `If-Match` weakly
-- **Date**: 2026-10-27 — **Status**: OPEN (found while covering `CassiniRequest` with unit tests; not fixed: the conditional-request path deserves its own change, checked against the TCK)
+- **Date**: 2026-10-27 — **Status**: FIXED d484eb4 (cassini#118, `fix/if-match-strong`; REST 4.0 TCK: 2670 run, 0 failures, 131 skipped). `matchesEtag` takes a `strong` flag, set for `If-Match` only (found while covering `CassiniRequest` with unit tests; not fixed: the conditional-request path deserves its own change, checked against the TCK)
 - **Severity**: low. A conditional update guarded by a weak tag goes through where it should be refused (lost-update protection weakened).
 - **Symptom**: `If-Match: W/"a"` against the current tag `W/"a"` (or `"a"`) meets the precondition; RFC 9110 §13.1.1 requires the strong comparison for `If-Match`, under which a weak tag never matches, so the answer must be 412.
 - **Minimal repro**: `PUT` with `If-Match: W/"a"`, resource calling `request.evaluatePreconditions(new EntityTag("a", true))` → `null` (precondition met), expected a 412 builder.
