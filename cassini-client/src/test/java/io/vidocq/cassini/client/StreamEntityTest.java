@@ -55,7 +55,7 @@ class StreamEntityTest {
     }
 
     @AfterAll
-    static void stop() throws Exception {
+    static void stop() {
         server.close();
     }
 
