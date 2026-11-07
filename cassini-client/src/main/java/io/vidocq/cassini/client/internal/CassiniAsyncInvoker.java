@@ -76,6 +76,7 @@ final class CassiniAsyncInvoker implements AsyncInvoker {
      * {@link jakarta.ws.rs.WebApplicationException} (CASSINI-022).</p>
      */
     private <T> CompletableFuture<T> supply(String method, Entity<?> entity, Function<Response, T> reader) {
+        builder.ensureOpen();
         Object ctx = AsyncContextPropagator.capture();
         return CompletableFuture.supplyAsync(() -> {
             try (var _ = AsyncContextPropagator.activate(ctx)) {

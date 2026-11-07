@@ -276,7 +276,10 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
      *   <li>Return the {@link CassiniClientResponse} built from the final ctx</li>
      * </ol>
      */
+    void ensureOpen() { client.ensureOpen(); }
+
     Response invoke(String method, Entity<?> entity) {
+        ensureOpen();
         MediaType entityMediaType = entity == null ? null : entity.getMediaType();
         Object entityValue = entity == null ? null : entity.getEntity();
         CassiniClientRequestContext reqCtx = new CassiniClientRequestContext(

@@ -39,6 +39,7 @@ final class CassiniWebTarget implements WebTarget {
 
     CassiniWebTarget(CassiniClient client, UriBuilder uriBuilder, Map<String, Object> templateValues,
                      CassiniClientConfiguration configuration) {
+        client.ensureOpen();
         this.client = client;
         this.uriBuilder = uriBuilder;
         this.templateValues = templateValues;
@@ -101,33 +102,42 @@ final class CassiniWebTarget implements WebTarget {
         return new CassiniWebTarget(client, uriBuilder.clone().queryParam(name, values), new HashMap<>(templateValues), configuration.copy());
     }
 
+    private Invocation.Builder newBuilder(URI uri, String[] accepted) {
+        client.ensureOpen();
+        return new CassiniInvocationBuilder(client, configuration.copy(), uri, accepted);
+    }
+
     @Override
     public Invocation.Builder request() {
-        return new CassiniInvocationBuilder(client, configuration.copy(), getUri(), new String[]{MediaType.WILDCARD});
+        return newBuilder(getUri(), new String[]{MediaType.WILDCARD});
     }
 
     @Override
     public Invocation.Builder request(String... acceptedResponseTypes) {
-        return new CassiniInvocationBuilder(client, configuration.copy(), getUri(), acceptedResponseTypes);
+        return newBuilder(getUri(), acceptedResponseTypes);
     }
 
     @Override
     public Invocation.Builder request(MediaType... acceptedResponseTypes) {
         String[] s = new String[acceptedResponseTypes.length];
         for (int i = 0; i < acceptedResponseTypes.length; i++) s[i] = acceptedResponseTypes[i].toString();
-        return new CassiniInvocationBuilder(client, configuration.copy(), getUri(), s);
+        return newBuilder(getUri(), s);
     }
 
     @Override public Configuration getConfiguration() { return configuration; }
 
     @Override
     public WebTarget property(String name, Object value) {
+        client.ensureOpen();
         configuration.putProperty(name, value);
         return this;
     }
 
     /** Registration goes through the feature context: one code path for contracts and features. */
-    private CassiniClientFeatureContext registrar() { return new CassiniClientFeatureContext(configuration); }
+    private CassiniClientFeatureContext registrar() {
+        client.ensureOpen();
+        return new CassiniClientFeatureContext(configuration);
+    }
 
     @Override public WebTarget register(Class<?> componentClass) { registrar().register(componentClass); return this; }
     @Override public WebTarget register(Class<?> componentClass, int priority) { registrar().register(componentClass, priority); return this; }

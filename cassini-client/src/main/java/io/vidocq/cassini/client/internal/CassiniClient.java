@@ -70,31 +70,31 @@ final class CassiniClient implements Client {
 
     @Override
     public WebTarget target(String uri) {
-        checkOpen();
+        ensureOpen();
         return new CassiniWebTarget(this, UriBuilder.fromUri(uri), new HashMap<>(), configuration.copy());
     }
 
     @Override
     public WebTarget target(URI uri) {
-        checkOpen();
+        ensureOpen();
         return new CassiniWebTarget(this, UriBuilder.fromUri(uri), new HashMap<>(), configuration.copy());
     }
 
     @Override
     public WebTarget target(UriBuilder uriBuilder) {
-        checkOpen();
+        ensureOpen();
         return new CassiniWebTarget(this, uriBuilder.clone(), new HashMap<>(), configuration.copy());
     }
 
     @Override
     public WebTarget target(Link link) {
-        checkOpen();
+        ensureOpen();
         return new CassiniWebTarget(this, UriBuilder.fromLink(link), new HashMap<>(), configuration.copy());
     }
 
     @Override
     public Invocation.Builder invocation(Link link) {
-        checkOpen();
+        ensureOpen();
         return target(link).request();
     }
 
@@ -105,24 +105,26 @@ final class CassiniClient implements Client {
     HttpClient httpClient() { return httpClient; }
     CassiniClientConfiguration cassiniConfiguration() { return configuration; }
 
-    private void checkOpen() {
+    /** {@link Client#close()}: once closed, everything derived from the client refuses to work. */
+    void ensureOpen() {
         if (closed) throw new IllegalStateException("Client closed");
     }
 
     @Override
     public Client property(String name, Object value) {
+        ensureOpen();
         configuration.putProperty(name, value);
         return this;
     }
 
-    @Override public Client register(Class<?> componentClass) { configuration.registerComponent(componentClass, null); return this; }
-    @Override public Client register(Class<?> componentClass, int priority) { configuration.registerComponent(componentClass, CassiniClientConfiguration.contractsOf(componentClass, priority)); return this; }
-    @Override public Client register(Class<?> componentClass, Class<?>... contracts) { configuration.registerComponent(componentClass, CassiniClientConfiguration.contractsOf(contracts, jakarta.ws.rs.Priorities.USER)); return this; }
-    @Override public Client register(Class<?> componentClass, Map<Class<?>, Integer> contracts) { configuration.registerComponent(componentClass, contracts); return this; }
-    @Override public Client register(Object component) { configuration.registerComponent(component, null); return this; }
-    @Override public Client register(Object component, int priority) { configuration.registerComponent(component, CassiniClientConfiguration.contractsOf(component.getClass(), priority)); return this; }
-    @Override public Client register(Object component, Class<?>... contracts) { configuration.registerComponent(component, CassiniClientConfiguration.contractsOf(contracts, jakarta.ws.rs.Priorities.USER)); return this; }
-    @Override public Client register(Object component, Map<Class<?>, Integer> contracts) { configuration.registerComponent(component, contracts); return this; }
+    @Override public Client register(Class<?> componentClass) { ensureOpen(); configuration.registerComponent(componentClass, null); return this; }
+    @Override public Client register(Class<?> componentClass, int priority) { ensureOpen(); configuration.registerComponent(componentClass, CassiniClientConfiguration.contractsOf(componentClass, priority)); return this; }
+    @Override public Client register(Class<?> componentClass, Class<?>... contracts) { ensureOpen(); configuration.registerComponent(componentClass, CassiniClientConfiguration.contractsOf(contracts, jakarta.ws.rs.Priorities.USER)); return this; }
+    @Override public Client register(Class<?> componentClass, Map<Class<?>, Integer> contracts) { ensureOpen(); configuration.registerComponent(componentClass, contracts); return this; }
+    @Override public Client register(Object component) { ensureOpen(); configuration.registerComponent(component, null); return this; }
+    @Override public Client register(Object component, int priority) { ensureOpen(); configuration.registerComponent(component, CassiniClientConfiguration.contractsOf(component.getClass(), priority)); return this; }
+    @Override public Client register(Object component, Class<?>... contracts) { ensureOpen(); configuration.registerComponent(component, CassiniClientConfiguration.contractsOf(contracts, jakarta.ws.rs.Priorities.USER)); return this; }
+    @Override public Client register(Object component, Map<Class<?>, Integer> contracts) { ensureOpen(); configuration.registerComponent(component, contracts); return this; }
 
 
 }
