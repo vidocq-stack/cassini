@@ -332,10 +332,12 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
             // single comma-separated value. Emit one combined header — some servers
             // only read the first line (e.g. an Accept: application/json, text/plain
             // negotiation would otherwise lose text/plain).
+            // Cookie pairs are the exception: RFC 6265 §5.4 joins them with "; " (CASSINI-024).
+            String separator = HttpHeaders.COOKIE.equalsIgnoreCase(name) ? "; " : ", ";
             StringBuilder joined = new StringBuilder();
             for (Object v : entry.getValue()) {
                 if (v == null) continue;
-                if (!joined.isEmpty()) joined.append(", ");
+                if (!joined.isEmpty()) joined.append(separator);
                 joined.append(v);
             }
             if (!joined.isEmpty()) builder.header(name, joined.toString());
