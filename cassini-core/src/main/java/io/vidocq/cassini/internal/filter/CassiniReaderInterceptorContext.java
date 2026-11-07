@@ -20,6 +20,7 @@
 package io.vidocq.cassini.internal.filter;
 
 import io.vidocq.cassini.internal.MessageBodyRegistry;
+import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.ext.MessageBodyReader;
@@ -30,9 +31,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * {@link ReaderInterceptor} chain → terminal MBR.readFrom §7.2.
@@ -46,7 +45,7 @@ public final class CassiniReaderInterceptorContext implements ReaderInterceptorC
     private final MessageBodyReader terminal;
     private final MessageBodyRegistry registry;
     private final MultivaluedMap<String, String> headers;
-    private final Map<String, Object> properties = new HashMap<>();
+    private final RequestProperties properties;
     private InputStream stream;
     private Class<?> type;
     private Type genericType;
@@ -67,6 +66,21 @@ public final class CassiniReaderInterceptorContext implements ReaderInterceptorC
                                            Class<?> type, Type genericType,
                                            Annotation[] annotations, MediaType mediaType,
                                            MultivaluedMap<String, String> headers, InputStream stream) {
+        this(interceptors, terminal, registry, type, genericType, annotations, mediaType, headers, stream, null);
+    }
+
+    /**
+     * @param exchange the exchange of the request, whose properties the interceptors share with the filters
+     *                 (JAX-RS 4.0 {@code InterceptorContext#getProperty}); {@code null} for a store of its own
+     */
+    @SuppressWarnings("rawtypes")
+    public CassiniReaderInterceptorContext(List<FilterEntry<ReaderInterceptor>> interceptors,
+                                           MessageBodyReader terminal, MessageBodyRegistry registry,
+                                           Class<?> type, Type genericType,
+                                           Annotation[] annotations, MediaType mediaType,
+                                           MultivaluedMap<String, String> headers, InputStream stream,
+                                           CassiniHttpExchange exchange) {
+        this.properties = RequestProperties.of(exchange);
         this.interceptors = interceptors;
         this.terminal = terminal;
         this.registry = registry;
@@ -111,8 +125,8 @@ public final class CassiniReaderInterceptorContext implements ReaderInterceptorC
     }
 
     @Override public Object getProperty(String name) { return properties.get(name); }
-    @Override public java.util.Collection<String> getPropertyNames() { return properties.keySet(); }
-    @Override public void setProperty(String name, Object value) { properties.put(name, value); }
+    @Override public java.util.Collection<String> getPropertyNames() { return properties.names(); }
+    @Override public void setProperty(String name, Object value) { properties.set(name, value); }
     @Override public void removeProperty(String name) { properties.remove(name); }
 
     @Override public Annotation[] getAnnotations() { return annotations; }

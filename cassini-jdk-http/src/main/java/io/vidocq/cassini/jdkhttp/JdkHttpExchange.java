@@ -52,7 +52,8 @@ public final class JdkHttpExchange implements CassiniHttpExchange {
     private int responseStatus = 200;
     private final Map<String, List<String>> responseHeaders = new LinkedHashMap<>();
     private final java.io.ByteArrayOutputStream bodyBuffer = new java.io.ByteArrayOutputStream();
-    private final Map<String, Object> attributes = new java.util.HashMap<>();
+    /** Thread-safe, as the SPI promises: the request's virtual thread and the threads of an async response share it. */
+    private final Map<String, Object> attributes = new java.util.concurrent.ConcurrentHashMap<>();
 
     public JdkHttpExchange(HttpExchange exchange) {
         this(exchange, "");
@@ -98,7 +99,14 @@ public final class JdkHttpExchange implements CassiniHttpExchange {
 
     @Override public boolean isUserInRole(String role) { return false; }
 
-    @Override public void setAttribute(String key, Object value) { attributes.put(key, value); }
+    /** A {@code null} value removes the attribute. */
+    @Override public void setAttribute(String key, Object value) {
+        if (value == null) {
+            attributes.remove(key);
+        } else {
+            attributes.put(key, value);
+        }
+    }
     @Override public Object getAttribute(String key) { return attributes.get(key); }
 
     /**

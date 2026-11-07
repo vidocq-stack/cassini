@@ -36,12 +36,10 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URI;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * {@link ContainerRequestContext} implementation backed by a
@@ -59,12 +57,8 @@ public final class CassiniRequestContext implements ContainerRequestContext {
 
     private final CassiniHttpExchange exchange;
     private final CassiniHttpHeaders httpHeaders;
-    /**
-     * Exchange attribute holding the request's properties: every context built for the request (pre-matching,
-     * post-matching, response) shares them, as the property of a request filter must reach the response filters
-     * (CASSINI-007). Built by the first {@link #setProperty}: most requests never set one.
-     */
-    private static final String ATTR_PROPERTIES = "io.vidocq.cassini.requestProperties";
+    /** The request's properties, one store for every context of the request (CASSINI-007). */
+    private final RequestProperties properties;
     /** The mutable copy of the request headers, built the first time a filter asks for it: most
      *  filters never do, and the copy walks every header of the exchange. */
     private MultivaluedMap<String, String> headers;
@@ -102,6 +96,7 @@ public final class CassiniRequestContext implements ContainerRequestContext {
 
     public CassiniRequestContext(CassiniHttpExchange exchange, UriInfo uriInfo) {
         this.exchange = exchange;
+        this.properties = RequestProperties.of(exchange);
         this.httpHeaders = new CassiniHttpHeaders(exchange);
         this.method = exchange.method();
         this.entityStream = exchange.requestBody() == null ? new ByteArrayInputStream(new byte[0])
@@ -140,46 +135,11 @@ public final class CassiniRequestContext implements ContainerRequestContext {
         return h;
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> properties(boolean create) {
-        Object shared = exchange.getAttribute(ATTR_PROPERTIES);
-        if (shared == null && create) {
-            // Contexts of a request run one after the other, so there is no race on the first property.
-            shared = new ConcurrentHashMap<String, Object>();
-            exchange.setAttribute(ATTR_PROPERTIES, shared);
-        }
-        return (Map<String, Object>) shared;
-    }
-
-    /**
-     * Removes a property of the request and returns its value, without building a context: the dispatch asks for
-     * the end-of-request action once the request is over. {@code null} when the request has no such property.
-     */
-    public static Object takeProperty(CassiniHttpExchange exchange, String name) {
-        Object shared = exchange.getAttribute(ATTR_PROPERTIES);
-        return shared instanceof Map<?, ?> properties ? properties.remove(name) : null;
-    }
-
-    @Override public Object getProperty(String name) {
-        Map<String, Object> properties = properties(false);
-        return properties == null ? null : properties.get(name);
-    }
-    @Override public Collection<String> getPropertyNames() {
-        Map<String, Object> properties = properties(false);
-        return properties == null ? Collections.emptySet() : Collections.unmodifiableSet(properties.keySet());
-    }
+    @Override public Object getProperty(String name) { return properties.get(name); }
+    @Override public Collection<String> getPropertyNames() { return properties.names(); }
     /** A {@code null} value removes the property (ContainerRequestContext#setProperty). */
-    @Override public void setProperty(String name, Object value) {
-        if (value == null) {
-            removeProperty(name);
-            return;
-        }
-        properties(true).put(name, value);
-    }
-    @Override public void removeProperty(String name) {
-        Map<String, Object> properties = properties(false);
-        if (properties != null) properties.remove(name);
-    }
+    @Override public void setProperty(String name, Object value) { properties.set(name, value); }
+    @Override public void removeProperty(String name) { properties.remove(name); }
 
     @Override public UriInfo getUriInfo() {
         // §6.6.1: if setRequestUri was called, UriInfo must reflect the

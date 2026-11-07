@@ -59,7 +59,8 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
     private byte[] wholeBody;
     private int wholeOffset;
     private int wholeLength;
-    private final Map<String, Object> attributes = new java.util.HashMap<>();
+    /** Thread-safe, as the SPI promises: the request's virtual thread and the threads of an async response share it. */
+    private final Map<String, Object> attributes = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** Immutable snapshot taken by {@link #openForStreaming} (M2i) — read by the
      *  adapter to build the chunked Chappe response while the dispatch keeps
@@ -415,7 +416,14 @@ public final class ChappeHttpExchange implements CassiniHttpExchange {
         return request.onDisconnect(callback);
     }
 
-    @Override public void setAttribute(String key, Object value) { attributes.put(key, value); }
+    /** A {@code null} value removes the attribute. */
+    @Override public void setAttribute(String key, Object value) {
+        if (value == null) {
+            attributes.remove(key);
+        } else {
+            attributes.put(key, value);
+        }
+    }
 
     /**
      * Reads first from the exchange-local store, then falls back to the

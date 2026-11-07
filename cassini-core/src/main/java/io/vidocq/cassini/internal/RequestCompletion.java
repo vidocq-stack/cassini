@@ -19,7 +19,7 @@
  */
 package io.vidocq.cassini.internal;
 
-import io.vidocq.cassini.internal.filter.CassiniRequestContext;
+import io.vidocq.cassini.internal.filter.RequestProperties;
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 
 /**
@@ -42,7 +42,7 @@ final class RequestCompletion {
      * logged and goes no further: the response is already written.
      */
     static void run(CassiniHttpExchange exchange) {
-        if (CassiniRequestContext.takeProperty(exchange, PROPERTY) instanceof Runnable action) {
+        if (RequestProperties.take(exchange, PROPERTY) instanceof Runnable action) {
             try {
                 action.run();
             } catch (RuntimeException e) {
