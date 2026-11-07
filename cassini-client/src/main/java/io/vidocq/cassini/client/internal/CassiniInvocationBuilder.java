@@ -45,7 +45,6 @@ import jakarta.ws.rs.core.Cookie;
 import jakarta.ws.rs.core.GenericType;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.StreamingOutput;
@@ -76,7 +75,7 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
     private final CassiniClient client;
     private final CassiniClientConfiguration configuration;
     private final URI uri;
-    private final MultivaluedMap<String, Object> headers = new MultivaluedHashMap<>();
+    private final MultivaluedMap<String, Object> headers = ClientHeaders.map();
     /** Request properties, handed to the {@code ClientRequestContext} of each invocation (CASSINI-023). */
     private final Map<String, Object> properties = new HashMap<>();
 
@@ -354,7 +353,7 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
             if (readMs > 0) requestBuilder.timeout(Duration.ofMillis(readMs));
 
             applyHeaders(requestBuilder, reqCtx.getHeaders());
-            applyBody(requestBuilder, reqCtx.getMethod(), reqCtx.getOriginalEntity(), reqCtx.getEntityMediaType());
+            applyBody(requestBuilder, reqCtx);
 
             HttpResponse<byte[]> httpResponse = client.httpClient().send(
                     requestBuilder.build(),
@@ -388,8 +387,12 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
         }
     }
 
-    private void applyBody(HttpRequest.Builder builder, String method, Object entityValue, MediaType mediaType)
-            throws IOException {
+    private void applyBody(HttpRequest.Builder builder, CassiniClientRequestContext reqCtx) throws IOException {
+        String method = reqCtx.getMethod();
+        Object entityValue = reqCtx.getOriginalEntity();
+        MediaType mediaType = reqCtx.getEntityMediaType();
+        // A filter that wrapped the entity stream sees every byte of the entity, a streamed one included.
+        boolean throughFilterStream = reqCtx.entityStreamReplaced();
         if (entityValue == null) {
             builder.method(method, HttpRequest.BodyPublishers.noBody());
             return;
@@ -402,9 +405,15 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
         } else if (entityValue instanceof InputStream in) {
             // Jakarta REST 4.0 §4.2.4: the standard entity providers write an InputStream, a Reader,
             // a File and a StreamingOutput as their content whatever the media type (CASSINI-024).
-            // The stream is handed to the HttpClient as is: a large upload is not buffered.
-            sendStream(builder, method, mediaType, HttpRequest.BodyPublishers.ofInputStream(() -> in));
-            return;
+            // The stream is handed to the HttpClient as is: a large upload is not buffered,
+            // unless a filter wraps the entity stream.
+            if (!throughFilterStream) {
+                sendStream(builder, method, mediaType, HttpRequest.BodyPublishers.ofInputStream(() -> in));
+                return;
+            }
+            try (in) {
+                payload = in.readAllBytes();
+            }
         } else if (entityValue instanceof Reader reader) {
             try (reader) {
                 var text = new StringWriter();
@@ -412,8 +421,11 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
                 payload = text.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
             }
         } else if (entityValue instanceof File file) {
-            sendStream(builder, method, mediaType, HttpRequest.BodyPublishers.ofFile(file.toPath()));
-            return;
+            if (!throughFilterStream) {
+                sendStream(builder, method, mediaType, HttpRequest.BodyPublishers.ofFile(file.toPath()));
+                return;
+            }
+            payload = java.nio.file.Files.readAllBytes(file.toPath());
         } else if (entityValue instanceof StreamingOutput streaming) {
             var buffer = new ByteArrayOutputStream();
             streaming.write(buffer);
@@ -427,6 +439,13 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
                     .getBytes(java.nio.charset.StandardCharsets.UTF_8);
         } else {
             payload = entityValue.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
+
+        if (throughFilterStream) {
+            try (var out = reqCtx.getEntityStream()) {
+                out.write(payload);
+            }
+            payload = reqCtx.bufferedEntity();
         }
 
         if (mediaType != null) {

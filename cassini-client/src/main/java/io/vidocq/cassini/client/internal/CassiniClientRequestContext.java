@@ -19,6 +19,7 @@
  */
 package io.vidocq.cassini.client.internal;
 
+import io.vidocq.cassini.internal.runtime.HeaderValues;
 import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.ClientRequestContext;
 import jakarta.ws.rs.core.Configuration;
@@ -28,6 +29,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 
+import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
@@ -40,6 +42,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Predicate;
 
 /**
@@ -66,6 +69,8 @@ final class CassiniClientRequestContext implements ClientRequestContext {
     private MediaType entityMediaType;
     private final Map<String, Object> properties = new HashMap<>();
     private Response abortResponse;
+    private final ByteArrayOutputStream entityBuffer = new ByteArrayOutputStream();
+    private OutputStream entityStream = entityBuffer;
 
     CassiniClientRequestContext(CassiniClient client, CassiniClientConfiguration configuration, URI uri, String method,
                                  MultivaluedMap<String, Object> headers,
@@ -100,7 +105,7 @@ final class CassiniClientRequestContext implements ClientRequestContext {
 
     @Override
     public MultivaluedMap<String, String> getStringHeaders() {
-        jakarta.ws.rs.core.MultivaluedHashMap<String, String> out = new jakarta.ws.rs.core.MultivaluedHashMap<>();
+        MultivaluedMap<String, String> out = ClientHeaders.map();
         for (var entry : headers.entrySet()) {
             for (Object v : entry.getValue()) {
                 if (v != null) out.add(entry.getKey(), v.toString());
@@ -128,8 +133,8 @@ final class CassiniClientRequestContext implements ClientRequestContext {
         return false;
     }
 
-    @Override public Date getDate() { return null; }
-    @Override public Locale getLanguage() { return null; }
+    @Override public Date getDate() { return HeaderValues.httpDate(headers.getFirst(HttpHeaders.DATE)); }
+    @Override public Locale getLanguage() { return HeaderValues.language(headers); }
     @Override public MediaType getMediaType() { return entityMediaType; }
 
     @Override
@@ -151,7 +156,7 @@ final class CassiniClientRequestContext implements ClientRequestContext {
     }
 
     @Override
-    public Map<String, Cookie> getCookies() { return Map.of(); }
+    public Map<String, Cookie> getCookies() { return ClientHeaders.requestCookies(headers); }
 
     @Override public boolean hasEntity() { return entity != null; }
     @Override public Object getEntity() { return entity; }
@@ -177,13 +182,23 @@ final class CassiniClientRequestContext implements ClientRequestContext {
 
     @Override public Annotation[] getEntityAnnotations() { return entityAnnotations; }
 
-    @Override public OutputStream getEntityStream() {
-        throw new UnsupportedOperationException("getEntityStream not supported in Cassini Client MVP — use getEntity()");
+    /**
+     * The stream the serialised entity is written to: a buffer at first, which the request body is
+     * read from. A filter wraps it (compression, signature, logging...) with
+     * {@link #setEntityStream(OutputStream)}; whatever reaches the buffer through the wrapper is sent.
+     */
+    @Override public OutputStream getEntityStream() { return entityStream; }
+
+    @Override
+    public void setEntityStream(OutputStream outputStream) {
+        this.entityStream = Objects.requireNonNull(outputStream, "outputStream");
     }
 
-    @Override public void setEntityStream(OutputStream outputStream) {
-        throw new UnsupportedOperationException("setEntityStream not supported in Cassini Client MVP");
-    }
+    /** Whether a filter replaced the entity stream, so the entity has to be written through it. */
+    boolean entityStreamReplaced() { return entityStream != entityBuffer; }
+
+    /** The bytes that reached the original entity buffer. */
+    byte[] bufferedEntity() { return entityBuffer.toByteArray(); }
 
     @Override public Client getClient() { return client; }
     @Override public Configuration getConfiguration() { return configuration; }

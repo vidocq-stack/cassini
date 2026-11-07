@@ -65,13 +65,13 @@ final class CassiniClientResponseContext implements ClientResponseContext {
     }
 
     static CassiniClientResponseContext from(HttpResponse<byte[]> response) {
-        MultivaluedMap<String, String> hs = CassiniClientResponse.headerMap();
+        MultivaluedMap<String, String> hs = ClientHeaders.map();
         response.headers().map().forEach((k, vs) -> vs.forEach(v -> hs.add(k, v)));
         return new CassiniClientResponseContext(response.statusCode(), response.body(), hs);
     }
 
     static CassiniClientResponseContext fromAborted(Response response) {
-        MultivaluedMap<String, String> hs = CassiniClientResponse.headerMap();
+        MultivaluedMap<String, String> hs = ClientHeaders.map();
         response.getStringHeaders().forEach((k, vs) -> vs.forEach(v -> hs.add(k, v)));
         Object entity = response.getEntity();
         byte[] body;

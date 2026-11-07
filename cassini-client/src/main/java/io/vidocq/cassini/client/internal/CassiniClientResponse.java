@@ -20,7 +20,6 @@
 package io.vidocq.cassini.client.internal;
 
 import jakarta.ws.rs.ProcessingException;
-import jakarta.ws.rs.core.AbstractMultivaluedMap;
 import jakarta.ws.rs.core.EntityTag;
 import jakarta.ws.rs.core.GenericType;
 import jakarta.ws.rs.core.HttpHeaders;
@@ -39,7 +38,6 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 /**
  * Client-side implementation of {@link Response} — wraps a byte[] body and exposes
@@ -83,15 +81,6 @@ final class CassiniClientResponse extends Response {
     }
 
     /**
-     * A header map whose names compare case-insensitively, as HTTP field names do
-     * (RFC 9110 §5.1): {@code java.net.http} hands them over as the server spelled them,
-     * all lower case over HTTP/2 (CASSINI-019).
-     */
-    static <V> MultivaluedMap<String, V> headerMap() {
-        return new AbstractMultivaluedMap<>(new TreeMap<>(String.CASE_INSENSITIVE_ORDER)) { };
-    }
-
-    /**
      * Builds a {@code CassiniClientResponse} from the data of a
      * {@link CassiniClientResponseContext} after applying the
      * {@code ClientResponseFilter} chain. Headers are already in String form and
@@ -99,7 +88,7 @@ final class CassiniClientResponse extends Response {
      */
     static CassiniClientResponse fromBufferedBody(int status, byte[] body,
                                                     MultivaluedMap<String, String> stringHeaders) {
-        MultivaluedMap<String, Object> h = headerMap();
+        MultivaluedMap<String, Object> h = ClientHeaders.map();
         stringHeaders.forEach((k, vs) -> vs.forEach(v -> h.add(k, v)));
         return new CassiniClientResponse(status, body, h, stringHeaders);
     }
