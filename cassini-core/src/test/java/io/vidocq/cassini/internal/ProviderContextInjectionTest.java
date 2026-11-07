@@ -31,6 +31,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
+import jakarta.ws.rs.container.ContainerResponseContext;
+import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.core.Application;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.UriInfo;
@@ -117,6 +119,18 @@ class ProviderContextInjectionTest {
         }
     }
 
+    /** A response filter that needs its {@code @Context} field (CASSINI-037, cassini#119). */
+    @Provider
+    public static class ResponseRecording implements ContainerResponseFilter {
+        @Context
+        private UriInfo uriInfo;
+
+        @Override
+        public void filter(ContainerRequestContext request, ContainerResponseContext response) {
+            response.getHeaders().putSingle("X-Path", uriInfo == null ? "none" : uriInfo.getPath());
+        }
+    }
+
     private static CassiniStack stack(Class<?>... classes) {
         return new CassiniStackBuilderImpl().application(new Application() {
             @Override
@@ -155,5 +169,15 @@ class ProviderContextInjectionTest {
 
         assertEquals(200, get.status(), get::responseText);
         assertEquals("points", Recording.PATH.get());
+    }
+
+    @Test
+    void theContextFieldsOfAResponseFilterAreInjected() {
+        CassiniStack stack = stack(Points.class, ResponseRecording.class);
+
+        InMemoryExchange get = send(stack, InMemoryExchange.request("GET", "/points", null, null));
+
+        assertEquals(200, get.status(), get::responseText);
+        assertEquals("points", get.responseHeader("X-Path"));
     }
 }

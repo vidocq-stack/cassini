@@ -123,7 +123,11 @@ final class ResponsePipeline {
             boolean applies = route == null
                     ? fe.appliesTo(null, null)
                     : fe.appliesTo(route.javaMethod(), route.beanClass());
-            if (applies) runResponseFilter(fe.instance(), rctx, response);
+            if (applies) {
+                // §9.2: the @Context fields of a response filter, like those of the request filters and providers.
+                host.injectProviderContexts(fe.instance(), null);
+                runResponseFilter(fe.instance(), rctx, response);
+            }
         }
     }
 
