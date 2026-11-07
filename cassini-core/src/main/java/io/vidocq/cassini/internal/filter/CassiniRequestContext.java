@@ -38,10 +38,10 @@ import java.net.URI;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * {@link ContainerRequestContext} implementation backed by a
@@ -59,8 +59,12 @@ public final class CassiniRequestContext implements ContainerRequestContext {
 
     private final CassiniHttpExchange exchange;
     private final CassiniHttpHeaders httpHeaders;
-    /** Built by the first {@link #setProperty}: most requests never set one. */
-    private Map<String, Object> properties;
+    /**
+     * Exchange attribute holding the request's properties: every context built for the request (pre-matching,
+     * post-matching, response) shares them, as the property of a request filter must reach the response filters
+     * (CASSINI-007). Built by the first {@link #setProperty}: most requests never set one.
+     */
+    private static final String ATTR_PROPERTIES = "io.vidocq.cassini.requestProperties";
     /** The mutable copy of the request headers, built the first time a filter asks for it: most
      *  filters never do, and the copy walks every header of the exchange. */
     private MultivaluedMap<String, String> headers;
@@ -136,15 +140,37 @@ public final class CassiniRequestContext implements ContainerRequestContext {
         return h;
     }
 
-    @Override public Object getProperty(String name) { return properties == null ? null : properties.get(name); }
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> properties(boolean create) {
+        Object shared = exchange.getAttribute(ATTR_PROPERTIES);
+        if (shared == null && create) {
+            // Contexts of a request run one after the other, so there is no race on the first property.
+            shared = new ConcurrentHashMap<String, Object>();
+            exchange.setAttribute(ATTR_PROPERTIES, shared);
+        }
+        return (Map<String, Object>) shared;
+    }
+
+    @Override public Object getProperty(String name) {
+        Map<String, Object> properties = properties(false);
+        return properties == null ? null : properties.get(name);
+    }
     @Override public Collection<String> getPropertyNames() {
+        Map<String, Object> properties = properties(false);
         return properties == null ? Collections.emptySet() : Collections.unmodifiableSet(properties.keySet());
     }
+    /** A {@code null} value removes the property (ContainerRequestContext#setProperty). */
     @Override public void setProperty(String name, Object value) {
-        if (properties == null) properties = new HashMap<>();
-        properties.put(name, value);
+        if (value == null) {
+            removeProperty(name);
+            return;
+        }
+        properties(true).put(name, value);
     }
-    @Override public void removeProperty(String name) { if (properties != null) properties.remove(name); }
+    @Override public void removeProperty(String name) {
+        Map<String, Object> properties = properties(false);
+        if (properties != null) properties.remove(name);
+    }
 
     @Override public UriInfo getUriInfo() {
         // §6.6.1: if setRequestUri was called, UriInfo must reflect the
