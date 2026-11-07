@@ -170,7 +170,7 @@ final class ResponsePipeline {
             }
         }
         return writeEntity(entity, rctx.getEntityType() == null ? entity.getClass() : rctx.getEntityType(),
-                rctx.getEntityAnnotations(), mt, rctx.getStatus(), extra, route, exchange);
+                rctx.getEntityAnnotations(), mt, new Head(rctx.getStatus(), extra), route, exchange);
     }
 
     private static CassiniHttpResponse withoutEntity(int status, MultivaluedMap<String, Object> headers) {
@@ -259,7 +259,8 @@ final class ResponsePipeline {
                 return java.util.Objects.requireNonNull(reader).readFrom(type, genericType, anns, ct, headers, in);
             }
             return new CassiniReaderInterceptorContext(rInterceptors,
-                    reader, host.registry(), type, genericType, anns, ct, headers, in, request).proceed();
+                    reader, host.registry(), type, genericType, anns, ct, headers, in)
+                    .shareProperties(request).proceed();
         } catch (NoContentException nce) {
             // §4.2.4: a NoContentException thrown while reading a server request
             // entity MUST be translated into a BadRequestException wrapping it and
@@ -306,14 +307,19 @@ final class ResponsePipeline {
             return fromJaxRs(jr, route, chosen);
         }
         MethodParameters method = MethodParameters.of(route.javaMethod());
-        return writeEntity(result, method.genericReturnType(), method.annotations().clone(), chosen, 200, Map.of(),
-                route, Invoker.currentRequest());
+        return writeEntity(result, method.genericReturnType(), method.annotations().clone(), chosen,
+                new Head(200, Map.of()), route, Invoker.currentRequest());
+    }
+
+    /** The status and the headers the response already has when its entity is written. */
+    private record Head(int status, Map<String, List<String>> headers) {
     }
 
     private CassiniHttpResponse writeEntity(Object entity, Type genericType, Annotation[] anns,
-                                 MediaType chosen, int status,
-                                 Map<String, List<String>> extraHeaders, ResourceMethod route,
+                                 MediaType chosen, Head head, ResourceMethod route,
                                  CassiniHttpExchange exchange) throws IOException {
+        int status = head.status();
+        Map<String, List<String>> extraHeaders = head.headers();
         // §4.2.4: GenericEntity describes a parameterized type; unwrap it and
         // use the effective "raw"/"genericType" for the MBW.
         if (entity instanceof jakarta.ws.rs.core.GenericEntity<?> ge) {
@@ -345,7 +351,8 @@ final class ResponsePipeline {
             MessageBodyRegistry.writeTo(writer, entity, type, genericType, anns, finalMt, outHeaders, bos);
         } else {
             new CassiniWriterInterceptorContext(wInterceptors, writer, host.registry(),
-                    entity, type, genericType, anns, finalMt, outHeaders, bos, exchange).proceed();
+                    entity, type, genericType, anns, finalMt, outHeaders, bos)
+                    .shareProperties(exchange).proceed();
         }
 
         return response(status, finalMt, outHeaders, bos.array(), bos.size());
@@ -387,7 +394,7 @@ final class ResponsePipeline {
         }
         MediaType chosen = jr.getMediaType() != null ? jr.getMediaType() : fallback;
         return writeEntity(entity, entityGenericType(entity, route), writerAnnotations(jr, route),
-                chosen, jr.getStatus(), headers, route, Invoker.currentRequest());
+                chosen, new Head(jr.getStatus(), headers), route, Invoker.currentRequest());
     }
 
     /** §7.2 / §4.2.4: when the method declares a Response return (wrapper), the genericType passed

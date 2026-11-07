@@ -57,6 +57,11 @@ class RequestCompletionTest {
     static final List<String> EVENTS = new CopyOnWriteArrayList<>();
     static final List<Thread> COMPLETED_ON = new CopyOnWriteArrayList<>();
 
+    /** A snapshot of what happened, for the assertions. */
+    private static List<String> events() {
+        return List.copyOf(EVENTS);
+    }
+
     @BeforeAll
     static void runtimeDelegate() {
         RuntimeDelegate.setInstance(new CassiniRuntimeDelegate());
@@ -166,34 +171,34 @@ class RequestCompletionTest {
     void theActionRunsAfterTheEntityIsWritten() {
         InMemoryExchange exchange = get("/done/write", Registers.class);
         assertEquals(200, exchange.status(), exchange::responseText);
-        assertEquals(List.of("written", "completed"), EVENTS);
+        assertEquals(List.of("written", "completed"), events());
     }
 
     @Test
     void theActionRunsWhenNoRouteMatches() {
         InMemoryExchange exchange = get("/done/missing", Registers.class);
         assertEquals(404, exchange.status());
-        assertEquals(List.of("completed"), EVENTS);
+        assertEquals(List.of("completed"), events());
     }
 
     @Test
     void theActionRunsWhenAnUnmappedFailureEndsInA500() {
         InMemoryExchange exchange = get("/done/boom", Registers.class);
         assertEquals(500, exchange.status());
-        assertEquals(List.of("completed"), EVENTS);
+        assertEquals(List.of("completed"), events());
     }
 
     @Test
     void theActionRunsAfterTheMapperOfAFailedWrite() {
         InMemoryExchange exchange = get("/done/write-fails", Registers.class, MapsWriteFailures.class);
-        assertEquals(List.of("written", "mapped", "completed"), EVENTS, exchange::responseText);
+        assertEquals(List.of("written", "mapped", "completed"), events(), exchange::responseText);
     }
 
     @Test
     void theActionRunsWhenTheTransportFailsTheWrite() {
         InMemoryExchange exchange = get("/done/write-io-fails", Registers.class);
         assertEquals(500, exchange.status());
-        assertEquals(List.of("written", "completed"), EVENTS);
+        assertEquals(List.of("written", "completed"), events());
     }
 
     @Test
@@ -201,7 +206,7 @@ class RequestCompletionTest {
         Thread dispatcher = Thread.currentThread();
         InMemoryExchange exchange = get("/done/later", Registers.class);
         assertEquals(200, exchange.status(), exchange::responseText);
-        assertEquals(List.of("resumed", "completed"), EVENTS);
+        assertEquals(List.of("resumed", "completed"), events());
         assertSame(dispatcher, COMPLETED_ON.get(0));
     }
 
@@ -215,6 +220,6 @@ class RequestCompletionTest {
     void anActionThatFailsDoesNotChangeTheResponse() {
         InMemoryExchange exchange = get("/done/write", RegistersAFailingAction.class);
         assertEquals(200, exchange.status(), exchange::responseText);
-        assertEquals(List.of("written"), EVENTS);
+        assertEquals(List.of("written"), events());
     }
 }

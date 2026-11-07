@@ -34,6 +34,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -105,30 +107,16 @@ abstract class VaubanLifetimeScenarios {
         assertFalse(response.body().isBlank(), "the streamed entity is the request token");
     }
 
-    @Test
-    void theScopeEndsOnceWithTheRequestOfAStreamedEntity() throws Exception {
-        int[] counts = scopes("/lifetime/stream", 200);
-        assertEquals(1, counts[0], "started once");
-        assertEquals(1, counts[1], "ended once");
-    }
-
-    @Test
-    void theScopeEndsOnceWhenNoRouteMatches() throws Exception {
-        int[] counts = scopes("/lifetime/missing", 404);
-        assertEquals(1, counts[0], "started once");
-        assertEquals(1, counts[1], "ended once");
-    }
-
-    @Test
-    void theScopeEndsOnceWhenAnUnmappedFailureEndsInA500() throws Exception {
-        int[] counts = scopes("/lifetime/boom", 500);
-        assertEquals(1, counts[0], "started once");
-        assertEquals(1, counts[1], "ended once");
-    }
-
-    @Test
-    void theScopeEndsOnceForAResponseResumedFromAnotherThread() throws Exception {
-        int[] counts = scopes("/lifetime/later", 200);
+    /** Whichever way a request ends, its scope starts once and ends once. */
+    @ParameterizedTest(name = "{0} answers {1}")
+    @CsvSource({
+        "/lifetime/stream,  200",
+        "/lifetime/missing, 404",
+        "/lifetime/boom,    500",
+        "/lifetime/later,   200",
+    })
+    void theScopeEndsOnceWhicheverWayTheRequestEnds(String path, int status) throws Exception {
+        int[] counts = scopes(path, status);
         assertEquals(1, counts[0], "started once");
         assertEquals(1, counts[1], "ended once");
     }
