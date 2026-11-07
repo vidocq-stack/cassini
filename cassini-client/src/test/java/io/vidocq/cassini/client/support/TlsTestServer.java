@@ -94,7 +94,7 @@ public final class TlsTestServer implements AutoCloseable {
         keys.init(store, PASSWORD);
         TrustManagerFactory trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
         trust.init(store);
-        SSLContext context = SSLContext.getInstance("TLS");
+        SSLContext context = SSLContext.getInstance("TLSv1.3");
         context.init(keys.getKeyManagers(), trust.getTrustManagers(), null);
         return context;
     }

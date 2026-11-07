@@ -156,7 +156,7 @@ public final class CassiniClientBuilder extends ClientBuilder {
             }
             TrustManagerFactory trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             trust.init(trustStore);
-            SSLContext context = SSLContext.getInstance("TLS");
+            SSLContext context = SSLContext.getInstance("TLSv1.3");
             context.init(keys, trust.getTrustManagers(), null);
             return context;
         } catch (GeneralSecurityException e) {

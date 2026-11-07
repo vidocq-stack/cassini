@@ -108,7 +108,7 @@ class TlsConfigurationTest {
         try (TlsTestServer server = new TlsTestServer(dir, false)) {
             TrustManagerFactory trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             trust.init(server.keyStore());
-            SSLContext context = SSLContext.getInstance("TLS");
+            SSLContext context = SSLContext.getInstance("TLSv1.3");
             context.init(null, trust.getTrustManagers(), null);
             AtomicReference<String> seen = new AtomicReference<>();
             try (Client client = ClientBuilder.newBuilder().sslContext(context)
