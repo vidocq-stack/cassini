@@ -54,7 +54,7 @@ public final class CassiniClientBuilder extends ClientBuilder {
     @Override
     public ClientBuilder withConfig(Configuration config) {
         if (config instanceof CassiniClientConfiguration ccc) {
-            this.configuration = ccc;
+            this.configuration = ccc.copy();
         } else if (config != null) {
             CassiniClientConfiguration copy = new CassiniClientConfiguration();
             for (String name : config.getPropertyNames()) copy.putProperty(name, config.getProperty(name));
@@ -111,14 +111,14 @@ public final class CassiniClientBuilder extends ClientBuilder {
 
     @Override
     public Client build() {
-        CassiniClient client = new CassiniClient(configuration, sslContext, hostnameVerifier);
+        CassiniClient client = new CassiniClient(configuration.copy(), sslContext, hostnameVerifier);
         // Auto-discovery of jakarta.ws.rs.core.Feature via ServiceLoader:
         // allows third-party modules (humboldt-rest, future OTel/auth/log filters) to
         // self-register without explicit caller intervention. MP Telemetry 2.1
         // requires this behavior for tests that call ClientBuilder.newClient() directly.
-        CassiniClientFeatureContext featureCtx = new CassiniClientFeatureContext(client);
+        CassiniClientFeatureContext featureCtx = new CassiniClientFeatureContext(client.cassiniConfiguration());
         for (Feature feature : ServiceLoader.load(Feature.class, Thread.currentThread().getContextClassLoader())) {
-            if (configuration.isRegistered(feature.getClass())) continue;
+            if (client.cassiniConfiguration().isRegistered(feature.getClass())) continue;
             feature.configure(featureCtx);
         }
         return client;

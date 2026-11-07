@@ -101,7 +101,8 @@ class ClientContextsTest {
                 check(p, "date", null, ctx.getDate());
                 check(p, "language", null, ctx.getLanguage());
                 check(p, "client", true, ctx.getClient() != null);
-                check(p, "configuration", ctx.getClient().getConfiguration(), ctx.getConfiguration());
+                // the request runs on its target's copy of the client configuration: same content, not the same object
+                check(p, "configuration", ctx.getClient().getConfiguration().getClasses(), ctx.getConfiguration().getClasses());
                 problems.set(p.toString());
             });
             assertEquals(200, response.getStatus());

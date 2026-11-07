@@ -83,10 +83,42 @@ final class CassiniClientConfiguration implements Configuration {
         }
     }
 
+    /** An independent copy: registering or setting a property on it never reaches this configuration. */
+    CassiniClientConfiguration copy() {
+        CassiniClientConfiguration c = new CassiniClientConfiguration();
+        c.properties.putAll(properties);
+        c.instancesByClass.putAll(instancesByClass);
+        contracts.forEach((k, v) -> c.contracts.put(k, new HashMap<>(v)));
+        c.enabledFeatures.addAll(enabledFeatures);
+        c.connectTimeoutMs = connectTimeoutMs;
+        c.readTimeoutMs = readTimeoutMs;
+        c.executorService = executorService;
+        return c;
+    }
+
     void registerComponent(Object instance, Map<Class<?>, Integer> componentContracts) {
         if (instance == null) return;
+        if (instance instanceof Feature feature) {
+            registerFeature(feature, componentContracts);
+            return;
+        }
+        store(instance, componentContracts);
+    }
+
+    private void store(Object instance, Map<Class<?>, Integer> componentContracts) {
         instancesByClass.put(instance.getClass(), instance);
         if (componentContracts != null) contracts.put(instance.getClass(), componentContracts);
+    }
+
+    /**
+     * A {@link Feature} is configured when it is registered, against this configuration, and
+     * enabled when {@code configure} returns {@code true} (Jakarta REST 4.0 {@code Feature}).
+     * A feature class already registered is ignored: it is configured once.
+     */
+    private void registerFeature(Feature feature, Map<Class<?>, Integer> componentContracts) {
+        if (instancesByClass.containsKey(feature.getClass())) return;
+        store(feature, componentContracts);
+        if (feature.configure(new CassiniClientFeatureContext(this))) enabledFeatures.add(feature);
     }
 
     void registerComponent(Class<?> componentClass, Map<Class<?>, Integer> componentContracts) {

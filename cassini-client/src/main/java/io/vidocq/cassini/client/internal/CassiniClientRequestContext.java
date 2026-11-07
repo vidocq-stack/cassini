@@ -55,6 +55,7 @@ import java.util.function.Predicate;
 final class CassiniClientRequestContext implements ClientRequestContext {
 
     private final CassiniClient client;
+    private final CassiniClientConfiguration configuration;
     private URI uri;
     private String method;
     private final MultivaluedMap<String, Object> headers;
@@ -66,10 +67,11 @@ final class CassiniClientRequestContext implements ClientRequestContext {
     private final Map<String, Object> properties = new HashMap<>();
     private Response abortResponse;
 
-    CassiniClientRequestContext(CassiniClient client, URI uri, String method,
+    CassiniClientRequestContext(CassiniClient client, CassiniClientConfiguration configuration, URI uri, String method,
                                  MultivaluedMap<String, Object> headers,
                                  Object entity, MediaType entityMediaType) {
         this.client = client;
+        this.configuration = configuration;
         this.uri = uri;
         this.method = method;
         this.headers = headers;
@@ -184,7 +186,7 @@ final class CassiniClientRequestContext implements ClientRequestContext {
     }
 
     @Override public Client getClient() { return client; }
-    @Override public Configuration getConfiguration() { return client.getConfiguration(); }
+    @Override public Configuration getConfiguration() { return configuration; }
 
     @Override
     public void abortWith(Response response) {

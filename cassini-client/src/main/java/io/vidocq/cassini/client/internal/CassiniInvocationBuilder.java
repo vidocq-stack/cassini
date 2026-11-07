@@ -68,13 +68,16 @@ import java.util.Map;
 final class CassiniInvocationBuilder implements Invocation.Builder {
 
     private final CassiniClient client;
+    private final CassiniClientConfiguration configuration;
     private final URI uri;
     private final MultivaluedMap<String, Object> headers = new MultivaluedHashMap<>();
     /** Request properties, handed to the {@code ClientRequestContext} of each invocation (CASSINI-023). */
     private final Map<String, Object> properties = new HashMap<>();
 
-    CassiniInvocationBuilder(CassiniClient client, URI uri, String[] acceptedTypes) {
+    CassiniInvocationBuilder(CassiniClient client, CassiniClientConfiguration configuration, URI uri,
+                             String[] acceptedTypes) {
         this.client = client;
+        this.configuration = configuration;
         this.uri = uri;
         if (acceptedTypes != null && acceptedTypes.length > 0) {
             for (String type : acceptedTypes) headers.add(HttpHeaders.ACCEPT, type);
@@ -277,10 +280,10 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
         MediaType entityMediaType = entity == null ? null : entity.getMediaType();
         Object entityValue = entity == null ? null : entity.getEntity();
         CassiniClientRequestContext reqCtx = new CassiniClientRequestContext(
-                client, uri, method, headers, entityValue, entityMediaType);
+                client, configuration, uri, method, headers, entityValue, entityMediaType);
         properties.forEach(reqCtx::setProperty);
 
-        List<ClientRequestFilter> requestFilters = client.cassiniConfiguration().getRequestFilters();
+        List<ClientRequestFilter> requestFilters = configuration.getRequestFilters();
         for (ClientRequestFilter f : requestFilters) {
             try { f.filter(reqCtx); }
             catch (IOException e) { throw new ProcessingException("ClientRequestFilter " + f.getClass().getName() + " failed", e); }
@@ -294,7 +297,7 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
             respCtx = sendHttp(reqCtx);
         }
 
-        List<ClientResponseFilter> responseFilters = client.cassiniConfiguration().getResponseFilters();
+        List<ClientResponseFilter> responseFilters = configuration.getResponseFilters();
         for (ClientResponseFilter f : responseFilters) {
             try { f.filter(reqCtx, respCtx); }
             catch (IOException e) { throw new ProcessingException("ClientResponseFilter " + f.getClass().getName() + " failed", e); }
@@ -304,7 +307,7 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
         if (response instanceof CassiniClientResponse ccr) {
             // Hand the client's registered providers to the response so readEntity(Pojo)
             // can resolve a ContextResolver<Jsonb> exactly like the request path.
-            ccr.setProviders(client.cassiniConfiguration().getInstances());
+            ccr.setProviders(configuration.getInstances());
         }
         return response;
     }
@@ -312,7 +315,7 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
     private CassiniClientResponseContext sendHttp(CassiniClientRequestContext reqCtx) {
         try {
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(reqCtx.getUri());
-            long readMs = client.cassiniConfiguration().getReadTimeoutMs();
+            long readMs = configuration.getReadTimeoutMs();
             if (readMs > 0) requestBuilder.timeout(Duration.ofMillis(readMs));
 
             applyHeaders(requestBuilder, reqCtx.getHeaders());
@@ -384,7 +387,7 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
             // §4.2.3: serialise a POJO request entity through JSON-B, honouring a
             // registered ContextResolver<Jsonb> — mirrors the server-side MBW.
             var jsonb = ClientEntityJsonb.resolve(
-                    client.cassiniConfiguration().getInstances(), entityValue.getClass(), mediaType);
+                    configuration.getInstances(), entityValue.getClass(), mediaType);
             payload = jsonb.toJson(entityValue, entityValue.getClass())
                     .getBytes(java.nio.charset.StandardCharsets.UTF_8);
         } else {

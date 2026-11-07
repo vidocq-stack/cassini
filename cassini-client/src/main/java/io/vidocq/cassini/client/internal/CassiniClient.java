@@ -71,25 +71,25 @@ final class CassiniClient implements Client {
     @Override
     public WebTarget target(String uri) {
         checkOpen();
-        return new CassiniWebTarget(this, UriBuilder.fromUri(uri), new HashMap<>());
+        return new CassiniWebTarget(this, UriBuilder.fromUri(uri), new HashMap<>(), configuration.copy());
     }
 
     @Override
     public WebTarget target(URI uri) {
         checkOpen();
-        return new CassiniWebTarget(this, UriBuilder.fromUri(uri), new HashMap<>());
+        return new CassiniWebTarget(this, UriBuilder.fromUri(uri), new HashMap<>(), configuration.copy());
     }
 
     @Override
     public WebTarget target(UriBuilder uriBuilder) {
         checkOpen();
-        return new CassiniWebTarget(this, uriBuilder.clone(), new HashMap<>());
+        return new CassiniWebTarget(this, uriBuilder.clone(), new HashMap<>(), configuration.copy());
     }
 
     @Override
     public WebTarget target(Link link) {
         checkOpen();
-        return new CassiniWebTarget(this, UriBuilder.fromLink(link), new HashMap<>());
+        return new CassiniWebTarget(this, UriBuilder.fromLink(link), new HashMap<>(), configuration.copy());
     }
 
     @Override

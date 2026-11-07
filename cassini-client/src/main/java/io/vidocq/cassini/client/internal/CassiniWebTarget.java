@@ -34,11 +34,15 @@ final class CassiniWebTarget implements WebTarget {
     private final CassiniClient client;
     private final UriBuilder uriBuilder;
     private final Map<String, Object> templateValues;
+    /** This target's own configuration: a copy of its parent's, so what is set here stays here. */
+    private final CassiniClientConfiguration configuration;
 
-    CassiniWebTarget(CassiniClient client, UriBuilder uriBuilder, Map<String, Object> templateValues) {
+    CassiniWebTarget(CassiniClient client, UriBuilder uriBuilder, Map<String, Object> templateValues,
+                     CassiniClientConfiguration configuration) {
         this.client = client;
         this.uriBuilder = uriBuilder;
         this.templateValues = templateValues;
+        this.configuration = configuration;
     }
 
     @Override
@@ -50,14 +54,14 @@ final class CassiniWebTarget implements WebTarget {
 
     @Override
     public WebTarget path(String path) {
-        return new CassiniWebTarget(client, uriBuilder.clone().path(path), new HashMap<>(templateValues));
+        return new CassiniWebTarget(client, uriBuilder.clone().path(path), new HashMap<>(templateValues), configuration.copy());
     }
 
     @Override
     public WebTarget resolveTemplate(String name, Object value) {
         Map<String, Object> m = new HashMap<>(templateValues);
         m.put(name, value);
-        return new CassiniWebTarget(client, uriBuilder.clone(), m);
+        return new CassiniWebTarget(client, uriBuilder.clone(), m, configuration.copy());
     }
 
     @Override
@@ -74,7 +78,7 @@ final class CassiniWebTarget implements WebTarget {
     public WebTarget resolveTemplates(Map<String, Object> templateValues) {
         Map<String, Object> m = new HashMap<>(this.templateValues);
         m.putAll(templateValues);
-        return new CassiniWebTarget(client, uriBuilder.clone(), m);
+        return new CassiniWebTarget(client, uriBuilder.clone(), m, configuration.copy());
     }
 
     @Override
@@ -89,45 +93,48 @@ final class CassiniWebTarget implements WebTarget {
 
     @Override
     public WebTarget matrixParam(String name, Object... values) {
-        return new CassiniWebTarget(client, uriBuilder.clone().matrixParam(name, values), new HashMap<>(templateValues));
+        return new CassiniWebTarget(client, uriBuilder.clone().matrixParam(name, values), new HashMap<>(templateValues), configuration.copy());
     }
 
     @Override
     public WebTarget queryParam(String name, Object... values) {
-        return new CassiniWebTarget(client, uriBuilder.clone().queryParam(name, values), new HashMap<>(templateValues));
+        return new CassiniWebTarget(client, uriBuilder.clone().queryParam(name, values), new HashMap<>(templateValues), configuration.copy());
     }
 
     @Override
     public Invocation.Builder request() {
-        return new CassiniInvocationBuilder(client, getUri(), new String[]{MediaType.WILDCARD});
+        return new CassiniInvocationBuilder(client, configuration.copy(), getUri(), new String[]{MediaType.WILDCARD});
     }
 
     @Override
     public Invocation.Builder request(String... acceptedResponseTypes) {
-        return new CassiniInvocationBuilder(client, getUri(), acceptedResponseTypes);
+        return new CassiniInvocationBuilder(client, configuration.copy(), getUri(), acceptedResponseTypes);
     }
 
     @Override
     public Invocation.Builder request(MediaType... acceptedResponseTypes) {
         String[] s = new String[acceptedResponseTypes.length];
         for (int i = 0; i < acceptedResponseTypes.length; i++) s[i] = acceptedResponseTypes[i].toString();
-        return new CassiniInvocationBuilder(client, getUri(), s);
+        return new CassiniInvocationBuilder(client, configuration.copy(), getUri(), s);
     }
 
-    @Override public Configuration getConfiguration() { return client.getConfiguration(); }
+    @Override public Configuration getConfiguration() { return configuration; }
 
     @Override
     public WebTarget property(String name, Object value) {
-        client.property(name, value);
+        configuration.putProperty(name, value);
         return this;
     }
 
-    @Override public WebTarget register(Class<?> componentClass) { client.register(componentClass); return this; }
-    @Override public WebTarget register(Class<?> componentClass, int priority) { client.register(componentClass, priority); return this; }
-    @Override public WebTarget register(Class<?> componentClass, Class<?>... contracts) { client.register(componentClass, contracts); return this; }
-    @Override public WebTarget register(Class<?> componentClass, Map<Class<?>, Integer> contracts) { client.register(componentClass, contracts); return this; }
-    @Override public WebTarget register(Object component) { client.register(component); return this; }
-    @Override public WebTarget register(Object component, int priority) { client.register(component, priority); return this; }
-    @Override public WebTarget register(Object component, Class<?>... contracts) { client.register(component, contracts); return this; }
-    @Override public WebTarget register(Object component, Map<Class<?>, Integer> contracts) { client.register(component, contracts); return this; }
+    /** Registration goes through the feature context: one code path for contracts and features. */
+    private CassiniClientFeatureContext registrar() { return new CassiniClientFeatureContext(configuration); }
+
+    @Override public WebTarget register(Class<?> componentClass) { registrar().register(componentClass); return this; }
+    @Override public WebTarget register(Class<?> componentClass, int priority) { registrar().register(componentClass, priority); return this; }
+    @Override public WebTarget register(Class<?> componentClass, Class<?>... contracts) { registrar().register(componentClass, contracts); return this; }
+    @Override public WebTarget register(Class<?> componentClass, Map<Class<?>, Integer> contracts) { registrar().register(componentClass, contracts); return this; }
+    @Override public WebTarget register(Object component) { registrar().register(component); return this; }
+    @Override public WebTarget register(Object component, int priority) { registrar().register(component, priority); return this; }
+    @Override public WebTarget register(Object component, Class<?>... contracts) { registrar().register(component, contracts); return this; }
+    @Override public WebTarget register(Object component, Map<Class<?>, Integer> contracts) { registrar().register(component, contracts); return this; }
 }

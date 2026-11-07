@@ -19,35 +19,33 @@
  */
 package io.vidocq.cassini.client.internal;
 
-import jakarta.ws.rs.client.Client;
+import jakarta.ws.rs.Priorities;
 import jakarta.ws.rs.core.Configuration;
 import jakarta.ws.rs.core.FeatureContext;
 
 import java.util.Map;
 
 /**
- * {@link FeatureContext} adapter that delegates all
- * {@code register}/{@code property} operations to the target {@link Client} — used by
- * {@link CassiniClient#build()} to invoke
- * {@link jakarta.ws.rs.core.Feature#configure(FeatureContext)} on each Feature
- * discovered via {@link java.util.ServiceLoader}.
+ * {@link FeatureContext} over a {@link CassiniClientConfiguration}: what a
+ * {@link jakarta.ws.rs.core.Feature} registers or sets lands in the configuration the feature
+ * was registered on (the client's, the builder's or a target's), never in another one.
  */
 final class CassiniClientFeatureContext implements FeatureContext {
 
-    private final Client client;
+    private final CassiniClientConfiguration configuration;
 
-    CassiniClientFeatureContext(Client client) { this.client = client; }
+    CassiniClientFeatureContext(CassiniClientConfiguration configuration) { this.configuration = configuration; }
 
-    @Override public Configuration getConfiguration() { return client.getConfiguration(); }
+    @Override public Configuration getConfiguration() { return configuration; }
 
-    @Override public FeatureContext property(String name, Object value) { client.property(name, value); return this; }
+    @Override public FeatureContext property(String name, Object value) { configuration.putProperty(name, value); return this; }
 
-    @Override public FeatureContext register(Class<?> componentClass) { client.register(componentClass); return this; }
-    @Override public FeatureContext register(Class<?> componentClass, int priority) { client.register(componentClass, priority); return this; }
-    @Override public FeatureContext register(Class<?> componentClass, Class<?>... contracts) { client.register(componentClass, contracts); return this; }
-    @Override public FeatureContext register(Class<?> componentClass, Map<Class<?>, Integer> contracts) { client.register(componentClass, contracts); return this; }
-    @Override public FeatureContext register(Object component) { client.register(component); return this; }
-    @Override public FeatureContext register(Object component, int priority) { client.register(component, priority); return this; }
-    @Override public FeatureContext register(Object component, Class<?>... contracts) { client.register(component, contracts); return this; }
-    @Override public FeatureContext register(Object component, Map<Class<?>, Integer> contracts) { client.register(component, contracts); return this; }
+    @Override public FeatureContext register(Class<?> componentClass) { configuration.registerComponent(componentClass, null); return this; }
+    @Override public FeatureContext register(Class<?> componentClass, int priority) { configuration.registerComponent(componentClass, CassiniClientConfiguration.contractsOf(componentClass, priority)); return this; }
+    @Override public FeatureContext register(Class<?> componentClass, Class<?>... contracts) { configuration.registerComponent(componentClass, CassiniClientConfiguration.contractsOf(contracts, Priorities.USER)); return this; }
+    @Override public FeatureContext register(Class<?> componentClass, Map<Class<?>, Integer> contracts) { configuration.registerComponent(componentClass, contracts); return this; }
+    @Override public FeatureContext register(Object component) { configuration.registerComponent(component, null); return this; }
+    @Override public FeatureContext register(Object component, int priority) { configuration.registerComponent(component, CassiniClientConfiguration.contractsOf(component.getClass(), priority)); return this; }
+    @Override public FeatureContext register(Object component, Class<?>... contracts) { configuration.registerComponent(component, CassiniClientConfiguration.contractsOf(contracts, Priorities.USER)); return this; }
+    @Override public FeatureContext register(Object component, Map<Class<?>, Integer> contracts) { configuration.registerComponent(component, contracts); return this; }
 }
