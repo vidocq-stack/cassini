@@ -122,6 +122,17 @@ class CassiniRequestTest {
     }
 
     @Test
+    void if_match_uses_the_strong_comparison_so_a_weak_tag_never_matches() {
+        // RFC 9110 §13.1.1 (CASSINI-017, cassini#118): a weak tag on either side fails If-Match.
+        EntityTag weakA = new EntityTag("a", true);
+        assertEquals(412, status(request(PUT, IF_MATCH, "W/\"a\"").evaluatePreconditions(weakA)));
+        assertEquals(412, status(request(PUT, IF_MATCH, "W/\"a\"").evaluatePreconditions(A)));
+        assertEquals(412, status(request(PUT, IF_MATCH, TAG_A).evaluatePreconditions(weakA)));
+        assertNull(request(PUT, IF_MATCH, "W/\"a\", \"a\"").evaluatePreconditions(A));
+        assertNull(request(PUT, IF_MATCH, "*").evaluatePreconditions(weakA));
+    }
+
+    @Test
     void if_none_match_answers_304_to_a_safe_method_and_412_otherwise() {
         // RFC 9110 §13.1.2: 304 for GET/HEAD, 412 for any other method; weak comparison.
         assertEquals(304, status(request(GET, IF_NONE_MATCH, TAG_A).evaluatePreconditions(A)));
