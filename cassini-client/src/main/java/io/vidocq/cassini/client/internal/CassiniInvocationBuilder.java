@@ -59,6 +59,7 @@ import java.io.StringWriter;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -391,67 +392,72 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
         String method = reqCtx.getMethod();
         Object entityValue = reqCtx.getOriginalEntity();
         MediaType mediaType = reqCtx.getEntityMediaType();
-        // A filter that wrapped the entity stream sees every byte of the entity, a streamed one included.
-        boolean throughFilterStream = reqCtx.entityStreamReplaced();
         if (entityValue == null) {
             builder.method(method, HttpRequest.BodyPublishers.noBody());
             return;
         }
-        byte[] payload;
-        if (entityValue instanceof byte[] b) {
-            payload = b;
-        } else if (entityValue instanceof String s) {
-            payload = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        } else if (entityValue instanceof InputStream in) {
-            // Jakarta REST 4.0 §4.2.4: the standard entity providers write an InputStream, a Reader,
-            // a File and a StreamingOutput as their content whatever the media type (CASSINI-024).
-            // The stream is handed to the HttpClient as is: a large upload is not buffered,
-            // unless a filter wraps the entity stream.
-            if (!throughFilterStream) {
-                sendStream(builder, method, mediaType, HttpRequest.BodyPublishers.ofInputStream(() -> in));
+        // A filter that wrapped the entity stream sees every byte of the entity, a streamed one included.
+        boolean throughFilterStream = reqCtx.entityStreamReplaced();
+        if (!throughFilterStream) {
+            HttpRequest.BodyPublisher streamed = streamingPublisher(entityValue);
+            if (streamed != null) {
+                sendStream(builder, method, mediaType, streamed);
                 return;
             }
-            try (in) {
-                payload = in.readAllBytes();
-            }
-        } else if (entityValue instanceof Reader reader) {
-            try (reader) {
-                var text = new StringWriter();
-                reader.transferTo(text);
-                payload = text.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            }
-        } else if (entityValue instanceof File file) {
-            if (!throughFilterStream) {
-                sendStream(builder, method, mediaType, HttpRequest.BodyPublishers.ofFile(file.toPath()));
-                return;
-            }
-            payload = java.nio.file.Files.readAllBytes(file.toPath());
-        } else if (entityValue instanceof StreamingOutput streaming) {
-            var buffer = new ByteArrayOutputStream();
-            streaming.write(buffer);
-            payload = buffer.toByteArray();
-        } else if (ClientEntityJsonb.isJson(mediaType) && !ClientEntityJsonb.isSimple(entityValue.getClass())) {
-            // §4.2.3: serialise a POJO request entity through JSON-B, honouring a
-            // registered ContextResolver<Jsonb> — mirrors the server-side MBW.
-            var jsonb = ClientEntityJsonb.resolve(
-                    configuration.getInstances(), entityValue.getClass(), mediaType);
-            payload = jsonb.toJson(entityValue, entityValue.getClass())
-                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        } else {
-            payload = entityValue.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
         }
-
+        byte[] payload = entityBytes(entityValue, mediaType);
         if (throughFilterStream) {
             try (var out = reqCtx.getEntityStream()) {
                 out.write(payload);
             }
             payload = reqCtx.bufferedEntity();
         }
-
         if (mediaType != null) {
             builder.header(HttpHeaders.CONTENT_TYPE, mediaType.toString());
         }
         builder.method(method, HttpRequest.BodyPublishers.ofByteArray(payload));
+    }
+
+    /**
+     * Jakarta REST 4.0 §4.2.4: the standard entity providers write an {@code InputStream} as its
+     * content whatever the media type (CASSINI-024). It is handed to the {@code HttpClient} as is,
+     * so a large upload is not buffered; {@code null} for any other entity (a {@code File} is read in full).
+     */
+    private static HttpRequest.BodyPublisher streamingPublisher(Object entityValue) {
+        if (entityValue instanceof InputStream in) return HttpRequest.BodyPublishers.ofInputStream(() -> in);
+        return null;
+    }
+
+    /** The bytes of an entity, whatever its type (a stream or a file is read in full). */
+    private byte[] entityBytes(Object entityValue, MediaType mediaType) throws IOException {
+        if (entityValue instanceof byte[] b) return b;
+        if (entityValue instanceof String s) return s.getBytes(StandardCharsets.UTF_8);
+        if (entityValue instanceof InputStream in) {
+            try (in) {
+                return in.readAllBytes();
+            }
+        }
+        if (entityValue instanceof Reader reader) {
+            try (reader) {
+                var text = new StringWriter();
+                reader.transferTo(text);
+                return text.toString().getBytes(StandardCharsets.UTF_8);
+            }
+        }
+        if (entityValue instanceof File file) return java.nio.file.Files.readAllBytes(file.toPath());
+        if (entityValue instanceof StreamingOutput streaming) {
+            var buffer = new ByteArrayOutputStream();
+            streaming.write(buffer);
+            return buffer.toByteArray();
+        }
+        if (ClientEntityJsonb.isJson(mediaType) && !ClientEntityJsonb.isSimple(entityValue.getClass())) {
+            // §4.2.3: serialise a POJO request entity through JSON-B, honouring a
+            // registered ContextResolver<Jsonb> — mirrors the server-side MBW.
+            var jsonb = ClientEntityJsonb.resolve(
+                    client.cassiniConfiguration().getInstances(), entityValue.getClass(), mediaType);
+            return jsonb.toJson(entityValue, entityValue.getClass()).getBytes(StandardCharsets.UTF_8);
+        }
+        return entityValue.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     private static void sendStream(HttpRequest.Builder builder, String method, MediaType mediaType,

@@ -140,7 +140,7 @@ class RequestContextTest {
     void getCookies_reads_the_cookie_header() {
         AtomicReference<Map<String, Cookie>> cookies = new AtomicReference<>();
         send(ctx -> cookies.set(ctx.getCookies()),
-                b -> b.cookie("a", "1").cookie(new Cookie("b", "2")).header("Cookie", "c=3; d=4"), null);
+                b -> b.cookie("a", "1").cookie(new Cookie.Builder("b").value("2").build()).header("Cookie", "c=3; d=4"), null);
         Map<String, Cookie> seen = cookies.get();
         assertNotNull(seen);
         assertEquals(4, seen.size());
@@ -148,6 +148,16 @@ class RequestContextTest {
         assertEquals("2", seen.get("b").getValue());
         assertEquals("3", seen.get("c").getValue());
         assertEquals("4", seen.get("d").getValue());
+    }
+
+    @Test
+    void getCookies_returns_a_cookie_object_added_by_a_filter() {
+        AtomicReference<Map<String, Cookie>> cookies = new AtomicReference<>();
+        send(ctx -> {
+            ctx.getHeaders().add("Cookie", new Cookie.Builder("z").value("9").build());
+            cookies.set(ctx.getCookies());
+        }, b -> { }, null);
+        assertEquals("9", cookies.get().get("z").getValue());
     }
 
     @Test

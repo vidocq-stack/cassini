@@ -58,16 +58,20 @@ final class ClientHeaders {
             if (value instanceof Cookie cookie) {
                 out.put(cookie.getName(), cookie);
             } else if (value != null) {
-                for (String pair : value.toString().split(";")) {
-                    int eq = pair.indexOf('=');
-                    String name = (eq < 0 ? pair : pair.substring(0, eq)).trim();
-                    // $Version, $Path, $Domain: RFC 2109 attributes of the cookie before them, not cookies.
-                    if (name.isEmpty() || name.charAt(0) == '$') continue;
-                    String cookieValue = eq < 0 ? "" : pair.substring(eq + 1).trim();
-                    out.put(name, new Cookie.Builder(name).value(cookieValue).build());
-                }
+                parsePairs(value.toString(), out);
             }
         }
         return out;
+    }
+
+    private static void parsePairs(String header, Map<String, Cookie> into) {
+        for (String pair : header.split(";")) {
+            int eq = pair.indexOf('=');
+            String name = (eq < 0 ? pair : pair.substring(0, eq)).trim();
+            // $Version, $Path, $Domain: RFC 2109 attributes of the cookie before them, not cookies.
+            if (name.isEmpty() || name.charAt(0) == '$') continue;
+            String cookieValue = eq < 0 ? "" : pair.substring(eq + 1).trim();
+            into.put(name, new Cookie.Builder(name).value(cookieValue).build());
+        }
     }
 }
