@@ -383,7 +383,7 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Fix**: a provider whose class declares no injectable field (`InjectableFields.declaredBy`, read once per class, as for resources) is not injected and gets no adapter. A provider with `@Context` fields keeps its build-time adapter, or the run-time one as before (cassini#100, option 3, still open).
 
 ## CASSINI-037 — The `@Context` fields of a response filter are not injected
-- **Date**: 2026-10-30 — **Status**: OPEN
+- **Date**: 2026-10-30 — **Status**: FIXED c423a55 (cassini#119, `fix/response-filter-context`; `ProviderContextInjectionTest`). `ResponsePipeline` now calls `injectProviderContexts` before each response filter
 - **Severity**: to assess (§9.2: the `@Context` fields of every provider are injected).
 - **Symptom**: a `ContainerResponseFilter` with `@Context private UriInfo uriInfo` sees `null` in `filter(request, response)`, on the in-memory stack. Post-matching request filters, readers and writers are injected (`Invoker.injectProviderContexts`); response filters do not go through it.
 - **Minimal repro**: a response filter putting `uriInfo == null ? "none" : uriInfo.getPath()` in a header answers `none` (found while writing `ProviderContextInjectionTest`).
