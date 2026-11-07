@@ -281,7 +281,7 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   6. `register(Class, int priority)` / `register(Object, int)` take the contracts from `getInterfaces()` of the class itself: a provider that inherits its interface from a superclass gets no contract.
   7. `ClientRequestContext.getEntityStream()` / `setEntityStream()` throw `UnsupportedOperationException`; `getCookies()`, `getDate()`, `getLanguage()` ignore the headers; the request header names are case-sensitive. `ClientResponseContext` and the client `Response` ignore `Set-Cookie`, `Date`, `Link`, `ETag`, `Allow` and `Last-Modified`.
   8. Several cookies are joined into one `Cookie` header with `", "`; RFC 6265 §5.4 uses `"; "`. **Fixed b0d772b** (cassini#120, `fix/client-cookie-separator`).
-  9. An `InputStream` entity with a JSON media type is sent through its `toString()`.
+  9. An `InputStream` entity is sent through its `toString()` (or, with a JSON media type, serialised by JSON-B as an object). The same defect hit `Reader` (sent as `{}`), `StreamingOutput` (`{}`) and `File` (`StackOverflowError` in JSON-B). **Fixed** (cassini#120, `fix/client-inputstream-entity`): the four standard entity types of Jakarta REST 4.0 §4.2.4 are written as their content whatever the media type; an `InputStream` and a `File` are streamed to the `HttpClient`, not buffered. Test: `StreamEntityTest` (6 cases, all red before the fix).
 - **Minimal repro**: per item, through `ClientBuilder.newClient()` against `RecordingServer` (cassini-client tests).
 
 ## CASSINI-025 — An annotation value with a newline or another control character breaks the APT-generated adapter

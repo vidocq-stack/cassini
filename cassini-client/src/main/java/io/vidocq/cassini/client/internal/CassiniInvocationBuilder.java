@@ -47,9 +47,15 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.StreamingOutput;
 import jakarta.ws.rs.ext.RuntimeDelegate;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.Reader;
+import java.io.StringWriter;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -344,7 +350,8 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
         }
     }
 
-    private void applyBody(HttpRequest.Builder builder, String method, Object entityValue, MediaType mediaType) {
+    private void applyBody(HttpRequest.Builder builder, String method, Object entityValue, MediaType mediaType)
+            throws IOException {
         if (entityValue == null) {
             builder.method(method, HttpRequest.BodyPublishers.noBody());
             return;
@@ -354,6 +361,25 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
             payload = b;
         } else if (entityValue instanceof String s) {
             payload = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        } else if (entityValue instanceof InputStream in) {
+            // Jakarta REST 4.0 §4.2.4: the standard entity providers write an InputStream, a Reader,
+            // a File and a StreamingOutput as their content whatever the media type (CASSINI-024).
+            // The stream is handed to the HttpClient as is: a large upload is not buffered.
+            sendStream(builder, method, mediaType, HttpRequest.BodyPublishers.ofInputStream(() -> in));
+            return;
+        } else if (entityValue instanceof Reader reader) {
+            try (reader) {
+                var text = new StringWriter();
+                reader.transferTo(text);
+                payload = text.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            }
+        } else if (entityValue instanceof File file) {
+            sendStream(builder, method, mediaType, HttpRequest.BodyPublishers.ofFile(file.toPath()));
+            return;
+        } else if (entityValue instanceof StreamingOutput streaming) {
+            var buffer = new ByteArrayOutputStream();
+            streaming.write(buffer);
+            payload = buffer.toByteArray();
         } else if (ClientEntityJsonb.isJson(mediaType) && !ClientEntityJsonb.isSimple(entityValue.getClass())) {
             // §4.2.3: serialise a POJO request entity through JSON-B, honouring a
             // registered ContextResolver<Jsonb> — mirrors the server-side MBW.
@@ -369,6 +395,14 @@ final class CassiniInvocationBuilder implements Invocation.Builder {
             builder.header(HttpHeaders.CONTENT_TYPE, mediaType.toString());
         }
         builder.method(method, HttpRequest.BodyPublishers.ofByteArray(payload));
+    }
+
+    private static void sendStream(HttpRequest.Builder builder, String method, MediaType mediaType,
+                                   HttpRequest.BodyPublisher publisher) {
+        if (mediaType != null) {
+            builder.header(HttpHeaders.CONTENT_TYPE, mediaType.toString());
+        }
+        builder.method(method, publisher);
     }
 
     private static boolean isRestricted(String name) {
