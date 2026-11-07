@@ -109,6 +109,13 @@ class InvocationBuilderHeadersTest {
     }
 
     @Test
+    void several_cookies_are_joined_with_a_semicolon() {
+        // RFC 6265 §5.4 (CASSINI-024 item 8, cassini#120): "; " between cookie pairs, never ", ".
+        assertEquals("a=1; b=2", sent(request().cookie("a", "1").cookie("b", "2"), HttpHeaders.COOKIE));
+        assertEquals("fr-FR, en-US", sent(request().acceptLanguage(Locale.FRANCE, Locale.US), HttpHeaders.ACCEPT_LANGUAGE));
+    }
+
+    @Test
     void cache_control_is_sent() {
         CacheControl cc = new CacheControl();
         cc.setNoCache(true);
