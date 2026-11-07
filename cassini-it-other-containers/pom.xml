@@ -26,6 +26,7 @@
 
     <modules>
         <module>cassini-it-weld</module>
+        <module>cassini-it-vauban</module>
     </modules>
 
     <build>

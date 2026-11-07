@@ -23,8 +23,6 @@ import io.vidocq.vauban.core.container.VaubanContainer;
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
-import jakarta.ws.rs.container.ContainerResponseContext;
-import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.container.PreMatching;
 import jakarta.ws.rs.ext.Provider;
 
@@ -40,31 +38,29 @@ import jakarta.ws.rs.ext.Provider;
  * transparent to the user: any {@code CassiniStack} built on top of a current
  * Vauban container has the filter active.</p>
  *
- * <p>Priorities:</p>
- * <ul>
- *   <li>{@link ContainerRequestFilter} {@code @PreMatching} + {@code Integer.MIN_VALUE}:
- *       runs before any other filter (auth, tracing, etc.) — the scope must be
- *       active BEFORE other filters can inject {@code @RequestScoped} beans.</li>
- *   <li>{@link ContainerResponseFilter} {@code Integer.MAX_VALUE}: runs last —
- *       deactivates the scope once all response filters have had a chance to
- *       access request-scoped beans.</li>
- * </ul>
+ * <p>A {@link ContainerRequestFilter} {@code @PreMatching} + {@code Integer.MIN_VALUE}: it runs
+ * before any other filter (auth, tracing, etc.) — the scope must be active BEFORE other filters
+ * can inject {@code @RequestScoped} beans.</p>
  *
- * <p><strong>Flush exception note</strong>: if an exception escapes the resource AND
- * is not mapped by an {@code ExceptionMapper} returning a Response, the response
- * filter may not be called depending on the container.
- * Cassini Invoker guarantees that response filters are called even through an
- * ExceptionMapper (cf. M6d.6 / HumboldtSpanFinalizer), so {@code deactivate()} is
- * always executed in practice. If that contract is ever violated, the RequestContext
- * remains "active" on the current virtual thread — since VTs are created per request,
- * the leak is bounded to the VT lifetime (ended after the request).</p>
+ * <p><strong>The scope ends with the request, not with the response filters.</strong> The filter
+ * hands the request an end-of-request action ({@value #REQUEST_COMPLETED}), and Cassini runs it
+ * once the dispatch is over: after the response filters, after the entity is written (a
+ * {@code MessageBodyWriter}, a {@code WriterInterceptor} or a {@code StreamingOutput} can still
+ * use a {@code @RequestScoped} bean), and on every path — a match, a 404 or 405, a mapped or
+ * unmapped failure, a failed write, an async response resumed from another thread. The scope is
+ * therefore always deactivated, and a test proves it (cassini#116).</p>
+ *
+ * <p>The filter is inert when the scope is already active on the thread — the Vidocq runtime
+ * binds one around each request ({@code RequestContext#runInScope}) and ends it itself: it
+ * neither activates a second time nor deactivates a scope that is not its own.</p>
  */
 @Provider
 @PreMatching
 @Priority(Integer.MIN_VALUE)
-public final class VaubanRequestScopeFilter implements ContainerRequestFilter, ContainerResponseFilter {
+public final class VaubanRequestScopeFilter implements ContainerRequestFilter {
 
-    private static final String SCOPE_ACTIVE_PROPERTY = "io.vidocq.cassini.cdi.vauban.requestScopeActive";
+    /** The request property Cassini reads at the end of the dispatch: a {@link Runnable}. */
+    static final String REQUEST_COMPLETED = "io.vidocq.cassini.requestCompleted";
 
     private final VaubanContainer container;
 
@@ -83,15 +79,24 @@ public final class VaubanRequestScopeFilter implements ContainerRequestFilter, C
 
     @Override
     public void filter(ContainerRequestContext requestContext) {
-        container.requestContext().activate();
-        requestContext.setProperty(SCOPE_ACTIVE_PROPERTY, Boolean.TRUE);
+        var scope = container.requestContext();
+        if (scope.isActive()) {
+            return;
+        }
+        scope.activate();
+        Runnable end = scope::deactivate;
+        Object previous = requestContext.getProperty(REQUEST_COMPLETED);
+        requestContext.setProperty(REQUEST_COMPLETED, previous instanceof Runnable other ? after(end, other) : end);
     }
 
-    @Override
-    public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
-        if (Boolean.TRUE.equals(requestContext.getProperty(SCOPE_ACTIVE_PROPERTY))) {
-            container.requestContext().deactivate();
-            requestContext.removeProperty(SCOPE_ACTIVE_PROPERTY);
-        }
+    /** Both actions run, the scope first, even when one of them fails. */
+    private static Runnable after(Runnable first, Runnable second) {
+        return () -> {
+            try {
+                first.run();
+            } finally {
+                second.run();
+            }
+        };
     }
 }
