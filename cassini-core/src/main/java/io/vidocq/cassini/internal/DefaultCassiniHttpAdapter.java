@@ -124,7 +124,7 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
             } catch (IOException _) {
                 // The transport cannot take the error either: it answers its own 500.
             }
-        } catch (Error e) {
+        } catch (Error e) { // NOSONAR java:S1181 - rethrown at once: only noted, for RequestCompletion to keep it first
             pending = e;
             throw e;
         } finally {

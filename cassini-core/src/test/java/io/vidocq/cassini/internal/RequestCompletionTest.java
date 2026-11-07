@@ -284,16 +284,18 @@ class RequestCompletionTest {
         List<java.util.logging.LogRecord> records = new CopyOnWriteArrayList<>();
         java.util.logging.Handler handler = new java.util.logging.Handler() {
             @Override
-            public void publish(java.util.logging.LogRecord record) {
-                records.add(record);
+            public void publish(java.util.logging.LogRecord entry) {
+                records.add(entry);
             }
 
             @Override
             public void flush() {
+                // nothing is buffered
             }
 
             @Override
             public void close() {
+                // nothing is held
             }
         };
         logger.addHandler(handler);

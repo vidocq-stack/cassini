@@ -57,7 +57,7 @@ final class RequestCompletion {
                 action.run();
             } catch (RuntimeException e) {
                 LOG.log(System.Logger.Level.WARNING, "An end-of-request action failed", e);
-            } catch (Error e) {
+            } catch (Error e) { // NOSONAR java:S1181 - never swallowed: attached to the one in flight, or rethrown
                 LOG.log(System.Logger.Level.ERROR, "An end-of-request action failed with an error", e);
                 if (pending == null) throw e;
                 pending.addSuppressed(e);
