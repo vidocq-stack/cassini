@@ -25,7 +25,11 @@ import jakarta.ws.rs.core.Configuration;
 import jakarta.ws.rs.core.Feature;
 
 import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.KeyManager;
+import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
+import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.util.Map;
 import java.util.ServiceLoader;
@@ -45,6 +49,9 @@ public final class CassiniClientBuilder extends ClientBuilder {
 
     private CassiniClientConfiguration configuration = new CassiniClientConfiguration();
     private SSLContext sslContext;
+    private KeyStore keyStore;
+    private char[] keyStorePassword;
+    private KeyStore trustStore;
     private HostnameVerifier hostnameVerifier;
 
     public CassiniClientBuilder() {
@@ -66,17 +73,27 @@ public final class CassiniClientBuilder extends ClientBuilder {
 
     @Override
     public ClientBuilder sslContext(SSLContext sslContext) {
+        // ClientBuilder.sslContext: setting a context resets the key and trust stores set before.
         this.sslContext = sslContext;
+        this.keyStore = null;
+        this.keyStorePassword = null;
+        this.trustStore = null;
         return this;
     }
 
     @Override
     public ClientBuilder keyStore(KeyStore keyStore, char[] password) {
+        // ClientBuilder.keyStore: setting a key store resets the SSL context set before.
+        this.sslContext = null;
+        this.keyStore = keyStore;
+        this.keyStorePassword = password == null ? null : password.clone();
         return this;
     }
 
     @Override
     public ClientBuilder trustStore(KeyStore trustStore) {
+        this.sslContext = null;
+        this.trustStore = trustStore;
         return this;
     }
 
@@ -111,7 +128,7 @@ public final class CassiniClientBuilder extends ClientBuilder {
 
     @Override
     public Client build() {
-        CassiniClient client = new CassiniClient(configuration.copy(), sslContext, hostnameVerifier);
+        CassiniClient client = new CassiniClient(configuration.copy(), tlsContext(), hostnameVerifier);
         // Auto-discovery of jakarta.ws.rs.core.Feature via ServiceLoader:
         // allows third-party modules (humboldt-rest, future OTel/auth/log filters) to
         // self-register without explicit caller intervention. MP Telemetry 2.1
@@ -122,6 +139,29 @@ public final class CassiniClientBuilder extends ClientBuilder {
             feature.configure(featureCtx);
         }
         return client;
+    }
+
+    /**
+     * The SSL context the client uses: the one given to the builder, else one built from the key
+     * and trust stores (the JDK default material for a store that was not given), else none.
+     */
+    private SSLContext tlsContext() {
+        if (sslContext != null || (keyStore == null && trustStore == null)) return sslContext;
+        try {
+            KeyManager[] keys = null;
+            if (keyStore != null) {
+                KeyManagerFactory factory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+                factory.init(keyStore, keyStorePassword);
+                keys = factory.getKeyManagers();
+            }
+            TrustManagerFactory trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trust.init(trustStore);
+            SSLContext context = SSLContext.getInstance("TLS");
+            context.init(keys, trust.getTrustManagers(), null);
+            return context;
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Cannot build the SSL context from the key and trust stores", e);
+        }
     }
 
     @Override
