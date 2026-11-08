@@ -270,7 +270,7 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Fix**: `putProperty` removes on `null`; the invocation builder keeps its own properties and copies them into the request context of each invocation.
 
 ## CASSINI-024 — Client API gaps left open after the coverage pass
-- **Date**: 2026-10-27 — **Status**: FIXED, pending the merge of the cassini#120 pull requests (item 2: `scheduledExecutorService` accepted but unused, Cassini schedules nothing) (found while covering `cassini-client` with unit tests; each item is larger than a test-first fix of this pass, so the tests leave them out instead of asserting the current behaviour)
+- **Date**: 2026-10-27 — **Status**: FIXED and merged (cassini#120, closed 2026-11-08: #125, #126, #127, #128, #129, #130, #131, #132, #133) (item 2: `scheduledExecutorService` accepted but unused, Cassini schedules nothing) (found while covering `cassini-client` with unit tests; each item is larger than a test-first fix of this pass, so the tests leave them out instead of asserting the current behaviour)
 - **Severity**: low to medium, by item. None of them fails the official TCK run (2670 run, 0 failures, 131 skipped).
 - **Items**:
   1. `Invocation.Builder.rx()` and `rx(Class)` throw `UnsupportedOperationException`; `rx()` is mandatory (a `CompletionStageRxInvoker`). **Fixed** (cassini#120, `fix/client-rx`): `CassiniRxInvoker` (a `CompletionStageRxInvoker` on the client's executor, virtual threads by default); `rx(Class)` returns the built-in one or asks a registered `RxInvokerProvider` (`IllegalStateException` otherwise); test `RxInvokerTest`.
