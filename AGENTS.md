@@ -2,6 +2,14 @@
 
 Contributor guidance for agents working on this repository. See also the companion `CLAUDE.md` file.
 
+## Architecture rules
+
+The test-only module `cassini-architecture-tests` (Vidocq/vidocq#289) runs the shared `vidocq-archrules` library of
+`vidocq-parent` (test scope, brings ArchUnit, never shipped) on the classes of every shipped module: allowed
+dependencies per module, layers, no `ThreadLocal`, no platform-thread pool, and no reflection outside
+`ArchitectureRules.REFLECTIVE_FALLBACKS`. A class that must reflect is added there with its documented reason; never
+loosen a rule. See `CLAUDE.md` and the Reference page.
+
 ## Documentation (Antora) conventions
 
 The project documentation lives in `docs/en` as an Antora component and is

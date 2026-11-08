@@ -118,6 +118,12 @@ Classpath JARs → write into `target/classes`. Java Modules named-module → fa
 3. **TCK 2535/2535 is a contract** — every modification to `cassini-core` must preserve this score; run the TCK before committing structural changes.
 4. **`cassini-tck/pom.xml` stays on Model 4.0.0** — do not switch to 4.1.0 until ShrinkWrap is updated.
 
+5. **Architecture rules are tests** (Vidocq/vidocq#289): the test-only module `cassini-architecture-tests` runs the
+   rules of the shared `vidocq-archrules` library of `vidocq-parent` (test scope; it brings ArchUnit, Apache-2.0,
+   never shipped) on the classes of every shipped module: allowed dependencies per module, layers, no `ThreadLocal`,
+   no platform-thread pool, no reflection outside `ArchitectureRules.REFLECTIVE_FALLBACKS`. A class that must
+   reflect is added there **with its reason** from the documented residual reflection; never loosen a rule.
+
 ## Conventions
 
 - **Explicit Java modules**: all modules have a `module-info.java`.

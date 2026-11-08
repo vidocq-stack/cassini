@@ -39,6 +39,9 @@ Factual reference: published Maven artefacts, exported Java modules, supported J
 
 | `io.vidocq.cassini:cassini-examples-*`
 | Examples: `cassini-examples-chappe` (standard SE-Bootstrap), `cassini-examples-jdkhttp` (direct CassiniStack), `cassini-examples-vauban` (CDI + SE-Bootstrap).
+
+| `io.vidocq.cassini:cassini-architecture-tests`
+| **Test only**, never released. Runs Cassini's architecture rules on the classes of every shipped module: allowed dependencies per module (the Jakarta APIs it implements or reads, `cassini-api`, nothing else), layering (`cassini-api` never depends on `cassini-core`; `cassini-core` reaches no transport, no CDI container and no other brick), no `ThreadLocal`, no platform-thread pool, and no reflection outside a list of documented fallbacks, each with its reason (the residual reflection described in xref:internals.adoc#_documented_residual_reflection[Documented residual reflection], plus the JAX-RS generic-type model). The rules come from `io.vidocq:vidocq-archrules`, the shared build and test library of `vidocq-parent`, in test scope; it brings ArchUnit (Apache-2.0), also test scope. `cassini-maven-plugin`, a build tool that runs inside Maven, is not part of the analysed classes.
 |===
 
 NOTE: `cassini-tck` is not published; it is an **in-reactor module gated behind the `tck` Maven profile** — a plain `mvn install` neither downloads nor runs anything TCK-related. See xref:tck.adoc#runner-out-of-reactor[TCK — runner architecture].

@@ -124,6 +124,8 @@
              and therefore could never be depended on from a clean runner (cassini#36). -->
         <module>cassini-testing</module>
         <module>cassini-examples</module>
+        <!-- Test only, never released: the architecture rules on the shipped classes (Vidocq/vidocq#289). -->
+        <module>cassini-architecture-tests</module>
     </modules>
 
     <dependencyManagement>
