@@ -48,11 +48,9 @@ public final class CassiniAsyncResponseImpl implements AsyncResponse {
     private static final ScheduledExecutorService SCHEDULER;
 
     static {
-        SCHEDULER = Executors.newScheduledThreadPool(1, r -> {
-            Thread t = new Thread(r, "cassini-async-timeout");
-            t.setDaemon(true);
-            return t;
-        });
+        // A virtual thread (always a daemon): the timeout handler is application code and may block, and the
+        // workspace rule is virtual threads for every task (Vidocq/vidocq#289).
+        SCHEDULER = Executors.newScheduledThreadPool(1, Thread.ofVirtual().name("cassini-async-timeout").factory());
     }
 
     private final CompletableFuture<Object> future = new CompletableFuture<>();
