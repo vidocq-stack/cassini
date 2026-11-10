@@ -29,8 +29,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link AsyncContextPropagator} against a test double of the OpenTelemetry {@code Context}
@@ -44,11 +44,11 @@ class AsyncContextPropagatorTest {
         Context caller = new Context("caller");
         AtomicReference<String> seen = new AtomicReference<>();
         AtomicReference<String> after = new AtomicReference<>();
-        try (io.opentelemetry.context.Scope _ = caller.makeCurrent()) {
+        try (var _ = caller.makeCurrent()) {
             Object captured = AsyncContextPropagator.capture();
             assertSame(caller, captured);
             Thread async = Thread.ofVirtual().start(() -> {
-                try (AsyncContextPropagator.Scope _ = AsyncContextPropagator.activate(captured)) {
+                try (var _ = AsyncContextPropagator.activate(captured)) {
                     seen.set(Context.current().name());
                 }
                 after.set(Context.current().name());
@@ -61,7 +61,7 @@ class AsyncContextPropagatorTest {
 
     @Test
     void a_null_capture_activates_nothing() {
-        try (AsyncContextPropagator.Scope _ = AsyncContextPropagator.activate(null)) {
+        try (var _ = AsyncContextPropagator.activate(null)) {
             assertEquals("root", Context.current().name());
         }
         assertNotNull(AsyncContextPropagator.capture());
@@ -70,7 +70,7 @@ class AsyncContextPropagatorTest {
     @Test
     void the_lookup_is_done_once_not_on_each_call() {
         for (Field field : AsyncContextPropagator.class.getDeclaredFields()) {
-            assertTrue(field.getType() != Method.class, field + " would reflect on each call");
+            assertNotSame(Method.class, field.getType(), field + " would reflect on each call");
         }
         long handles = java.util.Arrays.stream(AsyncContextPropagator.class.getDeclaredFields())
                 .filter(f -> f.getType() == MethodHandle.class)

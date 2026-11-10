@@ -74,7 +74,7 @@ final class AsyncContextPropagator {
     /** Captures the current OTel Context if available; otherwise {@code null}. */
     static Object capture() {
         if (CONTEXT_CURRENT == null) return null;
-        try { return (Object) CONTEXT_CURRENT.invokeExact(); }
+        try { return CONTEXT_CURRENT.invokeExact(); }
         catch (Throwable _) { return null; }
     }
 
@@ -94,7 +94,7 @@ final class AsyncContextPropagator {
     static Scope activate(Object captured) {
         if (captured == null || CONTEXT_MAKE_CURRENT == null) return NOOP;
         try {
-            Object scope = (Object) CONTEXT_MAKE_CURRENT.invokeExact(captured);
+            Object scope = CONTEXT_MAKE_CURRENT.invokeExact(captured);
             if (scope instanceof AutoCloseable ac) return () -> closeQuietly(ac);
             return NOOP;
         } catch (Throwable _) {
