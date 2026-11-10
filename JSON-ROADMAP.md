@@ -9,8 +9,9 @@
 >   ERROR is `JSONBSigTest.signatureTest` (binary signature, `.sig` file not distributed in the TCK 3.0.0 ZIP). The 2 previous CDI ERRORs have been resolved (M7.16 spec §5 + M7.17 split creator/property — see TCK.md).
 > - **Jakarta REST 4.0 TCK on Cassini with Champollion**: 2535/2670 PASS
 >   (0 FAIL, 0 ERROR, 135 SKIP) — **nominal score preserved** after all Champollion changes (M7.16/M7.17 CDI, P6.1/P6.2 runtime perf, P10.1/P10.2 parser refactor, P9 parser pool).
-> - **Champollion benchmarks**: measured figures are recorded in dated entries of
->   `champollion/BENCH.md`; no ranking against other implementations is claimed.
+> - **Champollion vs Yasson/Parsson/Jackson benchmark**: see
+>   `champollion/BENCH.md`. Champollion is competitive with Yasson on binding
+>   (~1× on write, +28% on read MEDIUM), 2.5–3× slower than Parsson on JSON-P streaming (P1/P2 optimization track open).
 >
 > The sections below are preserved as a **historical archive** of the motivations that led to Champollion. The two originally planned modules `cassini-jsonb` and `cassini-jsonp` are replaced by Champollion (factorization: reusable generic JSON implementation outside Cassini).
 
