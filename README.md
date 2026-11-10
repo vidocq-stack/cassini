@@ -24,13 +24,11 @@
 
 Cassini is a complete implementation of **Jakarta RESTful Web Services 4.0** (Core Profile / SE-Bootstrap) designed to be embedded in Java SE servers. It is **transport-agnostic**: the JAX-RS engine does not depend on any particular HTTP server — transport is plugged in through a lightweight SPI.
 
-| | Jersey 4 | RESTEasy | **Cassini** |
-|---|---|---|---|
-| Transport | Grizzly/Jetty | Undertow | **SPI pluggable (Chappe, JDK HTTP, ...)** |
-| CDI | HK2 bridge | Integrated Weld | **Optional — `BeanProvider` SPI (`cassini-cdi-vauban`, ...) or none** |
-| Java Modules | Partial | No | **Native (`module-info.java` complete)** |
-| SE-Bootstrap | Via Grizzly | No | **Native** |
-| JDK minimum | 17 | 11 | **25** |
+- **Transport**: pluggable through an SPI (Chappe, JDK HTTP, ...).
+- **CDI**: optional, through the `BeanProvider` SPI (`cassini-cdi-vauban`, ...), or none.
+- **Java Modules**: native (`module-info.java` complete).
+- **SE-Bootstrap**: native.
+- **JDK minimum**: 25.
 
 Cassini is the REST engine of the [Vidocq](https://codefloe.com/Vidocq/vidocq) ecosystem.
 
