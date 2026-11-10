@@ -19,7 +19,9 @@
  */
 package io.vidocq.cassini.client.internal;
 
-import java.lang.reflect.Method;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 
 /**
  * Propagates the {@code io.opentelemetry.context.Context} between the caller thread and the
@@ -34,23 +36,34 @@ import java.lang.reflect.Method;
  * <p>Why: without this propagation, the CLIENT span created by
  * {@code HumboldtClientRequestFilter} in the async thread would not have the current SERVER span
  * as parent — the span chain would be broken. Pattern aligned with
- * {@code io.opentelemetry.context.Context.taskWrapping(Executor)} but using reflection to
- * decouple cassini.</p>
+ * {@code io.opentelemetry.context.Context.taskWrapping(Executor)} but resolving the two methods
+ * by name, once, into {@link MethodHandle}s held in {@code static final} fields (no reflection
+ * on the calls, and the JIT can inline the handles) to decouple cassini.</p>
  */
 final class AsyncContextPropagator {
 
-    private static final Method CONTEXT_CURRENT;
-    private static final Method CONTEXT_MAKE_CURRENT;
+    /** {@code Context.current()} as {@code ()Object}, or {@code null} without OpenTelemetry. */
+    private static final MethodHandle CONTEXT_CURRENT;
+    /** {@code Context.makeCurrent()} as {@code (Object)Object}, or {@code null} without OpenTelemetry. */
+    private static final MethodHandle CONTEXT_MAKE_CURRENT;
 
     static {
-        Method current = null;
-        Method makeCurrent = null;
+        MethodHandle current = null;
+        MethodHandle makeCurrent = null;
         try {
             Class<?> ctxClass = Class.forName("io.opentelemetry.context.Context");
-            current = ctxClass.getMethod("current");
-            makeCurrent = ctxClass.getMethod("makeCurrent");
-        } catch (ReflectiveOperationException | LinkageError _) {
+            // Reflection assumes readability between Java Modules, a lookup does not: this module
+            // does not require OpenTelemetry, so it reads it explicitly once it is found.
+            AsyncContextPropagator.class.getModule().addReads(ctxClass.getModule());
+            MethodHandles.Lookup lookup = MethodHandles.lookup();
+            current = lookup.unreflect(ctxClass.getMethod("current"))
+                    .asType(MethodType.methodType(Object.class));
+            makeCurrent = lookup.unreflect(ctxClass.getMethod("makeCurrent"))
+                    .asType(MethodType.methodType(Object.class, Object.class));
+        } catch (ReflectiveOperationException | LinkageError | RuntimeException _) {
             // OTel context not available — propagation no-op
+            current = null;
+            makeCurrent = null;
         }
         CONTEXT_CURRENT = current;
         CONTEXT_MAKE_CURRENT = makeCurrent;
@@ -61,8 +74,8 @@ final class AsyncContextPropagator {
     /** Captures the current OTel Context if available; otherwise {@code null}. */
     static Object capture() {
         if (CONTEXT_CURRENT == null) return null;
-        try { return CONTEXT_CURRENT.invoke(null); }
-        catch (ReflectiveOperationException | RuntimeException _) { return null; }
+        try { return (Object) CONTEXT_CURRENT.invokeExact(); }
+        catch (Throwable _) { return null; }
     }
 
     /** A scope whose {@code close()} throws no checked exception. */
@@ -81,10 +94,10 @@ final class AsyncContextPropagator {
     static Scope activate(Object captured) {
         if (captured == null || CONTEXT_MAKE_CURRENT == null) return NOOP;
         try {
-            Object scope = CONTEXT_MAKE_CURRENT.invoke(captured);
+            Object scope = (Object) CONTEXT_MAKE_CURRENT.invokeExact(captured);
             if (scope instanceof AutoCloseable ac) return () -> closeQuietly(ac);
             return NOOP;
-        } catch (ReflectiveOperationException | RuntimeException _) {
+        } catch (Throwable _) {
             return NOOP;
         }
     }
