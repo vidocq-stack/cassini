@@ -497,3 +497,22 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   stops); `cassini-client` registers its own reset through the new `CassiniMaintenance.onReset(Runnable)`. The next
   JSON request builds a `Jsonb` for the layer then current. Champollion's later-layer lookup (champollion#82) stays
   as a safety net, and the reflective paths are unchanged.
+
+## CASSINI-045 — The server reads request header names case-sensitively: `authorization` in lower case gets a 401
+- **Date**: 2026-11-13 — **Status**: FIXED (fix/request-headers-case-insensitive)
+- **Severity**: high. HTTP field names are case-insensitive (RFC 9110 §5.1), and HTTP/2 sends them all in lower case;
+  a filter looking up `Authorization` missed an `authorization` header, so a token sent that way was never read.
+- **Symptom**: the tutorial replay (Vidocq): `curl -H "authorization: Bearer $T"` on a resource Cervantes protects
+  answers 401, `-H "Authorization: Bearer $T"` answers 200; Cervantes' `JwtAuthenticationFilter` reads the token with
+  `ContainerRequestContext#getHeaderString(AUTHORIZATION)`. `HttpHeaders#getHeaderString` was right (it asks the
+  exchange by name); `ContainerRequestContext#getHeaderString`, `#getHeaders`, `HttpHeaders#getRequestHeaders` and
+  the headers handed to a `MessageBodyReader` were not.
+- **Minimal repro**: `CassiniRequestContextTest.headerNamesAreCaseInsensitiveWhateverCaseTheClientSent`,
+  `CassiniHttpHeadersTest.request_headers_are_read_case_insensitively` (`getRequestHeaders().get("x-a")`) and
+  `CassiniResponseContextTest.header_strings_are_read_case_insensitively`, red before the fix.
+- **Cause**: `CassiniRequestContext`, `CassiniHttpHeaders.getRequestHeaders` and `MessageBodyRegistry.adaptExchangeHeaders`
+  each copied the exchange headers into a `MultivaluedHashMap`, keyed by the spelling the client sent. On the response
+  side, `CassiniResponseContext.getHeaderString` and `getStringHeaders` did the same, while its `containsHeaderString`
+  already ignored the case. The client side had the same flaw (CASSINI-019).
+- **Fix**: `HeaderMaps` builds the request header maps over a `TreeMap` ordered by `String.CASE_INSENSITIVE_ORDER`,
+  as `cassini-client` does; the three copies use it, and the response context looks a header up ignoring the case.

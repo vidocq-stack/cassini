@@ -20,13 +20,13 @@
 package io.vidocq.cassini.internal.filter;
 
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
+import io.vidocq.cassini.internal.HeaderMaps;
 import io.vidocq.cassini.internal.MediaTypes;
 import io.vidocq.cassini.internal.context.CassiniHttpHeaders;
 import io.vidocq.cassini.internal.context.CassiniSecurityContext;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.core.Cookie;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.SecurityContext;
@@ -115,18 +115,10 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     public String currentMethod() { return method; }
     public URI currentRequestUri() { return requestUri != null ? requestUri : exchange.requestUri(); }
 
-    private static MultivaluedMap<String, String> buildHeaders(CassiniHttpExchange exchange) {
-        MultivaluedMap<String, String> m = new MultivaluedHashMap<>();
-        for (var e : exchange.requestHeaders().entrySet()) {
-            for (String v : e.getValue()) m.add(e.getKey(), v);
-        }
-        return m;
-    }
-
     private MultivaluedMap<String, String> headers() {
         MultivaluedMap<String, String> h = headers;
         if (h == null) {
-            h = buildHeaders(exchange);
+            h = HeaderMaps.copyOf(exchange.requestHeaders());
             headers = h;
         }
         return h;
@@ -173,14 +165,7 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     }
 
     @Override public boolean containsHeaderString(String n, String sep, java.util.function.Predicate<String> p) {
-        // §6.7.4 : recherche case-insensitive (RFC 7230).
-        MultivaluedMap<String, String> all = headers();
-        List<String> vs = all.get(n);
-        if (vs == null) {
-            for (var e : all.entrySet()) {
-                if (e.getKey().equalsIgnoreCase(n)) { vs = e.getValue(); break; }
-            }
-        }
+        List<String> vs = headers().get(n);
         if (vs == null) return false;
         for (String v : vs) for (String tok : v.split(sep)) if (p.test(tok.trim())) return true;
         return false;

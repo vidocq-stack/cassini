@@ -664,17 +664,6 @@ public final class MessageBodyRegistry {
         return "text".equalsIgnoreCase(ty) && "xml".equalsIgnoreCase(st);
     }
 
-    /** Builds a MultivaluedMap<String, String> from the headers of an exchange. */
-    public static MultivaluedMap<String, String> adaptExchangeHeaders(java.util.Map<String, java.util.List<String>> headers) {
-        MultivaluedMap<String, String> m = new MultivaluedHashMap<>();
-        if (headers != null) {
-            for (var e : headers.entrySet()) {
-                for (String v : e.getValue()) m.add(e.getKey(), v);
-            }
-        }
-        return m;
-    }
-
     /** Utilitaire : force un MultivaluedMap<String, Object> pour sortie MBW. */
     public static MultivaluedMap<String, Object> outHeaders() {
         return new MultivaluedHashMap<>();

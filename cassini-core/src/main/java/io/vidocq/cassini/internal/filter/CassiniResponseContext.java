@@ -19,6 +19,7 @@
  */
 package io.vidocq.cassini.internal.filter;
 
+import io.vidocq.cassini.internal.HeaderMaps;
 import io.vidocq.cassini.internal.MediaTypes;
 import io.vidocq.cassini.internal.runtime.HeaderValues;
 import io.vidocq.cassini.internal.runtime.StatusCodes;
@@ -98,14 +99,14 @@ public final class CassiniResponseContext implements ContainerResponseContext {
     @Override public MultivaluedMap<String, Object> getHeaders() { return headers; }
 
     @Override public MultivaluedMap<String, String> getStringHeaders() {
-        MultivaluedMap<String, String> m = new MultivaluedHashMap<>();
+        MultivaluedMap<String, String> m = HeaderMaps.caseInsensitive();
         for (var e : headers.entrySet()) for (Object v : e.getValue()) m.add(e.getKey(), headerToString(v));
         return m;
     }
 
     @Override public String getHeaderString(String name) {
-        java.util.List<Object> v = headers.get(name);
-        if (v == null || v.isEmpty()) return null;
+        java.util.List<Object> v = caseInsensitiveLookup(name);
+        if (v.isEmpty()) return null;
         java.util.StringJoiner joined = new java.util.StringJoiner(",");
         for (Object o : v) joined.add(headerToString(o));
         return joined.toString();

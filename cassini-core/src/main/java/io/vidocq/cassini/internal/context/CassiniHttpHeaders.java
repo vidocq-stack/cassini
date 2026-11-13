@@ -19,12 +19,12 @@
  */
 package io.vidocq.cassini.internal.context;
 
+import io.vidocq.cassini.internal.HeaderMaps;
 import io.vidocq.cassini.internal.MediaTypes;
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
 import jakarta.ws.rs.core.Cookie;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 
 import java.text.SimpleDateFormat;
@@ -68,11 +68,7 @@ public final class CassiniHttpHeaders implements HttpHeaders {
     }
 
     @Override public MultivaluedMap<String, String> getRequestHeaders() {
-        MultivaluedMap<String, String> m = new MultivaluedHashMap<>();
-        for (var e : exchange.requestHeaders().entrySet()) {
-            for (String v : e.getValue()) m.add(e.getKey(), v);
-        }
-        return m;
+        return HeaderMaps.copyOf(exchange.requestHeaders());
     }
 
     @Override public List<MediaType> getAcceptableMediaTypes() {

@@ -66,6 +66,8 @@ class CassiniHttpHeadersTest {
         assertEquals("1,2", h.getHeaderString("X-A"));
         assertNull(h.getHeaderString("X-None"));
         assertEquals(List.of("1", "2"), h.getRequestHeaders().get("X-A"));
+        // CASSINI-045: the map of all the headers is case-insensitive too.
+        assertEquals(List.of("1", "2"), h.getRequestHeaders().get("x-a"));
     }
 
     @Test

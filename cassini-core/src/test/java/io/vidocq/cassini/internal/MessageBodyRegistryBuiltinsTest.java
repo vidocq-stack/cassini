@@ -220,13 +220,6 @@ class MessageBodyRegistryBuiltinsTest {
     }
 
     @Test
-    void exchange_headers_are_adapted_to_a_multivalued_map() {
-        MultivaluedMap<String, String> m = MessageBodyRegistry.adaptExchangeHeaders(Map.of("A", List.of("1", "2")));
-        assertEquals(List.of("1", "2"), m.get("A"));
-        assertTrue(MessageBodyRegistry.adaptExchangeHeaders(null).isEmpty());
-    }
-
-    @Test
     void primitive_types_are_boxed_for_provider_selection() {
         assertEquals(Boolean.class, MessageBodyRegistry.box(boolean.class));
         assertEquals(Byte.class, MessageBodyRegistry.box(byte.class));

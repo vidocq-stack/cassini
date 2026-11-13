@@ -157,6 +157,14 @@ class CassiniResponseContextTest {
     }
 
     @Test
+    void header_strings_are_read_case_insensitively() {
+        // CASSINI-045: getHeaderString finds a header whatever the case it was set with, as containsHeaderString does.
+        ContainerResponseContext c = context("X-M", "a", 1);
+        assertEquals("a,1", c.getHeaderString("x-m"));
+        assertEquals(List.of("a", "1"), c.getStringHeaders().get("x-m"));
+    }
+
+    @Test
     void allowed_methods_are_upper_cased() {
         assertEquals(Set.of(), empty().getAllowedMethods());
         assertEquals(Set.of("GET", "POST"), context("Allow", "get, Post").getAllowedMethods());

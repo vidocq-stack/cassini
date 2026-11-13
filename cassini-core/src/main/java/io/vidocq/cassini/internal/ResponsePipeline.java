@@ -226,7 +226,7 @@ final class ResponsePipeline {
         Class<?> type = p.type();
         Type genericType = p.genericType();
         Annotation[] anns = p.annotations();
-        MultivaluedMap<String, String> headers = MessageBodyRegistry.adaptExchangeHeaders(request.requestHeaders());
+        MultivaluedMap<String, String> headers = HeaderMaps.copyOf(request.requestHeaders());
 
         @SuppressWarnings({"rawtypes", "unchecked"})
         MessageBodyReader reader = host.registry().findReader(type, genericType, anns, ct).orElse(null);

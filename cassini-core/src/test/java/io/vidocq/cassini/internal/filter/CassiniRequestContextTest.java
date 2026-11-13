@@ -120,6 +120,19 @@ class CassiniRequestContextTest {
     }
 
     @Test
+    void headerNamesAreCaseInsensitiveWhateverCaseTheClientSent() {
+        // CASSINI-045. RFC 9110 §5.1: header names are case-insensitive, and HTTP/2 sends them in lower case.
+        // A filter reading "Authorization" must find an "authorization" header, or the request gets a 401.
+        var context = context(get().header("authorization", "Bearer t"));
+
+        assertEquals("Bearer t", context.getHeaderString("Authorization"));
+        assertEquals(List.of("Bearer t"), context.getHeaders().get("AUTHORIZATION"));
+        context.getHeaders().putSingle("x-added", "yes");
+        assertEquals("yes", context.getHeaderString("X-Added"));
+        assertEquals(List.of("yes"), context.getHeaders().get("X-ADDED"));
+    }
+
+    @Test
     void preMatchingFiltersMayChangeTheMethodUriEntityAndSecurity() {
         var exchange = get();
         var context = context(exchange);
