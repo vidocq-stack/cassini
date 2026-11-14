@@ -82,6 +82,15 @@ public class NotFoundExceptionMapper implements ExceptionMapper<NotFoundExceptio
 }
 ----
 
+[#unmapped-exceptions]
+=== Exceptions no mapper handles [.tag-new]#NEW#
+
+An exception, or an error, that a resource method, a filter, a writer or an asynchronous response ends with, and that no `ExceptionMapper` handles (Jakarta REST §3.3.4), answers `500` with an empty body and no `Content-Type`. The response never carries the exception's message or class: they may hold SQL, file paths or request values. Cassini logs the failure at `ERROR` on the logger `io.vidocq.cassini.internal.DefaultCassiniHttpAdapter`, with its message and stack trace.
+
+A `WebApplicationException` is answered with its own response, and a mapper's response is sent as the mapper built it: to give the client a body, map the exception, or a superclass of it.
+
+Behaviour change:: Up to {release-version}, this `500` was `text/plain` and carried the exception's message (for an `Error`, its class and message): a duplicate insert sent the database's `duplicate key value violates unique constraint` text and the duplicated key to the client (CASSINI-046).
+
 [#unreadable-entities]
 == Unreadable request entities
 

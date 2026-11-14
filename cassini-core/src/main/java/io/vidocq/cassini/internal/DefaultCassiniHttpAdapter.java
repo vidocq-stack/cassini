@@ -114,16 +114,11 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
             });
         } catch (Exception e) {
             if (stats != null) stats.end(start, 500);
+            // §3.3.4: no mapper handled the failure. The log keeps its message and stack trace; the client gets a
+            // bare 500, as from the transports, because a message may carry SQL, file paths or request values
+            // (CWE-209, CASSINI-046).
             LOG.log(System.Logger.Level.ERROR, "Cassini dispatch error", e);
-            try {
-                byte[] body = (e.getMessage() == null ? "Internal Server Error" : e.getMessage())
-                        .getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                exchange.setStatus(500);
-                exchange.responseHeaders().put(CONTENT_TYPE, List.of("text/plain;charset=utf-8"));
-                exchange.writeResponseBody(body);
-            } catch (IOException _) {
-                // The transport cannot take the error either: it answers its own 500.
-            }
+            exchange.setStatus(500);
         } catch (Error e) { // NOSONAR java:S1181 - rethrown at once: only noted, for RequestCompletion to keep it first
             pending = e;
             throw e;

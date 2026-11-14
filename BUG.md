@@ -516,3 +516,30 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   already ignored the case. The client side had the same flaw (CASSINI-019).
 - **Fix**: `HeaderMaps` builds the request header maps over a `TreeMap` ordered by `String.CASE_INSENSITIVE_ORDER`,
   as `cassini-client` does; the three copies use it, and the response context looks a header up ignoring the case.
+
+## CASSINI-046 — An unmapped exception answers a 500 whose body is the exception's message
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/unmapped-error-body)
+- **Severity**: high. Information disclosure (CWE-209): any failure no `ExceptionMapper` handles sent its message to
+  the client, in every mode; a persistence error carries SQL text and the values of the request.
+- **Symptom**: the tutorial replay (Vidocq, 0.4.0-SNAPSHOT, `prod` mode): a resource method throwing
+  `new AssertionError("boom from a handler")` answers `500` with the body `java.lang.AssertionError: boom from a
+  handler`; a duplicate insert answers `500` with `EntityExistsException: ERROR: duplicate key value violates unique
+  constraint "books_isbn_key"` and the SQL detail `Key (isbn)=(9780321349606) already exists.` The failure was logged
+  at `ERROR` (`Cassini dispatch error`), as it should be.
+- **Minimal repro**: `UnmappedFailureResponseTest` (cassini-core): an unmapped `RuntimeException`, an `Error` and a
+  checked exception thrown by a resource method, an `AsyncResponse` resumed with an exception or an `Error`, a failed
+  `CompletionStage`, a `MessageBodyWriter` that throws, an SSE method that throws, a sub-resource reached through a
+  dynamic locator, a `WebApplicationException` without a response, and `Invoker.renderThrowable`: all red before the
+  fix, on the body.
+- **Cause**: `DefaultCassiniHttpAdapter.dispatch` answered every exception that reached it with a `text/plain` 500
+  whose body was `e.getMessage()`. An `Error` reaches it too: `Invoker.handleResourceThrowable` (and
+  `Invocation.fail` for an asynchronous result, `DynamicLocatorDispatch.asException` for a locator) wraps any
+  `Throwable` that is not an `Exception` in `new IllegalStateException(cause)`, whose message is `cause.toString()`,
+  hence `java.lang.AssertionError: …`. `Invoker.renderThrowable` and `renderWebAppException` wrote the message the
+  same way, for a failure without a mapper or a response of its own.
+- **Fix**: the three answer a bare `500`: no body, no `Content-Type`, as the Chappe and JDK transports answer theirs
+  (CASSINI-005, CASSINI-006) and as an unmapped `WebApplicationException` without an entity is answered. The log line
+  keeps the message and the stack trace. A `WebApplicationException`'s own response and a mapper's response are
+  unchanged. The wrapping of an `Error` stays: Cassini acts as the container of §3.3.4 and answers the 500 itself.
+  Rethrown as it is, the `Error` would reach code that catches exceptions only (`JdkHttpAdapter`, the inline dispatch
+  of `ChappeHttpAdapter`, Chappe's `HttpConnection.dispatch`), where nothing turns it into a 500.

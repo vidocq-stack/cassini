@@ -922,7 +922,7 @@ public final class Invoker {
     /** §3.7.2 / §4.4: renders a response for an exception outside the scope of
      *  resolution (no MatchResult — typically 404/405 from the bridge).
      *  Checks application ExceptionMappers first; otherwise returns the
-     *  Response carried by the WAE, or a default 500. */
+     *  Response carried by the WAE, or a bare 500 (CASSINI-046). */
     public CassiniHttpResponse renderThrowable(Throwable t) throws IOException {
         return RequestScope.call(() -> renderThrowableInScope(t));
     }
@@ -939,13 +939,7 @@ public final class Invoker {
             if (t instanceof WebApplicationException wae && wae.getResponse() != null) {
                 return fromJaxRs(wae.getResponse(), null, MediaType.WILDCARD_TYPE);
             }
-            String msg = t.getMessage() == null ? "" : t.getMessage();
-            int status = t instanceof WebApplicationException wae2 && wae2.getResponse() != null
-                    ? wae2.getResponse().getStatus() : 500;
-            return CassiniHttpResponse.builder()
-                    .status(status)
-                    .header(CONTENT_TYPE, "text/plain;charset=utf-8")
-                    .body(msg.getBytes(java.nio.charset.StandardCharsets.UTF_8)).build();
+            return unmappedFailure();
         } finally {
             ParamExtractor.clearProviders();
         }
@@ -1033,12 +1027,17 @@ public final class Invoker {
                 return runResponseFiltersAndWrite(rctx, r, route, chosen);
             return fromJaxRs(r, route, chosen);
         }
-        String msg = wae.getMessage() == null ? "" : wae.getMessage();
-        return CassiniHttpResponse.builder()
-                .status(500)
-                .header(CONTENT_TYPE, "text/plain;charset=utf-8")
-                .body(msg.getBytes(java.nio.charset.StandardCharsets.UTF_8))
-                .build();
+        return unmappedFailure();
+    }
+
+    /**
+     * The answer to a failure that neither a mapper nor a response of its own turned into a response
+     * (§3.3.4): a bare {@code 500}, without body or {@code Content-Type}, as the transports answer theirs. The
+     * message and the class of the failure never reach the client: they may carry SQL, file paths or request
+     * values (CWE-209, CASSINI-046). A new instance each time: a transport may keep its header map.
+     */
+    private static CassiniHttpResponse unmappedFailure() {
+        return CassiniHttpResponse.status(500);
     }
 
     /**

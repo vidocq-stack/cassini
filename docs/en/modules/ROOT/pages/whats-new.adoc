@@ -4,4 +4,4 @@
 [.lead]
 New in the `{project-version}` development line — everything listed here landed **after the {release-version} release** and is not part of it. Every entry links to the section that documents it, and those sections carry the [.tag-new]#NEW# badge. Each brick of the suite keeps its own page of this kind; xref:home::whats-new.adoc[the ecosystem index] gathers them. When the next release train ships, this page is frozen with it and restarts empty on the dev line.
 
-_Nothing documented yet for this cycle. Add entries here (and place [.tag-new]#NEW# badges on the relevant pages) as features land on main._
+* xref:usage.adoc#unmapped-exceptions[An unmapped exception answers a bare `500`] [.tag-new]#NEW# — an exception or an error that no `ExceptionMapper` handles answers `500` with an empty body; its message, which may carry SQL text or request values, stays in the `ERROR` log with the stack trace instead of going to the client (CASSINI-046).
