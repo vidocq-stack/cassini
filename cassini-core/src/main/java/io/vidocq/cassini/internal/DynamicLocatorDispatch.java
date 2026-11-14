@@ -96,7 +96,7 @@ final class DynamicLocatorDispatch {
         Invoker.publishCurrent(match, request);
         request.setAttribute(Invoker.ATTR_MATCHED_RESOURCES, matched);
         // §4.4, §6.7.1: a response that ends the chain goes through the response filters. No resource method is
-        // matched yet, so they are the ones bound to the locator's route: the global ones (CASSINI-050).
+        // matched yet, so only the global ones apply (CASSINI-050, CASSINI-051).
         CassiniRequestContext rctx = host.locatorContext(match, request);
         Object last;
         try {

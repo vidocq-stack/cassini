@@ -384,8 +384,8 @@ public final class Invoker {
 
     /**
      * Runs a matched resource method: the pre-matching filters when the dispatch did not run them,
-     * negotiation, the arguments, the post-matching filters, the target instance, the method, its
-     * asynchronous result, then the response. Each phase returns the response that ends the
+     * negotiation, the arguments, the sub-resource locators that lead to it, the post-matching filters, the target
+     * instance, the method, its asynchronous result, then the response. Each phase returns the response that ends the
      * request early (an abort, a rendered or mapped failure), or null to go on.
      */
     private CassiniHttpResponse invokeInternal(MatchResult match, CassiniHttpExchange request, ResourceMethod route) throws Exception {
@@ -410,6 +410,7 @@ public final class Invoker {
             prepareAsyncResponse(inv);
             early = resolveArguments(inv);
         }
+        if (early == null) early = walkStaticLocators(inv);
         if (early == null) early = runPostMatchingFilters(inv);
         if (early == null) early = resolveTarget(inv);
         if (early == null) early = invokeResourceMethod(inv);
@@ -529,7 +530,7 @@ public final class Invoker {
     }
 
     /**
-     * 3. The post-matching request filters (§6.6), on a context marked post-matching first, so
+     * 4. The post-matching request filters (§6.6), on a context marked post-matching first, so
      * that the setters reserved to pre-matching filters (setRequestUri, setMethod) throw.
      */
     private CassiniHttpResponse runPostMatchingFilters(Invocation inv) throws IOException {
@@ -577,17 +578,43 @@ public final class Invoker {
     }
 
     /**
-     * The request context the response filters get for a response that ends a dynamic sub-resource locator chain
-     * before its resource method is known (a failure of a locator, §6.7.1), or {@code null} when there is no
-     * response filter.
+     * The request context the response filters get for a response that ends a sub-resource locator chain before
+     * its resource method is matched (a failure of a locator, §6.7.1): only the global filters process it. Or
+     * {@code null} when there is no response filter.
      */
     CassiniRequestContext locatorContext(MatchResult match, CassiniHttpExchange request) {
-        return filters.responseFilters().isEmpty() ? null : postMatchingContext(match, request);
+        if (filters.responseFilters().isEmpty()) return null;
+        CassiniRequestContext rctx = postMatchingContext(match, request);
+        rctx.markUnmatched();
+        return rctx;
     }
 
-    /** 4. The instance the resource method runs on, with its fields injected (§9.2): the root
-     *  resource, or the last object of its sub-resource locator chain (§3.4.1). */
-    private CassiniHttpResponse resolveTarget(Invocation inv) throws IOException, IllegalAccessException {
+    /**
+     * 3. §3.7.2: the sub-resource locators of a route that a typed locator chain leads to. Calling them is part of
+     * the matching, which the post-matching filters follow (§6.5.1): they run before those filters, as on the
+     * dynamic path (CASSINI-051). A failure of a locator comes before any resource method is matched, so only the
+     * global response filters process its response (§6.7.1).
+     */
+    private CassiniHttpResponse walkStaticLocators(Invocation inv) throws IOException, IllegalAccessException {
+        if (inv.located != null || !inv.route.isLocated()) return null;
+        publishCurrent(inv.match, inv.request);
+        List<Object> matched = new ArrayList<>();
+        inv.request.setAttribute(ATTR_MATCHED_RESOURCES, matched);
+        CassiniRequestContext rctx = locatorContext(inv.match, inv.request);
+        try {
+            return walkLocators(inv, matched, rctx);
+        } catch (WebApplicationException wae) {
+            return renderWebAppException(wae, inv.route, inv.chosen, rctx);
+        } catch (InvocationTargetException ite) {
+            // §3.3.4: what a sub-resource locator throws is mapped as what a resource method throws (CASSINI-047).
+            CassiniHttpResponse mapped = mapResourceThrowable(ite.getCause(), inv.route, inv.chosen, rctx);
+            return mapped != null ? mapped : inv.fail(ite.getCause());
+        }
+    }
+
+    /** 5. The instance the resource method runs on, with its fields injected (§9.2): the root
+     *  resource, or the last object of its sub-resource locator chain (§3.4.1), which the locators already gave. */
+    private CassiniHttpResponse resolveTarget(Invocation inv) throws IOException {
         publishCurrent(inv.match, inv.request);
         if (inv.located != null) {
             // §3.4.1: the dynamic chain already ran and recorded the matched resources. A sub-resource reached
@@ -596,11 +623,11 @@ public final class Invoker {
             injectFields(inv.target.getClass(), inv.target, inv.match, inv.request, false);
             return null;
         }
+        if (inv.target != null) return null;
         List<Object> matched = new ArrayList<>();
         inv.request.setAttribute(ATTR_MATCHED_RESOURCES, matched);
         ResourceMethod route = inv.route;
         try {
-            if (route.isLocated()) return walkLocators(inv, matched);
             inv.target = resolver.apply(route.beanClass());
             // §9: inject @Context into the real contextual instance (de-proxied),
             // but invoke the method on `target` (the CDI proxy delegates to that instance).
@@ -609,16 +636,12 @@ public final class Invoker {
             return null;
         } catch (WebApplicationException wae) {
             return renderWebAppException(wae, route, inv.chosen, inv.rctx);
-        } catch (InvocationTargetException ite) {
-            // §3.3.4: what a sub-resource locator throws is mapped as what a resource method throws (CASSINI-047).
-            CassiniHttpResponse mapped = mapResourceThrowable(ite.getCause(), route, inv.chosen, inv.rctx);
-            return mapped != null ? mapped : inv.fail(ite.getCause());
         }
     }
 
     /** §3.4.1: instantiates the root resource and walks the locator chain, injecting the fields
      *  of each step; the last object is the target. */
-    private CassiniHttpResponse walkLocators(Invocation inv, List<Object> matched)
+    private CassiniHttpResponse walkLocators(Invocation inv, List<Object> matched, CassiniRequestContext rctx)
             throws IOException, IllegalAccessException, InvocationTargetException {
         ResourceMethod route = inv.route;
         Object root = resolver.apply(route.rootBeanClass());
@@ -631,13 +654,13 @@ public final class Invoker {
             if (intermediate == null) {
                 return renderWebAppException(
                         new WebApplicationException("Sub-resource locator returned null", 404),
-                        route, inv.chosen, inv.rctx);
+                        route, inv.chosen, rctx);
             }
             // §3.4.2: a locator may return Class<T> — runtime
             // instantiates the class through its no-arg constructor.
             // M6a: prefer generated adapter newInstance() over reflection
             if (intermediate instanceof Class<?> cls) {
-                Object created = instantiateSubResourceClass(cls, route, inv.chosen, inv.rctx);
+                Object created = instantiateSubResourceClass(cls, route, inv.chosen, rctx);
                 if (created instanceof CassiniHttpResponse failed) return failed;
                 intermediate = created;
             }
@@ -669,7 +692,7 @@ public final class Invoker {
         return step.invoke(target, args);
     }
 
-    /** 4. Runs the resource method: through its generated adapter when there is one (P1b), by
+    /** 6. Runs the resource method: through its generated adapter when there is one (P1b), by
      *  reflection otherwise. */
     private CassiniHttpResponse invokeResourceMethod(Invocation inv) throws Exception {
         openSseSink(inv);
@@ -798,7 +821,7 @@ public final class Invoker {
                 .build();
     }
 
-    /** 5. Marshals the result and runs the response filters; a WriterInterceptor failure goes
+    /** 7. Marshals the result and runs the response filters; a WriterInterceptor failure goes
      *  through the ExceptionMappers. */
     private CassiniHttpResponse writeResult(Invocation inv) throws IOException {
         try {

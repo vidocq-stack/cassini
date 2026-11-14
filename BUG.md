@@ -652,8 +652,36 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   failure goes through the filters bound to the locator's route, the global ones, since no resource method is matched
   yet (§6.7.1). The dynamic path also gains what the static one had and the copy lacked: a failed `CompletionStage`
   and a writer failure reach the `ExceptionMapper`s, and `@Suspended` / `SseEventSink` parameters are prepared.
-- **Not covered**: the two paths order the post-matching filters and the locators differently: before the locators on
-  the static path, after them on the dynamic one, where the resource method the bound filters need is only known
-  once the locators ran; a `DynamicFeature` binds filters to the
-  methods scanned at startup only, not to those of a class a locator returns at run time; and a `404`, `405`, `406`
-  or `415`, on either path, runs no response filter, global ones included.
+- **Follow-ups**: three gaps seen here have their own entries: CASSINI-051 (the static path ran the post-matching
+  filters before the locators), CASSINI-052 (a `DynamicFeature` never saw the methods of a class a locator returns at
+  run time) and CASSINI-053 (no response filter on a `404`, `405`, `406` or `415`).
+
+## CASSINI-051 — With a typed sub-resource locator, the post-matching filters run before the locators
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/locator-filter-order)
+- **Severity**: low. Spec conformance (Jakarta REST 4.0 §3.7.2, §6.5.1, §6.7.1); the two locator paths disagreed.
+- **Symptom**: on a resource method reached through a sub-resource locator that returns a typed sub-resource, the
+  post-matching request filters ran before the locators; through a locator that returns `Object` they ran after them.
+  When such a typed locator threw, its mapped response went through the response filters bound by name to the method
+  the locator would have led to, though no resource method was matched. The official TCK does not exercise it: none of
+  its packages that deploy a container filter has a sub-resource locator (checked from the TCK 4.0.1 bytecode).
+- **Minimal repro**: `LocatorFilterTest` (cassini-core): `thePostMatchingFiltersRunAfterTheLocators` on `/typed/ordered`
+  gave `[global request plain, locator]` (`/object/ordered` gave `[locator, global request plain]`), and
+  `theGlobalResponseFiltersRunOnTheMappedResponseOfALocator` on `/typed/failing/audited` carried the `X-Audited` header
+  of the bound response filter. Both red before the fix.
+- **Spec**: §3.7.2 counts the locators in the matching: step 2 takes the sub-resource locator `L` whose template
+  matched, sets `C'` to the class it leads to and goes back to step 2a, and step 3 outputs "`O` = instance of resource
+  class matched, `D` = resource method matched from `M`"; in the section's own example, `O` is the `WidgetResource`
+  instance that the locator `getWidget` returned. §6.5.1: "a global `ContainerRequestFilter` is executed after resource
+  matching unless annotated with `@PreMatching`". §6.7.1: when no resource method has been matched at the time of the
+  exception, "only global filters and interceptors will be included". Jersey and RESTEasy agree: Jersey invokes a
+  locator in its routing stage (`SubResourceLocatorRouter`), which `ApplicationHandler` chains before the post-matching
+  filtering stage; RESTEasy's `ResourceLocatorInvoker` resolves the locator's object, then
+  `ResourceMethodInvoker.invokeOnTarget` runs the post-matching request filters.
+- **Cause**: `Invoker.resolveTarget`, which walked the static locator chain, ran after `runPostMatchingFilters`, and
+  rendered a locator's failure with the post-matching context and the route of the final resource method.
+- **Fix**: `Invoker.walkStaticLocators` walks the chain before the post-matching filters, as `DynamicLocatorDispatch`
+  does on the dynamic path. A locator's failure is rendered with `Invoker.locatorContext`, now marked unmatched
+  (`CassiniRequestContext.markUnmatched`), for which `ResponsePipeline` runs the global response filters only, on
+  both paths. Unchanged, for the TCK: on the static path the negotiation (`415`, `406`) and the arguments still come
+  before the locators, and the root resource of a route without locator is still created after the post-matching
+  filters.

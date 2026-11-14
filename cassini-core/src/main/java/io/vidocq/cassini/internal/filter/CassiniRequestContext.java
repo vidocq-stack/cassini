@@ -78,7 +78,19 @@ public final class CassiniRequestContext implements ContainerRequestContext {
      *  IllegalStateException. Activated via {@link #runDuringResponsePhase}. */
     private boolean responsePhase = false;
 
+    /** §6.7.1: no resource method is matched for the response this context goes with. */
+    private boolean unmatched = false;
+
     public void markPostMatching() { this.postMatching = true; }
+
+    /**
+     * §6.7.1: marks a context whose response comes before any resource method is matched (a failure of a
+     * sub-resource locator, a request the matching rejects): only the globally bound response filters process it.
+     */
+    public void markUnmatched() { this.unmatched = true; }
+
+    /** Whether the response this context goes with comes before any resource method is matched (§6.7.1). */
+    public boolean unmatched() { return unmatched; }
     /**
      * Runs {@code action} with the {@code responsePhase} flag active —
      * so a response filter that calls {@code abortWith} triggers

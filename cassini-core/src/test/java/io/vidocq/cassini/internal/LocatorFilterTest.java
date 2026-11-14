@@ -66,6 +66,7 @@ class LocatorFilterTest {
     private static final String TEXT = MediaType.TEXT_PLAIN;
     private static final String GLOBAL_REQUEST = "global request";
     private static final String AUDITED_REQUEST = "audited request";
+    private static final String LOCATOR = "locator";
     private static final String GLOBAL_RESPONSE = "X-Global";
     private static final String AUDITED_RESPONSE = "X-Audited";
     private static final String YES = "yes";
@@ -192,6 +193,12 @@ class LocatorFilterTest {
         public Item failing() {
             throw new ItemFailure("locator");
         }
+
+        @Path("ordered")
+        public Item ordered() {
+            TRAIL.add(LOCATOR);
+            return new Item();
+        }
     }
 
     /** Locators that return {@code Object}: the dynamic dispatch (§3.4.1). */
@@ -215,6 +222,12 @@ class LocatorFilterTest {
         @Path("failing")
         public Object failing() {
             throw new ItemFailure("locator");
+        }
+
+        @Path("ordered")
+        public Object ordered() {
+            TRAIL.add(LOCATOR);
+            return new Item();
         }
     }
 
@@ -278,11 +291,24 @@ class LocatorFilterTest {
     }
 
     /**
-     * §4.4 and §6.7.1: the mapped response of a locator's failure goes through the response filters. A dynamic
-     * locator fails before any resource method is matched, so only the global ones apply.
+     * §3.7.2 and §6.5.1: the sub-resource locators are called while the request is matched, and the post-matching
+     * filters run once it is: after the locators, on both paths (CASSINI-051).
      */
     @ParameterizedTest(name = "{0}")
-    @ValueSource(strings = {"/typed/failing", "/object/failing"})
+    @ValueSource(strings = {"/typed/ordered", "/object/ordered"})
+    void thePostMatchingFiltersRunAfterTheLocators(String path) {
+        InMemoryExchange ex = get(path);
+        assertEquals("plain", ex.responseText());
+        assertEquals(List.of(LOCATOR, GLOBAL_REQUEST + " plain"), List.copyOf(TRAIL));
+    }
+
+    /**
+     * §4.4 and §6.7.1: the mapped response of a locator's failure goes through the response filters. A locator fails
+     * while the request is matched (§3.7.2), before any resource method is: only the global ones apply, not those
+     * bound to the method the locator would have led to (CASSINI-051).
+     */
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"/typed/failing", "/object/failing", "/typed/failing/audited", "/object/failing/audited"})
     void theGlobalResponseFiltersRunOnTheMappedResponseOfALocator(String path) {
         InMemoryExchange ex = get(path);
         assertEquals(409, ex.status(), ex::responseText);

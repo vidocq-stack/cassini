@@ -121,12 +121,16 @@ final class ResponsePipeline {
         return merged;
     }
 
-    /** Runs the response filters bound to {@code route}. §6.5.2: with no route (a pre-matching
-     *  abort or failure), only the globally bound ones, for which appliesTo(null, null) is true. */
+    /** Runs the response filters bound to {@code route}. §6.5.2, §6.7.1: with no route (a pre-matching
+     *  abort or failure), or no resource method matched yet, only the globally bound ones, for which
+     *  appliesTo(null, null) is true. */
     private void runResponseFilters(CassiniRequestContext rctx, CassiniResponseContext response,
                                     ResourceMethod route) {
+        // Every caller builds a request context whenever there are response filters: without one, none runs.
+        if (rctx == null) return;
+        boolean globalOnly = route == null || rctx.unmatched();
         for (var fe : host.filters().responseFilters()) {
-            boolean applies = route == null
+            boolean applies = globalOnly
                     ? fe.appliesTo(null, null)
                     : fe.appliesTo(route.javaMethod(), route.beanClass());
             if (applies) {

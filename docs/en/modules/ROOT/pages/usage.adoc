@@ -191,9 +191,9 @@ Ordering is resolved via `@Priority` at stack startup (not per request).
 [#locator-filters]
 === Filters on sub-resources [.tag-new]#NEW#
 
-A resource method that a sub-resource locator leads to is filtered as any resource method (Jakarta REST §6.5), whether the locator returns a typed sub-resource or `Object`: the global request and response filters run, and a `@NameBinding` filter runs when the sub-resource method, or its class, carries the binding. When a locator returns `Object`, the resource method is only known once the locator ran: its request filters run then, before the method. A response mapped from an exception goes through the response filters too. When a locator that returns `Object` throws, no resource method is matched yet: the global response filters run, not those bound to a resource method (§6.7.1).
+A resource method that a sub-resource locator leads to is filtered as any resource method (Jakarta REST §6.5), whether the locator returns a typed sub-resource or `Object`: the global request and response filters run, and a `@NameBinding` filter runs when the sub-resource method, or its class, carries the binding. Calling the locators is part of matching the request (§3.7.2), and the post-matching request filters run once it is matched (§6.5.1): after the locators, before the method. A response mapped from an exception goes through the response filters too. When a locator throws, no resource method is matched yet: the global response filters run, not those bound to a resource method (§6.7.1).
 
-Behaviour change:: Up to {release-version}, a resource method reached through a locator that returns `Object` ran neither the request filters nor the response filters, global or bound (CASSINI-050).
+Behaviour change:: Up to {release-version}, a resource method reached through a locator that returns `Object` ran neither the request filters nor the response filters, global or bound (CASSINI-050). With a locator that returns a typed sub-resource, the post-matching request filters ran before the locators, and the response to a locator's failure went through the filters bound to the method the locator would have led to (CASSINI-051).
 
 == Content negotiation
 
