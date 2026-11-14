@@ -1061,6 +1061,23 @@ public final class Invoker {
         return RequestScope.call(() -> renderUnmatchedInScope(null, response, request));
     }
 
+    /**
+     * §3.3.5: the automatic answer to an {@code OPTIONS} request for a resource with no {@code @OPTIONS} method, built
+     * from the methods {@code allowed} on its path: {@code 200} with an {@code Allow} header that adds {@code OPTIONS},
+     * and {@code HEAD} when {@code GET} is there.
+     */
+    static jakarta.ws.rs.core.Response automaticOptionsAnswer(List<String> allowed) {
+        List<String> methods = new ArrayList<>(allowed);
+        if (!methods.contains(jakarta.ws.rs.HttpMethod.OPTIONS)) methods.add(jakarta.ws.rs.HttpMethod.OPTIONS);
+        if (methods.contains(jakarta.ws.rs.HttpMethod.GET) && !methods.contains(jakarta.ws.rs.HttpMethod.HEAD)) {
+            methods.add(jakarta.ws.rs.HttpMethod.HEAD);
+        }
+        return jakarta.ws.rs.core.Response.ok()
+                .header(jakarta.ws.rs.core.HttpHeaders.ALLOW, String.join(", ", methods))
+                .header(jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE, "application/vnd.sun.wadl+xml")
+                .build();
+    }
+
     /** The response of {@code built}, or else the one an exception mapper or the exception {@code t} gives. */
     private CassiniHttpResponse renderUnmatchedInScope(Throwable t, jakarta.ws.rs.core.Response built,
                                                        CassiniHttpExchange request) throws IOException {
@@ -1071,12 +1088,21 @@ public final class Invoker {
             jakarta.ws.rs.core.Response response = built != null ? built : exceptionMappers.map(t).orElse(null);
             if (response == null && t instanceof WebApplicationException wae) response = wae.getResponse();
             if (response == null) return unmappedFailure();
-            CassiniRequestContext rctx = request == null ? null : unmatchedContext(null, request);
-            if (rctx != null) return runResponseFiltersAndWrite(rctx, response, null, MediaType.WILDCARD_TYPE);
-            return fromJaxRs(response, null, MediaType.WILDCARD_TYPE);
+            return writeUnmatched(response, request);
         } finally {
             ParamExtractor.clearProviders();
         }
+    }
+
+    /**
+     * Writes {@code response}, which comes before any resource method is matched, through the global response filters
+     * for {@code request} (§6.7.1); without a request, or without response filters, as it is.
+     */
+    CassiniHttpResponse writeUnmatched(jakarta.ws.rs.core.Response response, CassiniHttpExchange request)
+            throws IOException {
+        CassiniRequestContext rctx = request == null ? null : unmatchedContext(null, request);
+        if (rctx != null) return runResponseFiltersAndWrite(rctx, response, null, MediaType.WILDCARD_TYPE);
+        return fromJaxRs(response, null, MediaType.WILDCARD_TYPE);
     }
 
     /** §4.4: if a filter / interceptor throws an exception, pass it to the

@@ -132,6 +132,14 @@ class UnmatchedResponseFilterTest {
         }
     }
 
+    @Path("/typed")
+    public static class TypedRoot {
+        @Path("sub")
+        public Sub sub() {
+            return new Sub();
+        }
+    }
+
     @Provider
     public static final class NotFoundMapper implements ExceptionMapper<NotFoundException> {
         @Override
@@ -145,7 +153,7 @@ class UnmatchedResponseFilterTest {
             @Override
             public Set<Class<?>> getClasses() {
                 Set<Class<?>> classes = new java.util.HashSet<>(Set.of(PlainResource.class, ObjectRoot.class,
-                        GlobalResponseFilter.class, BoundResponseFilter.class));
+                        TypedRoot.class, GlobalResponseFilter.class, BoundResponseFilter.class));
                 classes.addAll(List.of(extra));
                 return classes;
             }
@@ -207,7 +215,10 @@ class UnmatchedResponseFilterTest {
      */
     @ParameterizedTest(name = "{0} -> {1}")
     @CsvSource(delimiter = '|', value = {
-            "/plain      | GET POST HEAD OPTIONS"})
+            "/plain      | GET POST HEAD OPTIONS",
+            "/typed/sub  | GET HEAD OPTIONS",
+            // The class a locator returns as Object gets the automatic answer too (CASSINI-060).
+            "/object/sub | GET HEAD OPTIONS"})
     void theGlobalResponseFiltersRunOnTheAutomaticOptionsAnswer(String path, String methods) {
         InMemoryExchange ex = send("OPTIONS", path, null, null);
         assertEquals(200, ex.status(), ex::responseText);
