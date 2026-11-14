@@ -355,6 +355,8 @@ public final class Invoker {
         Object[] args;
         /** The post-matching context, when there are post-matching or response filters. */
         CassiniRequestContext rctx;
+        /** §3.4.1: the object a dynamic sub-resource locator chain returned, which the method runs on. */
+        Object located;
         Object target;
         CassiniSseEventSink sseSink;
         Object result;
@@ -387,7 +389,21 @@ public final class Invoker {
      * request early (an abort, a rendered or mapped failure), or null to go on.
      */
     private CassiniHttpResponse invokeInternal(MatchResult match, CassiniHttpExchange request, ResourceMethod route) throws Exception {
-        Invocation inv = new Invocation(match, request, route);
+        return run(new Invocation(match, request, route));
+    }
+
+    /**
+     * §3.4.1: runs the resource method a dynamic sub-resource locator chain led to, on the object the chain
+     * returned. It goes through the phases of any matched resource method, its post-matching and response filters
+     * included (§6.5, CASSINI-050); only its target differs.
+     */
+    CassiniHttpResponse invokeLocated(MatchResult match, CassiniHttpExchange request, Object located) throws Exception {
+        Invocation inv = new Invocation(match, request, match.method());
+        inv.located = located;
+        return run(inv);
+    }
+
+    private CassiniHttpResponse run(Invocation inv) throws Exception {
         CassiniHttpResponse early = runPreMatchingFilters(inv);
         if (early == null) early = negotiate(inv);
         if (early == null) {
@@ -518,9 +534,7 @@ public final class Invoker {
      */
     private CassiniHttpResponse runPostMatchingFilters(Invocation inv) throws IOException {
         if (filters.postMatching().isEmpty() && filters.responseFilters().isEmpty()) return null;
-        inv.rctx = new CassiniRequestContext(inv.request, new CassiniUriInfo(
-                inv.request, inv.request.contextPath(), inv.match.pathParams()));
-        inv.rctx.markPostMatching();
+        inv.rctx = postMatchingContext(inv.match, inv.request);
         // §9.2: publish match/request in the scope so injectProviderContexts can
         // populate provider @Context fields (ResourceInfo, UriInfo, etc.).
         // Note: for singleton filters, in-place writes to shared fields
@@ -554,10 +568,34 @@ public final class Invoker {
                 : null;
     }
 
+    /** A request context marked post-matching, so that the setters reserved to pre-matching filters throw. */
+    private static CassiniRequestContext postMatchingContext(MatchResult match, CassiniHttpExchange request) {
+        CassiniRequestContext rctx = new CassiniRequestContext(request, new CassiniUriInfo(
+                request, request.contextPath(), match.pathParams()));
+        rctx.markPostMatching();
+        return rctx;
+    }
+
+    /**
+     * The request context the response filters get for a response that ends a dynamic sub-resource locator chain
+     * before its resource method is known (a failure of a locator, §6.7.1), or {@code null} when there is no
+     * response filter.
+     */
+    CassiniRequestContext locatorContext(MatchResult match, CassiniHttpExchange request) {
+        return filters.responseFilters().isEmpty() ? null : postMatchingContext(match, request);
+    }
+
     /** 4. The instance the resource method runs on, with its fields injected (§9.2): the root
      *  resource, or the last object of its sub-resource locator chain (§3.4.1). */
     private CassiniHttpResponse resolveTarget(Invocation inv) throws IOException, IllegalAccessException {
         publishCurrent(inv.match, inv.request);
+        if (inv.located != null) {
+            // §3.4.1: the dynamic chain already ran and recorded the matched resources. A sub-resource reached
+            // through a dynamic locator gets no @*Param injection.
+            inv.target = inv.located;
+            injectFields(inv.target.getClass(), inv.target, inv.match, inv.request, false);
+            return null;
+        }
         List<Object> matched = new ArrayList<>();
         inv.request.setAttribute(ATTR_MATCHED_RESOURCES, matched);
         ResourceMethod route = inv.route;
@@ -912,7 +950,7 @@ public final class Invoker {
      * §3.3.4 / §4.4: the response to a failure of a resource method or a sub-resource locator, or {@code null}
      * when no mapper handles it: a {@code WebApplicationException} is rendered (its own response or its mapper's),
      * another failure goes to the application's {@code ExceptionMapper}. The response filters run on a mapped
-     * response when there is a request context (post-matching path); the dynamic-locator path has none.
+     * response when there is a request context: the post-matching one, or the one of a dynamic locator chain.
      */
     CassiniHttpResponse mapResourceThrowable(Throwable cause, ResourceMethod route, MediaType chosen,
                                              CassiniRequestContext rctx) throws IOException {

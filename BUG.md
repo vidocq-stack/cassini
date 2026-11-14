@@ -621,3 +621,39 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   `127.0.0.1`, the JDK transport on every address. `CassiniTestHarness` binds port 0 and reads `Server.port()`; it
   retries a fixed port only. No test of the harness fails before the fix: Chappe retries a failed bind for about a
   second, and by the harness's next attempt the other processes of the machine have moved the ephemeral counter on.
+
+## CASSINI-050 — A resource method reached through a locator that returns `Object` runs no container filter
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/sebootstrap-port-locator-filters)
+- **Severity**: medium. Spec conformance (Jakarta REST 4.0 §6.5.1, §6.5.2, §4.4, §6.7.1), and a security one: an
+  authentication or authorization filter, global or `@NameBinding`, never ran on such a method, so the method
+  answered as if the filter had let the request through.
+- **Symptom**: on a sub-resource method reached through a sub-resource locator that returns `Object` (an instance, or
+  a `Class` resolved at run time, §3.4.1), no post-matching `ContainerRequestFilter` and no `ContainerResponseFilter`
+  ran, global or bound by name to the method or its class; nor did the response filters on the response mapped from
+  an exception of the method or of the locator. The same method reached through a locator that returns its type ran
+  them all. Seen while fixing CASSINI-047. The official TCK does not exercise it: its only `Object` locators
+  (`spec/resource/requestmatching`) are deployed without any container filter, and its `Class` locator
+  (`jaxrs21/spec/classsubresourcelocator`) returns a typed `Class<SubResource>`, which Cassini routes statically
+  (checked from the TCK 4.0.1 bytecode).
+- **Minimal repro**: `LocatorFilterTest` (cassini-core): `/object/item`, `/object/class`, `/object/item/audited`,
+  `/object/audited-item`, `/object/item/mapped` (no request filter in the trail, no response filter header) and
+  `/object/failing` (no global response filter on the mapped `409`): the 6 dynamic cases red before the fix, the 5
+  `/typed` ones green. `LocatorExceptionMappingTest.theResponseFiltersRunOnTheMappedResponseOfALocatorAsOnAResourceMethods`
+  now covers the `/object` paths too.
+- **Cause**: `DynamicLocatorDispatch.invokeFinalOnInstance` ran the final method through its own copy of a subset of
+  `Invoker.invokeInternal` (negotiation, arguments, the call, the `CompletionStage`, the writer) without its
+  post-matching filters and response filters, and the locator chain handed no request context to the error paths,
+  so a mapped response skipped the response filters too.
+- **Fix**: the copy is gone. `Invoker.invokeLocated` runs the final method through the phases of `invokeInternal`,
+  the post-matching filters and the response filters included, on the object the chain returned (`resolveTarget`
+  takes it as the target instead of resolving one). The filters bound by name are matched on the final method and
+  its class, and a filter's `@Context ResourceInfo` names that method. The locator chain gets a post-matching
+  request context when there are response filters (`Invoker.locatorContext`): the response mapped from a locator's
+  failure goes through the filters bound to the locator's route, the global ones, since no resource method is matched
+  yet (§6.7.1). The dynamic path also gains what the static one had and the copy lacked: a failed `CompletionStage`
+  and a writer failure reach the `ExceptionMapper`s, and `@Suspended` / `SseEventSink` parameters are prepared.
+- **Not covered**: the two paths order the post-matching filters and the locators differently: before the locators on
+  the static path, after them on the dynamic one, where the resource method the bound filters need is only known
+  once the locators ran; a `DynamicFeature` binds filters to the
+  methods scanned at startup only, not to those of a class a locator returns at run time; and a `404`, `405`, `406`
+  or `415`, on either path, runs no response filter, global ones included.

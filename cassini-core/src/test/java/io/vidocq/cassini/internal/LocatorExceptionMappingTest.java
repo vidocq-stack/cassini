@@ -214,9 +214,11 @@ class LocatorExceptionMappingTest {
         assertNull(ex.responseContentType());
     }
 
+    /** On both paths: the dynamic one ran no response filter (CASSINI-050). */
     @ParameterizedTest(name = "{0}")
-    @ValueSource(strings = {"/typed/item", "/typed/mapped", "/typed/item/mapped", "/typed/rejected"})
-    void theResponseFiltersRunOnTheMappedResponseOfAStaticLocatorAsOnAResourceMethods(String path) {
+    @ValueSource(strings = {"/typed/item", "/typed/mapped", "/typed/item/mapped", "/typed/rejected",
+            "/object/item", "/object/mapped", "/object/item/mapped", "/object/rejected", "/object/item/rejected"})
+    void theResponseFiltersRunOnTheMappedResponseOfALocatorAsOnAResourceMethods(String path) {
         assertEquals("yes", get(path).responseHeader("X-Filtered"));
     }
 }
