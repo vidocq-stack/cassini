@@ -501,7 +501,8 @@ public final class Invoker {
     }
 
     /** 4. The arguments of the resource method, its entity included, read from the request as the request filters
-     *  left it (CASSINI-056). A failure goes through the ExceptionMappers (§4.4). */
+     *  left it (CASSINI-056). A failure goes through the ExceptionMappers (§4.4), then through the response filters
+     *  of the method, which is matched (§6.7.1, CASSINI-057). */
     private CassiniHttpResponse resolveArguments(Invocation inv) throws IOException {
         try {
             ParamExtractor.ResolvedArgs resolved = ParamExtractor.resolve(inv.route, inv.match, inv.request);
@@ -519,24 +520,27 @@ public final class Invoker {
             }
             return null;
         } catch (WebApplicationException wae) {
-            return renderWebAppException(wae, inv.route, inv.chosen, null);
+            return renderWebAppException(wae, inv.route, inv.chosen, inv.rctx);
         } catch (EntityReadException ere) {
             // cassini#39: the reader (or its interceptor chain) failed on the entity.
-            return renderEntityReadFailure(ere.getCause(), inv.route, inv.chosen,
-                    errorContext(inv.preCtx, inv.match, inv.request), inv.request);
+            return renderEntityReadFailure(ere.getCause(), inv.route, inv.chosen, argumentsContext(inv), inv.request);
         } catch (IOException e) {
             // §4.4: buffering the entity failed → try ExceptionMapper.
-            CassiniHttpResponse mapped = mapFilterThrowable(e, inv.route, inv.chosen,
-                    errorContext(inv.preCtx, inv.match, inv.request));
+            CassiniHttpResponse mapped = mapFilterThrowable(e, inv.route, inv.chosen, argumentsContext(inv));
             if (mapped != null) return mapped;
             throw new UncheckedIOException(e);
         } catch (RuntimeException e) {
             // §4.4: resolving a parameter failed → try ExceptionMapper.
-            CassiniHttpResponse mapped = mapFilterThrowable(e, inv.route, inv.chosen,
-                    errorContext(inv.preCtx, inv.match, inv.request));
+            CassiniHttpResponse mapped = mapFilterThrowable(e, inv.route, inv.chosen, argumentsContext(inv));
             if (mapped != null) return mapped;
             throw e;
         }
+    }
+
+    /** The request context the response to a failure of the arguments goes with: the post-matching one, which the
+     *  response filters of the matched method get (§6.7.1, CASSINI-057), when there are any. */
+    private CassiniRequestContext argumentsContext(Invocation inv) {
+        return inv.rctx != null ? inv.rctx : errorContext(inv.preCtx, inv.match, inv.request);
     }
 
     /**

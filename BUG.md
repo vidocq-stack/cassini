@@ -838,3 +838,27 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   on a context injected into a resource only. The base URI stays the transport's (`requestUriRaw`). TCK risk: the
   order of the arguments changes for every request that has post-matching or response filters; the TCK packages with
   post-matching filters abort or throw in them (`requestcontext`, `illegalstate`, `security`, `spec/filter/exception`).
+
+## CASSINI-057 — No response filter runs when the arguments of a matched resource method fail
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/locator-filter-order)
+- **Severity**: low. Spec conformance (Jakarta REST 4.0 §6.7.1); in practice a CORS or security-header response filter
+  left these `404` and `400` answers without its headers.
+- **Symptom**: when a parameter of a matched resource method did not convert (`404` for a query parameter, `400` for a
+  header) or its entity did not read (`400`), the answer, mapped or not, went through no response filter, global or
+  bound. An entity that did not read went through them only when the application had a pre-matching filter, whose
+  context the error path reused. Found while fixing CASSINI-056, which moved the arguments after the post-matching
+  filters. The official TCK does not exercise it: the resource methods of its packages with a response filter take
+  no parameter or a `String` entity (checked from the TCK 4.0.1 bytecode).
+- **Minimal repro**: `ArgumentFailureFilterTest` (cassini-core): `GET /args/query?n=abc` (`int` query parameter),
+  `GET /args/header` with `X-N: abc` (`int` header parameter) and `POST /args/entity` (a reader that throws) answered
+  `404`, `400` and `400` without the `X-Global` and `X-Bound` headers of the response filters. All 3 red before the fix.
+- **Spec**: §6.7.1: "If a web resource had been matched before the exception was thrown, then all the filters in the
+  ContainerResponse chain for that resource MUST be invoked". The arguments are resolved for the matched method.
+  Jersey resolves them in `ResourceMethodInvoker`, inside the request scope whose response filtering stage was pushed
+  at pre-matching, and that stage runs the bound filters once the method is matched.
+- **Cause**: `Invoker.resolveArguments` rendered a `WebApplicationException` without a request context, which the
+  response filters need, and its other failures with the pre-matching context only (`errorContext`). The arguments
+  were resolved before any post-matching context existed.
+- **Fix**: since CASSINI-056 the arguments come after the post-matching filters, so their failures are rendered with
+  the post-matching context (`Invoker.argumentsContext`), which exists whenever there are response filters: the global
+  ones and those bound to the method run.

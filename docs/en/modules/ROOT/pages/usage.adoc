@@ -218,7 +218,10 @@ A request the matching rejects answers the response of a `WebApplicationExceptio
 
 The `@Context` fields of a response filter describe the request it filters, whether a resource method is matched or not: its headers and its URI, and a `ResourceInfo` that gives no method and no class when none is matched (§6.7.1). That covers the rejected requests above, a request a pre-matching filter aborts, and a locator that throws.
 
-Behaviour change:: Up to {release-version}, no response filter ran on a `404`, `405`, `415` or `406` of the matching, global ones included, even when an `ExceptionMapper` mapped it (CASSINI-053). A response filter that ran on a response with no matched resource method, after a pre-matching abort or a locator's failure, kept the `@Context` fields of the last matched request it had filtered: its headers, its URI and its resource method (CASSINI-054).
+[#argument-failures]
+A request whose resource method is matched but whose arguments fail, a parameter that does not convert (`404` for a query, path or matrix parameter, `400` for a header or a cookie, §3.2) or an entity that does not read (`400`), is answered after the matching: the global response filters and those bound to the method both process the answer (§6.7.1).
+
+Behaviour change:: Up to {release-version}, no response filter ran on a `404`, `405`, `415` or `406` of the matching, global ones included, even when an `ExceptionMapper` mapped it (CASSINI-053). A response filter that ran on a response with no matched resource method, after a pre-matching abort or a locator's failure, kept the `@Context` fields of the last matched request it had filtered: its headers, its URI and its resource method (CASSINI-054). No response filter ran on the answer to a parameter that did not convert, nor on the answer to an entity that did not read unless the application had a pre-matching filter (CASSINI-057).
 
 == Content negotiation
 
