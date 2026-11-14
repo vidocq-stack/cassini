@@ -82,6 +82,9 @@ public final class Invoker {
         return scope == null ? null : scope.request;
     }
 
+    /** What the {@code @Context} fields of a provider are injected for when no resource method is matched. */
+    private static final MatchResult UNMATCHED = new MatchResult(null, Map.of());
+
     /** Sets the per-request match/request slots in the active scope. */
     static void publishCurrent(MatchResult match, CassiniHttpExchange request) {
         var scope = RequestScope.current();
@@ -882,14 +885,23 @@ public final class Invoker {
      *  {@code injectParams=false} — providers carry only {@code @Context} fields,
      *  never {@code @PathParam}/{@code @QueryParam}/etc.</p> */
     void injectProviderContexts(Object provider, CassiniHttpExchange requestOpt) {
+        injectProviderContexts(provider, requestOpt, currentMatch());
+    }
+
+    /**
+     * §9.2: injects the {@code @Context} fields of a singleton provider for {@code matchOpt}, or, when no resource
+     * method is matched ({@code null}), for the request alone: its headers and URI, and a {@code ResourceInfo} without
+     * method or class (§6.7.1). Skipping the injection then left the fields of the previous request (CASSINI-054).
+     */
+    void injectProviderContexts(Object provider, CassiniHttpExchange requestOpt, MatchResult matchOpt) {
         // A provider without an injectable field has nothing to inject, so it needs no adapter: neither Cassini's
         // own readers and writers nor the filters of the other bricks get one generated at run time (CASSINI-036).
         // Read once per class.
         Class<?> cls = provider.getClass();
         if (!InjectableFields.declaredBy(cls)) return;
         CassiniHttpExchange req = requestOpt != null ? requestOpt : currentRequest();
-        MatchResult match = currentMatch();
-        if (req == null || match == null) return;
+        if (req == null) return;
+        MatchResult match = matchOpt != null ? matchOpt : UNMATCHED;
         // M5a: prefer generated adapter (VarHandle, no per-request reflection); fall back
         // to FieldInjector when the adapter cannot be generated (private cross-package field,
         // module closure, etc.).

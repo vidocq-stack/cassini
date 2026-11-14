@@ -202,7 +202,9 @@ Behaviour change:: Up to {release-version}, a resource method reached through a 
 
 A request the matching rejects answers the response of a `WebApplicationException`, or the one an `ExceptionMapper` gives for it (Jakarta REST §3.7.2, §4.4): `404` when no resource matches, `405` when none supports the method, `415` when none consumes the request's media type, `406` when none produces an acceptable one. The global response filters process that response as any other, so a filter that adds CORS or security headers adds them to these answers too. No resource method is matched, so the filters bound to one, by `@NameBinding` or by a `DynamicFeature`, do not run (§6.7.1). The same holds in the resources that a sub-resource locator returns as `Object`.
 
-Behaviour change:: Up to {release-version}, no response filter ran on a `404`, `405`, `415` or `406` of the matching, global ones included, even when an `ExceptionMapper` mapped it (CASSINI-053).
+The `@Context` fields of a response filter describe the request it filters, whether a resource method is matched or not: its headers and its URI, and a `ResourceInfo` that gives no method and no class when none is matched (§6.7.1). That covers the rejected requests above, a request a pre-matching filter aborts, and a locator that throws.
+
+Behaviour change:: Up to {release-version}, no response filter ran on a `404`, `405`, `415` or `406` of the matching, global ones included, even when an `ExceptionMapper` mapped it (CASSINI-053). A response filter that ran on a response with no matched resource method, after a pre-matching abort or a locator's failure, kept the `@Context` fields of the last matched request it had filtered: its headers, its URI and its resource method (CASSINI-054).
 
 == Content negotiation
 

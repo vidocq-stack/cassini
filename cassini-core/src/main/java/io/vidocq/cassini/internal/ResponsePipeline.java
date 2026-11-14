@@ -135,7 +135,9 @@ final class ResponsePipeline {
                     : fe.appliesTo(route.javaMethod(), route.beanClass());
             if (applies) {
                 // §9.2: the @Context fields of a response filter, like those of the request filters and providers.
-                host.injectProviderContexts(fe.instance(), null);
+                // With no resource method matched, they describe the request alone (§6.7.1, CASSINI-054).
+                host.injectProviderContexts(fe.instance(), exchangeOf(rctx),
+                        globalOnly ? null : Invoker.currentMatch());
                 runResponseFilter(fe.instance(), rctx, response);
             }
         }

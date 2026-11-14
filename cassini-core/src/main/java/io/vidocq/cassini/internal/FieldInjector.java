@@ -189,10 +189,11 @@ public final class FieldInjector {
         return filterSc != null ? filterSc : new CassiniSecurityContext(request);
     }
 
+    /** §6.7.1: no method and no class when no resource method is matched ({@code route} null). */
     private static jakarta.ws.rs.container.ResourceInfo resourceInfo(ResourceMethod route) {
         return new jakarta.ws.rs.container.ResourceInfo() {
-            @Override public java.lang.reflect.Method getResourceMethod() { return route.javaMethod(); }
-            @Override public Class<?> getResourceClass() { return route.beanClass(); }
+            @Override public java.lang.reflect.Method getResourceMethod() { return route == null ? null : route.javaMethod(); }
+            @Override public Class<?> getResourceClass() { return route == null ? null : route.beanClass(); }
         };
     }
 

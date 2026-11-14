@@ -750,3 +750,25 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   failures of CASSINI-051 use too): `ResponsePipeline` runs the global response filters on them, not the bound ones.
   `Invoker.renderThrowable(Throwable, CassiniHttpExchange)` does it for the router's `404` and `405`. The automatic
   `OPTIONS` answer (§3.3.5) is unchanged: it is no rejection.
+
+## CASSINI-054 — A provider's `@Context` fields keep the previous request when no resource method is matched
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/locator-filter-order)
+- **Severity**: medium. Spec conformance (Jakarta REST 4.0 §9.2, §6.7.1), and a leak between requests: a response
+  filter could read another client's headers (an `Authorization` header, a cookie) and act on them.
+- **Symptom**: a singleton response filter, or a reader or writer, with `@Context HttpHeaders`, `UriInfo` or
+  `ResourceInfo` fields, run on a response with no matched resource method (a pre-matching abort, the failure of a
+  sub-resource locator, and since CASSINI-053 a rejected request), kept the values injected for the last matched request
+  it had processed: its headers, its URI and its resource method. Found while fixing CASSINI-053. The official TCK
+  does not exercise it: none of its response filters has a `@Context` field and runs on such a response.
+- **Minimal repro**: `UnmatchedProviderContextTest` (cassini-core): `GET /echo` with `X-Who: first`, then a `404`, a
+  `405`, a `415`, a failing locator or a pre-matching abort with `X-Who: second`. The filter echoed `first`, and
+  `get` as the resource method after the locator. All 5 cases red before the fix.
+- **Spec**: §9.2: `@Context` values describe the current request. §6.7.1: when no resource method is matched, "only
+  global filters and interceptors will be included. Note that a filter or interceptor invoked in case 2 will not have
+  access to resource-dependent information, such as that returned by an injectable instance of `ResourceInfo`."
+- **Cause**: `Invoker.injectProviderContexts` returned without injecting when the request scope held no matched route,
+  and the scope held the route of the locator chain when a locator failed.
+- **Fix**: with no matched resource method, `injectProviderContexts` injects for the request alone (an empty match:
+  no path parameters, no route), and `FieldInjector`'s `ResourceInfo` gives a `null` method and class for it.
+  `ResponsePipeline` injects the response filters of an unmatched response that way, with the exchange of its request
+  context.
