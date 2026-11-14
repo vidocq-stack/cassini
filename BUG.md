@@ -591,3 +591,33 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   `JdkHttpRuntimeDelegate` (`SeBootstrap` with `FREE_PORT` or no port) pick a port on `127.0.0.1` and bind it again,
   the JDK one on every address; `CassiniTestHarness.freePort` does it for a harness without a fixed port, with
   retries. `CassiniTestHarnessTest.aFixedPortIsUsedAsGiven` needs a free port number before the start, by design.
+  Fixed by CASSINI-049.
+
+## CASSINI-049 — `SeBootstrap` with a free port picks the port, builds the application, then binds the port again
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/sebootstrap-port-locator-filters)
+- **Severity**: low. A race at start, but a silent one with the JDK transport: the instance could serve none of its
+  loopback clients while another process answered them.
+- **Symptom**: `SeBootstrap` with `FREE_PORT`, or without a port, on the Chappe transport fails to start with
+  `ChappeException$ServerException: Failed to bind to 127.0.0.1:<port>` / `BindException` when another process takes
+  the port while the application is built. On the JDK transport the start succeeds, and on macOS a client of
+  `127.0.0.1:<port>` reaches the other process.
+- **Minimal repro**: `ChappeSeBootstrapTest.a_free_port_is_bound_by_the_server_itself_so_nothing_can_take_it_before`
+  and `JdkHttpSeBootstrapTest.a_free_port_is_bound_by_the_server_itself_on_the_loopback_address`: the application's
+  `getClasses()` listens on `127.0.0.1:<next ephemeral port>`. macOS hands out its ephemeral ports in sequence, so
+  that is the port the instance picked: red before the fix (`BindException`; `SocketTimeoutException` from the
+  listener that is not the instance). On a system that picks ephemeral ports at random both tests pass either way.
+  `JdkHttpSeBootstrapTest.without_a_port_the_instance_listens_on_a_free_loopback_port` was red too (bound on `::`).
+- **Cause**: `ChappeRuntimeDelegate.portOf` and the `JdkHttpRuntimeDelegate` instance took a port with
+  `new ServerSocket(0, 50, 127.0.0.1)`, closed it, built the `CassiniStack` (which runs the application's code), and
+  only then had the server bind that port. The JDK transport bound it on every address (`JdkHttpAdapter.serve(int)`):
+  on macOS that bind succeeds beside a listener on `127.0.0.1`, which keeps the loopback clients (CASSINI-048).
+  `CassiniTestHarness.freePort` did the same, with five attempts.
+- **Fix**: the server binds port 0 itself and the effective configuration reports the port it got (Jakarta REST
+  §5.2, `SeBootstrap.Configuration.FREE_PORT`: the implementation chooses a free port; `Instance.configuration()` is
+  the actual one). Chappe binds `127.0.0.1:0` and reads `Server.port()`. The JDK transport binds `127.0.0.1:0`
+  through the new `JdkHttpAdapter.serve(InetSocketAddress)`, not every address: on macOS a bind of port 0 on every
+  address can land on a port a listener holds on `127.0.0.1` (scratch check: 20 times out of 20 on the next ephemeral
+  port), as Chappe notes for its own wildcard binds (CHAPPE-004). An explicit port is unchanged: Chappe binds it on
+  `127.0.0.1`, the JDK transport on every address. `CassiniTestHarness` binds port 0 and reads `Server.port()`; it
+  retries a fixed port only. No test of the harness fails before the fix: Chappe retries a failed bind for about a
+  second, and by the harness's next attempt the other processes of the machine have moved the ephemeral counter on.

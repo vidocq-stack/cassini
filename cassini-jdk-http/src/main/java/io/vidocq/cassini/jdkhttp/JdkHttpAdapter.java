@@ -124,9 +124,20 @@ public final class JdkHttpAdapter {
         }
     }
 
-    /** Starts a JDK {@link HttpServer} on {@code port} and binds the adapter to {@code contextPath}. */
+    /**
+     * Starts a JDK {@link HttpServer} on {@code port} of every address and binds the adapter to
+     * {@code contextPath}.
+     */
     public HttpServer serve(int port) throws IOException {
-        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+        return serve(new InetSocketAddress(port));
+    }
+
+    /**
+     * Starts a JDK {@link HttpServer} on {@code address} and binds the adapter to {@code contextPath}. With port
+     * 0 the server binds a free port itself: {@code getAddress()} of the server returned gives it.
+     */
+    public HttpServer serve(InetSocketAddress address) throws IOException {
+        HttpServer server = HttpServer.create(address, 0);
         server.createContext(contextPath.isEmpty() ? "/" : contextPath, asHandler());
         server.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
         server.start();

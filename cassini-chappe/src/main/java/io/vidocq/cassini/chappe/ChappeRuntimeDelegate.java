@@ -77,9 +77,6 @@ public final class ChappeRuntimeDelegate extends CassiniRuntimeDelegate {
 
         ChappeSeBootstrapInstance(Application application,
                                   SeBootstrap.Configuration requested) {
-            int reqPort = portOf(requested);
-            this.config = effectiveConfig(requested, reqPort);
-
             try {
                 // Bootstrap through the public SPI — no direct access to internals.
                 var stack = CassiniStack.builder().application(application).build();
@@ -120,29 +117,28 @@ public final class ChappeRuntimeDelegate extends CassiniRuntimeDelegate {
                 };
 
                 Server s = Server.builder()
-                        .host("127.0.0.1").port(reqPort).handler(handler).build();
+                        .host("127.0.0.1").port(portOf(requested)).handler(handler).build();
                 s.start();
                 this.server.set(s);
+                this.config = effectiveConfig(requested, s.port());
             } catch (RuntimeException e) {
                 this.server.set(null);
                 throw e;
             }
         }
 
-        /** The requested port, or a free local one when none (or 0) is requested. */
+        /**
+         * The requested port, or {@link SeBootstrap.Configuration#FREE_PORT} when none (or 0) is requested: the
+         * server then binds a free port itself, and the effective configuration reports the one it got. A port
+         * picked beforehand and bound once the stack is built could be taken in between (CASSINI-049).
+         */
         private static int portOf(SeBootstrap.Configuration requested) {
             Object p = requested.property(SeBootstrap.Configuration.PORT);
-            int reqPort = p instanceof Number n ? n.intValue() : -1;
-            if (reqPort > 0) return reqPort;
-            try (var ss = new java.net.ServerSocket(
-                    0, 50, java.net.InetAddress.getByName("127.0.0.1"))) {
-                return ss.getLocalPort();
-            } catch (java.io.IOException e) {
-                throw new java.io.UncheckedIOException(e);
-            }
+            int reqPort = p instanceof Number n ? n.intValue() : SeBootstrap.Configuration.DEFAULT_PORT;
+            return reqPort > 0 ? reqPort : SeBootstrap.Configuration.FREE_PORT;
         }
 
-        /** The requested properties, with the port actually used and the {@code localhost} host. */
+        /** The requested properties, with the port the server listens on and the {@code localhost} host. */
         private static SeBootstrap.Configuration effectiveConfig(SeBootstrap.Configuration requested, int port) {
             java.util.Map<String, Object> effective = new java.util.HashMap<>();
             for (String k : new String[]{

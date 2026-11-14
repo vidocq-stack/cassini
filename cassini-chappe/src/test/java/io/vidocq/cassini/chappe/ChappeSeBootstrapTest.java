@@ -27,9 +27,12 @@ import jakarta.ws.rs.SeBootstrap;
 import jakarta.ws.rs.core.Application;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.channels.ServerSocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -38,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** The SE bootstrap instance of the Chappe transport: it starts, unwraps to its server and stops. */
 class ChappeSeBootstrapTest {
@@ -59,6 +63,60 @@ class ChappeSeBootstrapTest {
         @Override public Set<Class<?>> getClasses() { return Set.of(HelloResource.class); }
     }
 
+    /**
+     * An application whose build listens on a loopback port, as another process can while an instance starts:
+     * the instance builds the application's stack before its server listens.
+     */
+    public static final class PortTakingApplication extends Application {
+        private final int port;
+        private ServerSocketChannel taken;
+
+        PortTakingApplication(int port) { this.port = port; }
+
+        @Override public synchronized Set<Class<?>> getClasses() {
+            if (taken == null) {
+                taken = listenOn(port);
+            }
+            return Set.of(HelloResource.class);
+        }
+
+        synchronized boolean tookThePort() { return taken != null && taken.isOpen(); }
+
+        synchronized void release() throws IOException {
+            if (taken != null) taken.close();
+        }
+
+        /** A loopback listener on {@code port}, or {@code null} when the port is already used. */
+        private static ServerSocketChannel listenOn(int port) {
+            try {
+                ServerSocketChannel channel = ServerSocketChannel.open();
+                try {
+                    channel.bind(new InetSocketAddress(LOOPBACK, port));
+                    return channel;
+                } catch (IOException _) {
+                    channel.close();
+                    return null;
+                }
+            } catch (IOException _) {
+                return null;
+            }
+        }
+    }
+
+    private static final String LOOPBACK = "127.0.0.1";
+
+    /**
+     * The loopback port the system hands out next on macOS, which allocates its ephemeral ports in sequence; on
+     * a system that picks them at random it is one more port among others.
+     */
+    private static int nextEphemeralLoopbackPort() throws IOException {
+        try (ServerSocketChannel probe = ServerSocketChannel.open()) {
+            probe.bind(new InetSocketAddress(LOOPBACK, 0));
+            int port = ((InetSocketAddress) probe.getLocalAddress()).getPort();
+            return port < 65_535 ? port + 1 : port;
+        }
+    }
+
     private static SeBootstrap.Instance start(Application application, SeBootstrap.Configuration config)
             throws Exception {
         return new ChappeRuntimeDelegate().bootstrap(application, config)
@@ -70,7 +128,9 @@ class ChappeSeBootstrapTest {
 
     private static Reply get(SeBootstrap.Instance instance, String path) throws Exception {
         int port = (Integer) instance.configuration().property(SeBootstrap.Configuration.PORT);
-        try (Socket socket = new Socket("127.0.0.1", port)) {
+        try (Socket socket = new Socket(LOOPBACK, port)) {
+            // a listener that is not the instance accepts the connection and never answers
+            socket.setSoTimeout(10_000);
             OutputStream out = socket.getOutputStream();
             out.write(("GET " + path + " HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
                     .getBytes(StandardCharsets.US_ASCII));
@@ -119,6 +179,31 @@ class ChappeSeBootstrapTest {
             assertEquals(HELLO, get(instance, "/hello").body());
         } finally {
             instance.stop().toCompletableFuture().get(30, TimeUnit.SECONDS);
+        }
+    }
+
+    /**
+     * {@code FREE_PORT} (CASSINI-049): the server binds a free port itself and the configuration reports it. A port
+     * picked beforehand and bound again once the stack is built could be taken in between: here the application's
+     * build takes the port the system hands out next, and the start failed with a {@code BindException}.
+     */
+    @Test
+    void a_free_port_is_bound_by_the_server_itself_so_nothing_can_take_it_before() throws Exception {
+        PortTakingApplication application = new PortTakingApplication(nextEphemeralLoopbackPort());
+        SeBootstrap.Configuration config = SeBootstrap.Configuration.builder()
+                .port(SeBootstrap.Configuration.FREE_PORT).build();
+        try {
+            SeBootstrap.Instance instance = start(application, config);
+            try {
+                assumeTrue(application.tookThePort(), "another process already listens on the port to take");
+                int port = instance.configuration().port();
+                assertEquals(instance.unwrap(Server.class).port(), port, "the configuration reports the bound port");
+                assertEquals(HELLO, get(instance, "/hello").body());
+            } finally {
+                instance.stop().toCompletableFuture().get(30, TimeUnit.SECONDS);
+            }
+        } finally {
+            application.release();
         }
     }
 

@@ -25,6 +25,7 @@ import io.vidocq.cassini.spi.http.CassiniStack;
 import jakarta.ws.rs.SeBootstrap;
 import jakarta.ws.rs.core.Application;
 
+import java.net.InetSocketAddress;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
@@ -60,21 +61,23 @@ public final class JdkHttpRuntimeDelegate extends CassiniRuntimeDelegate {
     }
 
     private static final class JdkSeBootstrapInstance implements SeBootstrap.Instance {
+        private static final String LOOPBACK = "127.0.0.1";
+
         private final SeBootstrap.Configuration config;
         private final HttpServer server;
 
         JdkSeBootstrapInstance(Application application, SeBootstrap.Configuration requested) {
             Object p = requested.property(SeBootstrap.Configuration.PORT);
-            int port = p instanceof Number n ? n.intValue() : -1;
-            if (port <= 0) {
-                try (var ss = new java.net.ServerSocket(0,
-                        50, java.net.InetAddress.getByName("127.0.0.1"))) {
-                    port = ss.getLocalPort();
-                } catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
-            }
+            int port = p instanceof Number n ? n.intValue() : SeBootstrap.Configuration.DEFAULT_PORT;
             try {
                 var stack = CassiniStack.builder().application(application).build();
-                this.server = new JdkHttpAdapter(stack.adapter()).serve(port);
+                var adapter = new JdkHttpAdapter(stack.adapter());
+                // No port, or FREE_PORT: the server binds a free port itself, on the loopback address of the
+                // "localhost" the configuration reports (CASSINI-049). A port picked beforehand could be taken
+                // before the bind. And on macOS a bind of every address, even on port 0, can land beside a
+                // listener on 127.0.0.1, which then keeps the clients of 127.0.0.1.
+                this.server = port > 0 ? adapter.serve(port)
+                        : adapter.serve(new InetSocketAddress(LOOPBACK, SeBootstrap.Configuration.FREE_PORT));
             } catch (java.io.IOException e) {
                 throw new java.io.UncheckedIOException(e);
             }

@@ -35,7 +35,6 @@ import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.MessageBodyReader;
 import jakarta.ws.rs.ext.MessageBodyWriter;
 
-import java.net.ServerSocket;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +71,8 @@ public final class CassiniTestHarness implements AutoCloseable {
     public static Builder builder() { return new Builder(); }
 
     public static final class Builder {
+        private static final int FIXED_PORT_ATTEMPTS = 10;
+
         /** Explicitly provided instances (resolved identically per request). */
         private final Map<Class<?>, Object> beans = new HashMap<>();
         /** Classes to be instantiated per-request (JAX-RS §3.1.1). */
@@ -222,17 +223,17 @@ public final class CassiniTestHarness implements AutoCloseable {
             Handler rootHandler = bh.prefix().isEmpty() ? bh.bridgeHandler()
                     : new ContextStrippingHandler(bh.prefix(), bh.bridgeHandler());
 
-            // More aggressive retry on fixed port (port 8080 may remain in
-            // TIME_WAIT between tests). 10 attempts with 100 ms.
-            int attempts = fixedPort != null ? 10 : 5;
+            // Without a fixed port the server binds port 0 and reads the port it got: a port picked
+            // beforehand could be taken before the bind (CASSINI-049).
+            if (fixedPort == null) return startOn(0, rootHandler);
+            // A fixed port may remain in TIME_WAIT between tests: 10 attempts, 100 ms apart.
             for (int attempt = 1; ; attempt++) {
-                int port = fixedPort != null ? fixedPort : freePort();
                 try {
-                    return startOn(port, rootHandler);
+                    return startOn(fixedPort, rootHandler);
                 } catch (RuntimeException e) {
                     // the failure of the last attempt is the one reported
-                    if (attempt >= attempts) throw e;
-                    if (fixedPort != null) pauseBeforeRetry();
+                    if (attempt >= FIXED_PORT_ATTEMPTS) throw e;
+                    pauseBeforeRetry();
                 }
             }
         }
@@ -241,17 +242,10 @@ public final class CassiniTestHarness implements AutoCloseable {
             Server server = Server.builder()
                     .host("127.0.0.1").port(port).handler(rootHandler).build();
             server.start();
-            String url = "http://127.0.0.1:" + port
+            int bound = server.port();
+            String url = "http://127.0.0.1:" + bound
                     + ("/".equals(contextPath) ? "" : contextPath);
-            return new CassiniTestHarness(server, port, url);
-        }
-
-        private static int freePort() {
-            try (ServerSocket s = new ServerSocket(0)) {
-                return s.getLocalPort();
-            } catch (java.io.IOException e) {
-                throw new java.io.UncheckedIOException(e);
-            }
+            return new CassiniTestHarness(server, bound, url);
         }
 
         /** Waits for a port in TIME_WAIT to be released before the next attempt. */

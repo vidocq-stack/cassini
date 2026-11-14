@@ -188,11 +188,26 @@ Cassini is configured via `SeBootstrap.Configuration` (standard) or via the `Cas
 [cols="2,1,3"]
 |===
 | Property | Default | Description
-| `host` | `0.0.0.0` | Transport listening interface.
-| `port` | `0` (auto) | HTTP port. `0` = random free.
+| `host` | `localhost` | The host the started instance reports. The Chappe transport listens on `127.0.0.1`; the JDK transport listens on `127.0.0.1` for a free port and on every address for a port it is given.
+| `port` | `-1` (`DEFAULT_PORT`) | HTTP port. `0` (`FREE_PORT`) or no port: a free port, see <<free-port>>.
 | `rootPath` | `/` | Mount prefix for the `Application`.
 | `protocol` | `HTTP` | `HTTP` or `HTTPS` (depending on transport support).
 |===
+
+[#free-port]
+=== A free port [.tag-new]#NEW#
+
+With `port(SeBootstrap.Configuration.FREE_PORT)`, or no port, the transport's server binds a free port of `127.0.0.1` itself, and `instance.configuration().port()` gives the port it listens on (Jakarta REST §5.2):
+
+[source,java]
+----
+SeBootstrap.Instance instance = SeBootstrap.start(MyApplication.class,
+        SeBootstrap.Configuration.builder().port(SeBootstrap.Configuration.FREE_PORT).build())
+    .toCompletableFuture().get();
+int port = instance.configuration().port();
+----
+
+Behaviour change:: Up to {release-version}, the transport picked a free port, built the application, then bound that port: another process could take it in between. The Chappe transport then failed to start; the JDK transport, which listened on every address, started, and on macOS the clients of `127.0.0.1` reached the other process (CASSINI-049).
 
 When Cassini is driven by xref:vidocq::index.adoc[Vidocq Runtime] (the `io.vidocq.runtime.extensions.jakartaee.core:vidocq-runtime-cassini-rest-extension` extension), the JAX-RS application is mounted on the shared Chappe server through the runtime's HTTP mount configuration:
 
