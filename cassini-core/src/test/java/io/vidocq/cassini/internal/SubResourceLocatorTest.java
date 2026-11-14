@@ -34,6 +34,8 @@ import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.ext.RuntimeDelegate;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -109,8 +111,42 @@ class SubResourceLocatorTest {
         }
     }
 
+    /**
+     * A sub-resource class with the annotations of a root resource class: its {@code @Path} is ignored when a locator
+     * returns it (§3.4.1, §3.7.2), its {@code @Produces} and {@code @Consumes} apply to its methods (§3.5).
+     */
+    @Path("/ignored")
+    @Produces("text/plain")
+    @Consumes("text/plain")
+    public static class Annotated {
+        @GET
+        public String get() {
+            return "annotated";
+        }
+
+        @POST
+        public String post(String body) {
+            return "annotated " + body;
+        }
+
+        @Path("/leaf")
+        public Item leaf() {
+            return new Item();
+        }
+    }
+
     @Path("/loc")
     public static class Root {
+        @Path("/typed-annotated")
+        public Annotated typedAnnotated() {
+            return new Annotated();
+        }
+
+        @Path("/dyn-annotated")
+        public Object dynamicAnnotated() {
+            return new Annotated();
+        }
+
         @Path("/typed/{id}")
         public Item typed(@PathParam("id") String id) {
             return new Item();
@@ -203,6 +239,21 @@ class SubResourceLocatorTest {
                 .header("Accept", "text/html");
         STACK.adapter().dispatch(refused).toCompletableFuture().join();
         assertEquals(406, refused.status());
+    }
+
+    /** CASSINI-055: the class an Object locator returns was routed under its own {@code @Path}, and its class
+     *  {@code @Produces} and {@code @Consumes} were ignored; a typed locator reads the same class as §3.4.1 says. */
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"/loc/typed-annotated", "/loc/dyn-annotated"})
+    void aLocatorIgnoresThePathOfTheClassItReturnsAndKeepsItsMediaTypes(String locator) {
+        assertEquals("annotated", get(locator).responseText());
+        assertEquals("annotated z", send("POST", locator, "text/plain", "z").responseText());
+        assertEquals("item " + locator.substring(1) + "/leaf", get(locator + "/leaf").responseText());
+        assertEquals(404, get(locator + "/ignored").status(), "the class @Path is no part of the sub-resource's path");
+        assertEquals(415, send("POST", locator, "application/xml", "<x/>").status(), "the class @Consumes applies");
+        InMemoryExchange refused = InMemoryExchange.request("GET", locator, null, null).header("Accept", "application/json");
+        STACK.adapter().dispatch(refused).toCompletableFuture().join();
+        assertEquals(406, refused.status(), "the class @Produces applies");
     }
 
     @Test

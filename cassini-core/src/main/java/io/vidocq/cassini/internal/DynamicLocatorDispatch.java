@@ -157,10 +157,7 @@ final class DynamicLocatorDispatch {
     private CassiniHttpResponse dispatchOnInstance(Object instance, String remaining, CassiniHttpExchange request,
                                                    List<Object> matchedSoFar) throws Exception {
         Class<?> cls = instance.getClass();
-        // §3.6: if the runtime class has no root @Path, simulate it by
-        // adding @Path("") through a scan wrapper. ResourceScanner.discover
-        // requires @Path on the class — work around that by scanning locators
-        // from a fake locator chain.
+        // §3.4.1: the routes of the runtime class, on what the locator left of the path (scanInstanceClass).
         UriRouter subRouter = SUB_ROUTERS.get(cls);
         if (subRouter == null) {
             return host.renderWebAppException(new jakarta.ws.rs.NotFoundException(),
@@ -194,36 +191,31 @@ final class DynamicLocatorDispatch {
         return host.invokeLocated(subMatch, request, instance);
     }
 
-    /** Scans {@code cls} as a resource class (implicit @Path("") added if
-     *  missing) to produce local routes. Used in dynamic dispatch when the class
-     *  comes from a runtime sub-resource locator, without a root @Path. */
+    /**
+     * Scans the class of an object a locator returned into routes on what the locator left of the path: its resource
+     * methods, and its locators, which re-enter the dynamic dispatch. §3.4.1, §3.7.2: it is a sub-resource class,
+     * whatever its annotations, so a {@code @Path} on it is ignored, as in §3.7.2's own example; §3.5: its class
+     * {@code @Produces} and {@code @Consumes} apply to the methods that declare none (CASSINI-055).
+     */
     private static List<ResourceMethod> scanInstanceClass(Class<?> cls) {
-        // A class that is itself @Path is scanned normally (routing is done on the remaining
-        // path, which does not carry the root @Path); otherwise its methods are read directly.
-        if (cls.getAnnotation(Path.class) != null) return ResourceScanner.discover(cls);
-        return scanSubResourceClass(cls);
-    }
-
-    /** Scans a sub-resource class (without a root @Path) by producing
-     *  ResourceMethods whose template is only @Path(method) (resource methods + sub
-     *  locators). No recursion for locators returning Object —
-     *  they emit dynamic routes in turn. */
-    private static List<ResourceMethod> scanSubResourceClass(Class<?> cls) {
+        Set<String> classProduces = setOf(cls.getAnnotation(Produces.class));
+        Set<String> classConsumes = setOf(cls.getAnnotation(Consumes.class));
         List<ResourceMethod> out = new ArrayList<>();
         for (Method m : ResourceScanner.resourceMethods(cls)) {
-            addRoutes(cls, m, out);
+            addRoutes(cls, m, classProduces, classConsumes, out);
         }
         return out;
     }
 
     /** The routes of one public method of a sub-resource class: a resource method, or a
      *  sub-resource locator that re-enters the dynamic dispatch at run time. */
-    private static void addRoutes(Class<?> cls, Method m, List<ResourceMethod> out) {
+    private static void addRoutes(Class<?> cls, Method m, Set<String> classProduces, Set<String> classConsumes,
+                                  List<ResourceMethod> out) {
         String verb = resolveHttpMethodOf(m);
         Path subPath = m.getAnnotation(Path.class);
         String path = subPath == null ? "/" : normalizeFwd(subPath.value());
-        Set<String> mp = setOf(m.getAnnotation(Produces.class));
-        Set<String> mc = setOf(m.getAnnotation(Consumes.class));
+        Set<String> mp = orClass(setOf(m.getAnnotation(Produces.class)), classProduces);
+        Set<String> mc = orClass(setOf(m.getAnnotation(Consumes.class)), classConsumes);
         if (verb != null) {
             out.add(new ResourceMethod(cls, accessible(m), verb, UriTemplate.compile(path), mp, mc));
             return;
@@ -244,6 +236,11 @@ final class DynamicLocatorDispatch {
             if (meta != null) return meta.value();
         }
         return null;
+    }
+
+    /** §3.5: the media types of a method, or those of its class when it declares none. */
+    private static Set<String> orClass(Set<String> method, Set<String> cls) {
+        return method.isEmpty() ? cls : method;
     }
 
     private static Set<String> setOf(java.lang.annotation.Annotation ann) {

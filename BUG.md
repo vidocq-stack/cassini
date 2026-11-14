@@ -772,3 +772,27 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   no path parameters, no route), and `FieldInjector`'s `ResourceInfo` gives a `null` method and class for it.
   `ResponsePipeline` injects the response filters of an unmatched response that way, with the exchange of its request
   context.
+
+## CASSINI-055 — A locator returning `Object` routes the returned class under its `@Path` and ignores its media types
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/locator-filter-order)
+- **Severity**: low. Spec conformance (Jakarta REST 4.0 §3.4.1, §3.7.2, §3.5); the two locator paths disagreed.
+- **Symptom**: when a sub-resource locator returning `Object` returned an object whose class carries `@Path`, the
+  object's routes were prefixed with that `@Path`: `GET /obj/sub` answered `404` and `GET /obj/sub/<class path>`
+  answered the class's `@GET`; a typed locator returning the same class answered `/obj/sub`. The class-level
+  `@Produces` and `@Consumes` of any class an `Object` locator returns were ignored, so its methods accepted and
+  produced any media type. Found while working on CASSINI-050 to CASSINI-053. The official TCK does not exercise it: its only `Object`
+  locators (`spec/resource/requestmatching`, `l2locator`) return classes with no class-level `@Path`, `@Produces` or
+  `@Consumes` (checked from the TCK 4.0.1 bytecode).
+- **Minimal repro**: `SubResourceLocatorTest` (cassini-core):
+  `aLocatorIgnoresThePathOfTheClassItReturnsAndKeepsItsMediaTypes` on `/loc/dyn-annotated` answered an empty `404`
+  where `/loc/typed-annotated`, the same class behind a typed locator, answered `annotated`. Red before the fix.
+- **Spec**: §3.4.1: the object a locator returns "is used to handle the request", and its class MUST be determined
+  from the object at run time. §3.7.2, in the section's example: "the `@Path` annotation on `WidgetResource` is
+  ignored for the request `GET widgets/1`", where `WidgetResource` is the class a locator returns. §3.5: "Use of these
+  annotations on a resource method overrides any on the resource class". Jersey models the returned class from its
+  annotations (`Resource.builder(locatorClass)`) and builds its router in sub-resource mode
+  (`RuntimeLocatorModelBuilder.createRouting`: `buildModel(..., true)`).
+- **Cause**: `DynamicLocatorDispatch.scanInstanceClass` scanned a class carrying `@Path` as a root resource
+  (`ResourceScanner.discover`), and `addRoutes` read the media types of each method only.
+- **Fix**: `scanInstanceClass` scans every returned class as a sub-resource class, and a method that declares no
+  `@Produces` or `@Consumes` takes the class's. The routes of a class are still built once per class.
