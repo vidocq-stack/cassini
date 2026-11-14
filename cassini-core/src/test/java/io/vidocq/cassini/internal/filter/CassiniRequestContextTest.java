@@ -159,17 +159,38 @@ class CassiniRequestContextTest {
     }
 
     @Test
-    void postMatchingFiltersMayNotChangeTheRequest() {
+    void postMatchingFiltersMayNotChangeTheMethodOrTheUri() {
         var context = context(get());
         context.markPostMatching();
         var uri = URI.create("http://127.0.0.1/x");
-        var stream = new ByteArrayInputStream(new byte[0]);
-        var security = securityContext("bob");
         assertThrows(IllegalStateException.class, () -> context.setMethod("POST"));
         assertThrows(IllegalStateException.class, () -> context.setRequestUri(uri));
         assertThrows(IllegalStateException.class, () -> context.setRequestUri(uri, uri));
-        assertThrows(IllegalStateException.class, () -> context.setEntityStream(stream));
-        assertThrows(IllegalStateException.class, () -> context.setSecurityContext(security));
+    }
+
+    /** CASSINI-056: ContainerRequestContext#setEntityStream and #setSecurityContext throw from a response filter
+     *  only; a post-matching filter may call them. */
+    @Test
+    void postMatchingFiltersMayChangeTheEntityAndTheSecurityContext() {
+        var exchange = get();
+        var context = context(exchange);
+        context.markPostMatching();
+        var stream = new ByteArrayInputStream(new byte[]{2});
+        var security = securityContext("bob");
+        context.setEntityStream(stream);
+        context.setSecurityContext(security);
+        assertSame(stream, context.getEntityStream());
+        assertSame(security, exchange.getAttribute(CassiniRequestContext.ATTR_SECURITY_CONTEXT));
+
+        var duringResponse = context(get());
+        duringResponse.runDuringResponsePhase(() -> {
+            assertThrows(IllegalStateException.class, () -> duringResponse.setEntityStream(stream));
+            assertThrows(IllegalStateException.class, () -> duringResponse.setSecurityContext(security));
+        });
+        var inResource = context(get());
+        inResource.markPostResource();
+        assertThrows(IllegalStateException.class, () -> inResource.setEntityStream(stream));
+        assertThrows(IllegalStateException.class, () -> inResource.setSecurityContext(security));
     }
 
     @Test

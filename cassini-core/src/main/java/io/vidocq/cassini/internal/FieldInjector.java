@@ -339,6 +339,14 @@ public final class FieldInjector {
     /** Exchange key for the body bytes cache (shared between @FormParam and MBR). */
     public static final String ATTR_BODY_CACHE  = "cassini.body_cache";
 
+    /** Forgets the entity read so far, and the form parsed from it: a request filter set another stream after a
+     *  sub-resource locator read the entity (CASSINI-056). */
+    static void forgetEntity(CassiniHttpExchange request) {
+        request.setAttribute(ATTR_BODY_CACHE, null);
+        request.setAttribute(ATTR_FORM_CACHE, null);
+        request.setAttribute(ATTR_FORM_CACHE_ENCODED, null);
+    }
+
     /** Internal: used by {@code InjectionSupportImpl}. */
     @SuppressWarnings("unchecked")
     public static Map<String, List<String>> readForm(CassiniHttpExchange request, boolean encoded) {

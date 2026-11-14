@@ -20,6 +20,7 @@
 package io.vidocq.cassini.internal;
 
 import io.vidocq.cassini.internal.filter.CassiniRequestContext;
+import io.vidocq.cassini.internal.filter.FilteredExchange;
 import io.vidocq.cassini.internal.transport.CassiniHttpResponse;
 import io.vidocq.cassini.spi.http.CassiniHttpAdapter;
 import io.vidocq.cassini.spi.http.CassiniHttpExchange;
@@ -136,6 +137,7 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
         String method = exchange.method();
         String verb = method == null ? "GET" : method;
         String path = exchange.routingPath();
+        CassiniHttpExchange filtered = exchange;
 
         // §6.6.1: pre-matching filters run BEFORE routing → if one calls
         // abortWith(), return directly without attempting to match a route
@@ -149,33 +151,19 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
                 return aborted.status();
             }
             // §6.6.1: if a pre-matching filter called setMethod /
-            // setRequestUri, route the mutated values.
+            // setRequestUri, route the mutated values; the rest of the request reads
+            // what the filters changed (CASSINI-056).
             CassiniRequestContext ctx = preMatched.ctx();
             if (ctx != null) {
                 if (ctx.currentMethod() != null) verb = ctx.currentMethod();
-                path = reroutedPath(ctx.currentRequestUri(), exchange.contextPath(), path);
+                path = FilteredExchange.routingPath(ctx.currentRequestUri(), exchange.contextPath(), path);
+                filtered = ctx.filteredExchange();
             }
         }
 
-        CassiniHttpResponse out = respond(verb, path, exchange);
+        CassiniHttpResponse out = respond(verb, path, filtered);
         applyResponse(out, exchange);
         return out.status();
-    }
-
-    /**
-     * §6.6.1: the routing path of a request URI that a pre-matching filter set, without the
-     * context path; {@code path} when no filter set one.
-     */
-    private static String reroutedPath(java.net.URI requestUri, String contextPath, String path) {
-        if (requestUri == null) return path;
-        String rerouted = requestUri.getRawPath() != null ? requestUri.getRawPath() : requestUri.getPath();
-        if (rerouted == null) return "/";
-        if (contextPath != null && !contextPath.isEmpty() && !"/".equals(contextPath)
-                && rerouted.startsWith(contextPath)) {
-            rerouted = rerouted.substring(contextPath.length());
-            return rerouted.isEmpty() ? "/" : rerouted;
-        }
-        return rerouted;
     }
 
     private CassiniHttpResponse respond(String verb, String path, CassiniHttpExchange exchange) throws Exception {

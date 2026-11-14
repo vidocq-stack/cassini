@@ -682,9 +682,9 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Fix**: `Invoker.walkStaticLocators` walks the chain before the post-matching filters, as `DynamicLocatorDispatch`
   does on the dynamic path. A locator's failure is rendered with `Invoker.locatorContext`, now marked unmatched
   (`CassiniRequestContext.markUnmatched`), for which `ResponsePipeline` runs the global response filters only, on
-  both paths. Unchanged, for the TCK: on the static path the negotiation (`415`, `406`) and the arguments still come
-  before the locators, and the root resource of a route without locator is still created after the post-matching
-  filters.
+  both paths. Unchanged, for the TCK: on the static path the negotiation (`415`, `406`) still comes before the
+  locators, and the root resource of a route without locator is still created after the post-matching filters. (The
+  arguments, which came before the locators too, come after the post-matching filters since CASSINI-056.)
 
 ## CASSINI-052 — A `DynamicFeature` misses the classes a locator returns at run time, and runs twice for some methods
 - **Date**: 2026-11-14 — **Status**: FIXED (fix/locator-filter-order)
@@ -796,3 +796,45 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   (`ResourceScanner.discover`), and `addRoutes` read the media types of each method only.
 - **Fix**: `scanInstanceClass` scans every returned class as a sub-resource class, and a method that declares no
   `@Produces` or `@Consumes` takes the class's. The routes of a class are still built once per class.
+
+## CASSINI-056 — What a request filter changes in the request never reaches the resource method
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/locator-filter-order)
+- **Severity**: medium. Spec conformance (Jakarta REST 4.0 §6.2, §6.5.1, `ContainerRequestContext`); in practice a
+  filter that decompresses or decrypts the entity, rewrites a header, authenticates in a post-matching filter, or
+  reroutes a request with a query had no effect on the resource method, or failed the request.
+- **Symptom**: the resource method got the request the client sent, whatever the request filters changed: a header
+  set through `getHeaders()` was not seen by `@HeaderParam`, `HttpHeaders` or the entity's `Content-Type`; a stream set
+  with `setEntityStream` by a pre-matching filter was ignored; after `setRequestUri` or `setMethod` in a pre-matching
+  filter, the routing used the new values, but `@QueryParam`, `UriInfo` and `Request.getMethod()` gave the old ones,
+  and the router of a class a locator returns as `Object` routed on the old method (`405`). A post-matching filter
+  that called `setEntityStream` or `setSecurityContext` failed with an `IllegalStateException` (`500`), and its header
+  changes came after the arguments were resolved. Found while working on CASSINI-050 to CASSINI-053. The official TCK
+  does not exercise it: each of its request filters that changes the request aborts it, in a pre-matching filter,
+  before any resource method runs (`ee/rs/container/requestcontext`, checked from the TCK 4.0.1 bytecode), and its
+  post-matching ones only read the request or abort it.
+- **Minimal repro**: `RequestFilterChangesTest` (cassini-core): 14 of its 16 cases red before the fix (the two without
+  any change pass): `who=client` where a filter set `X-Who`, `body=from client` where a pre-matching filter
+  set the entity, `500` where a post-matching filter set the entity or the security context, `q=sent` and
+  `method=POST` after `setRequestUri` and `setMethod`, `405` on the locator path after `setMethod`.
+- **Spec**: §6.2: request filters may modify "the request before it is processed by the resource method".
+  `ContainerRequestContext#setEntityStream` and `#setSecurityContext` throw `IllegalStateException` "in case the method
+  is invoked from a response filter", and only `#setMethod` and `#setRequestUri` throw when "not invoked from a
+  pre-matching request filter". §6.5.1: post-matching filters run "after resource matching", before the method.
+  Jersey resolves the arguments in `ResourceMethodInvoker`, after its request filtering stage, from the
+  `ContainerRequest` the filters changed; RESTEasy's `ResourceMethodInvoker.invokeOnTarget` runs the post-matching
+  filters, then injects the arguments from the same `HttpRequest`.
+- **Cause**: `CassiniRequestContext` kept the filters' changes to itself: the header copy, the entity stream, the method
+  and the URI never reached the exchange the rest of the request reads (only the security context did, through an
+  exchange attribute). It also refused `setEntityStream` and `setSecurityContext` in a post-matching filter. And
+  `Invoker` resolved the arguments, entity included, before running the post-matching filters.
+- **Fix**: `CassiniRequestContext.filteredExchange()` gives the exchange as the filters left it: a `FilteredExchange`
+  that answers the headers, the entity stream, the method and the request URI from the context, wherever a filter read
+  or changed them, and delegates everything else, the response included, to the transport's exchange; the exchange
+  itself when no filter touched them. `DefaultCassiniHttpAdapter` routes and dispatches that exchange after the
+  pre-matching filters, and `Invoker` swaps it in after the pre-matching filters it runs itself and after the
+  post-matching ones; when a filter set the entity stream, the entity a locator's `@FormParam` had read is forgotten.
+  The arguments are resolved after the post-matching filters (order: negotiation, locators, post-matching filters,
+  arguments, target). `setEntityStream` and `setSecurityContext` throw in a response filter or
+  on a context injected into a resource only. The base URI stays the transport's (`requestUriRaw`). TCK risk: the
+  order of the arguments changes for every request that has post-matching or response filters; the TCK packages with
+  post-matching filters abort or throw in them (`requestcontext`, `illegalstate`, `security`, `spec/filter/exception`).

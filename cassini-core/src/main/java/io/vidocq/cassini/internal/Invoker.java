@@ -347,7 +347,8 @@ public final class Invoker {
      */
     private static final class Invocation {
         final MatchResult match;
-        final CassiniHttpExchange request;
+        /** The exchange as the request filters left it so far (CASSINI-056). */
+        CassiniHttpExchange request;
         final ResourceMethod route;
         final MethodParameters declared;
         /** The pre-matching context, when this invocation ran the pre-matching filters. */
@@ -388,7 +389,7 @@ public final class Invoker {
 
     /**
      * Runs a matched resource method: the pre-matching filters when the dispatch did not run them,
-     * negotiation, the arguments, the sub-resource locators that lead to it, the post-matching filters, the target
+     * negotiation, the sub-resource locators that lead to it, the post-matching filters, the arguments, the target
      * instance, the method, its asynchronous result, then the response. Each phase returns the response that ends the
      * request early (an abort, a rendered or mapped failure), or null to go on.
      */
@@ -410,12 +411,13 @@ public final class Invoker {
     private CassiniHttpResponse run(Invocation inv) throws Exception {
         CassiniHttpResponse early = runPreMatchingFilters(inv);
         if (early == null) early = negotiate(inv);
+        if (early == null) early = walkStaticLocators(inv);
+        if (early == null) early = runPostMatchingFilters(inv);
         if (early == null) {
+            // After the request filters: the arguments are what they left of the request (§6.2, CASSINI-056).
             prepareAsyncResponse(inv);
             early = resolveArguments(inv);
         }
-        if (early == null) early = walkStaticLocators(inv);
-        if (early == null) early = runPostMatchingFilters(inv);
         if (early == null) early = resolveTarget(inv);
         if (early == null) early = invokeResourceMethod(inv);
         if (early == null) early = awaitResult(inv);
@@ -437,6 +439,7 @@ public final class Invoker {
             CassiniHttpResponse stop = runPreMatchingFilter(fe.instance(), inv);
             if (stop != null) return stop;
         }
+        readFilteredRequest(inv, inv.preCtx);
         return null;
     }
 
@@ -497,8 +500,8 @@ public final class Invoker {
         });
     }
 
-    /** 2. The arguments of the resource method, its entity included. A failure goes through the
-     *  ExceptionMappers (§4.4). */
+    /** 4. The arguments of the resource method, its entity included, read from the request as the request filters
+     *  left it (CASSINI-056). A failure goes through the ExceptionMappers (§4.4). */
     private CassiniHttpResponse resolveArguments(Invocation inv) throws IOException {
         try {
             ParamExtractor.ResolvedArgs resolved = ParamExtractor.resolve(inv.route, inv.match, inv.request);
@@ -537,8 +540,9 @@ public final class Invoker {
     }
 
     /**
-     * 4. The post-matching request filters (§6.6), on a context marked post-matching first, so
-     * that the setters reserved to pre-matching filters (setRequestUri, setMethod) throw.
+     * 3. The post-matching request filters (§6.6), on a context marked post-matching first, so
+     * that the setters reserved to pre-matching filters (setRequestUri, setMethod) throw. The
+     * arguments come after them, from the request as they left it (§6.2, CASSINI-056).
      */
     private CassiniHttpResponse runPostMatchingFilters(Invocation inv) throws IOException {
         if (filters.postMatching().isEmpty() && filters.responseFilters().isEmpty()) return null;
@@ -556,7 +560,17 @@ public final class Invoker {
                 if (stop != null) return stop;
             }
         }
+        readFilteredRequest(inv, inv.rctx);
         return null;
+    }
+
+    /**
+     * §6.2: the rest of the invocation reads the request as the filters of {@code ctx} left it (CASSINI-056). The
+     * entity a locator read before they set another stream is forgotten.
+     */
+    private static void readFilteredRequest(Invocation inv, CassiniRequestContext ctx) {
+        inv.request = ctx.filteredExchange();
+        if (ctx.entityReplaced()) FieldInjector.forgetEntity(inv.request);
     }
 
     private CassiniHttpResponse runPostMatchingFilter(ContainerRequestFilter filter, Invocation inv) throws IOException {
@@ -602,7 +616,7 @@ public final class Invoker {
     }
 
     /**
-     * 3. §3.7.2: the sub-resource locators of a route that a typed locator chain leads to. Calling them is part of
+     * 2. §3.7.2: the sub-resource locators of a route that a typed locator chain leads to. Calling them is part of
      * the matching, which the post-matching filters follow (§6.5.1): they run before those filters, as on the
      * dynamic path (CASSINI-051). A failure of a locator comes before any resource method is matched, so only the
      * global response filters process its response (§6.7.1).

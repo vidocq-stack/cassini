@@ -50,7 +50,7 @@ public final class CassiniRequestContext implements ContainerRequestContext {
 
     /**
      * Exchange attribute key carrying the {@link SecurityContext} set by a
-     * {@code @PreMatching} filter via {@link #setSecurityContext}. Read by {@code FieldInjector} and
+     * request filter via {@link #setSecurityContext}. Read by {@code FieldInjector} and
      * {@code ParamExtractor} for {@code @Context SecurityContext} injection into resources.
      */
     public static final String ATTR_SECURITY_CONTEXT = "io.vidocq.cassini.securityContext";
@@ -67,12 +67,13 @@ public final class CassiniRequestContext implements ContainerRequestContext {
      *  base URI from the {@link UriInfo}, which costs nothing when nobody asks for it. */
     private URI baseUri;
     private InputStream entityStream;
+    /** Whether a filter set the entity stream, which the resource method then reads (CASSINI-056). */
+    private boolean entityReplaced;
     private SecurityContext securityContext;
     private UriInfo uriInfo;
     private Response aborted;
-    /** §6.6: true once matching has occurred — prevents setMethod /
-     *  setRequestUri / setSecurityContext / setEntityStream / abortWith
-     *  from being called in a @PostMatching filter for illegal mutations. */
+    /** §6.6: true once matching has occurred — setMethod and setRequestUri, which
+     *  only a pre-matching filter may call, then throw. */
     private boolean postMatching = false;
     /** §6.6: during the response-filter pass — abortWith must throw
      *  IllegalStateException. Activated via {@link #runDuringResponsePhase}. */
@@ -200,20 +201,50 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     }
 
     @Override public InputStream getEntityStream() { return entityStream; }
+
+    /** Allowed in any request filter, pre-matching or not; throws from a response filter or a resource
+     *  (ContainerRequestContext#setEntityStream, CASSINI-056). */
     @Override public void setEntityStream(InputStream input) {
-        if (postMatching) throw new IllegalStateException("setEntityStream cannot be called in post-matching filters (§6.6)");
+        requestStillOpen("setEntityStream");
         this.entityStream = input;
+        this.entityReplaced = true;
     }
 
     @Override public SecurityContext getSecurityContext() { return securityContext; }
+
+    /** Allowed in any request filter, pre-matching or not; throws from a response filter or a resource
+     *  (ContainerRequestContext#setSecurityContext, CASSINI-056). */
     @Override public void setSecurityContext(SecurityContext context) {
-        if (postMatching) throw new IllegalStateException("setSecurityContext cannot be called in post-matching filters (§6.6)");
+        requestStillOpen("setSecurityContext");
         this.securityContext = context;
-        // §6: a @PreMatching filter may replace the SecurityContext. Propagate it to the
+        // §6: a request filter may replace the SecurityContext. Propagate it to the
         // exchange so that @Context SecurityContext injection in a resource (FieldInjector /
         // ParamExtractor) reflects this value — otherwise they reconstruct a fresh
         // CassiniSecurityContext and ignore the context set by the filter (e.g. MicroProfile JWT).
         exchange.setAttribute(ATTR_SECURITY_CONTEXT, context);
+    }
+
+    /** Whether a filter set the entity stream on this context. */
+    public boolean entityReplaced() { return entityReplaced; }
+
+    /** The setters of the request throw once the resource method has the request: in a response filter, or on the
+     *  context injected into a resource. */
+    private void requestStillOpen(String setter) {
+        if (responsePhase || postResource) {
+            throw new IllegalStateException(setter + " cannot be called from a response filter or a resource");
+        }
+    }
+
+    /**
+     * The exchange the rest of the request reads once the filters ran on this context (CASSINI-056): the exchange this
+     * context was built on, or, when a filter read or changed the headers, replaced the entity stream, or set the
+     * method or the request URI, one that gives them as this context holds them.
+     */
+    public CassiniHttpExchange filteredExchange() {
+        boolean methodChanged = method != null && !method.equals(exchange.method());
+        if (headers == null && !entityReplaced && !methodChanged && requestUri == null) return exchange;
+        return new FilteredExchange(exchange, headers, entityReplaced ? entityStream : null,
+                methodChanged ? method : null, requestUri);
     }
 
     @Override public void abortWith(Response response) {
