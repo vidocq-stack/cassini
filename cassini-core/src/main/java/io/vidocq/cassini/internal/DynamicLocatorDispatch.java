@@ -187,7 +187,9 @@ final class DynamicLocatorDispatch {
             // restarted from its class, so the whole sub-chain runs.
             return walkThenDispatch(subMatch, request, instance, matchedSoFar);
         }
-        // The final method runs on the current instance, with its filters (§6.5, CASSINI-050).
+        // The final method runs on the current instance, with its filters (§6.5, CASSINI-050): those the dynamic
+        // features bind to it too, which first meet a method of a class returned at run time here (CASSINI-052).
+        host.filters().applyDynamicFeatures(subMatch.method());
         return host.invokeLocated(subMatch, request, instance);
     }
 

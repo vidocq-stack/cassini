@@ -29,9 +29,15 @@ import jakarta.ws.rs.ext.ContextResolver;
 import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptor;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Registry of {@link ContainerRequestFilter} / {@link ContainerResponseFilter}
@@ -39,21 +45,33 @@ import java.util.List;
  *
  * <p>§6.2: request filters execute in ascending priority order;
  * response filters in descending order.</p>
+ *
+ * <p>The filters and interceptors are registered while the stack is built, and later only by a dynamic feature,
+ * for a resource method a sub-resource locator reached at run time (CASSINI-052). Their lists are copied on write, so
+ * that a request that reads one meanwhile reads it whole.</p>
  */
 public final class FilterRegistry {
 
-    private final List<FilterEntry<ContainerRequestFilter>> requestFilters = new ArrayList<>();
+    private final List<FilterEntry<ContainerRequestFilter>> requestFilters = new CopyOnWriteArrayList<>();
     /** The pre-matching and post-matching request filters, read several times per request: rebuilt
-     *  when a request filter is registered, never on a read. Unmodifiable lists, written while the
-     *  stack is built, before it serves, like the lists they derive from. */
+     *  when a request filter is registered, never on a read. Unmodifiable lists: a request that reads one while a
+     *  dynamic feature registers a filter for another method gets the former list or the new one, both whole. */
     private List<FilterEntry<ContainerRequestFilter>> preMatchingView = List.of();
     private List<FilterEntry<ContainerRequestFilter>> postMatchingView = List.of();
-    private final List<FilterEntry<ContainerResponseFilter>> responseFilters = new ArrayList<>();
-    private final List<FilterEntry<ReaderInterceptor>> readerInterceptors = new ArrayList<>();
-    private final List<FilterEntry<WriterInterceptor>> writerInterceptors = new ArrayList<>();
+    private final List<FilterEntry<ContainerResponseFilter>> responseFilters = new CopyOnWriteArrayList<>();
+    private final List<FilterEntry<ReaderInterceptor>> readerInterceptors = new CopyOnWriteArrayList<>();
+    private final List<FilterEntry<WriterInterceptor>> writerInterceptors = new CopyOnWriteArrayList<>();
     private final List<ContextResolver<?>> contextResolvers = new ArrayList<>();
     private final List<ParamConverterProvider> paramConverterProviders = new ArrayList<>();
     private final List<jakarta.ws.rs.container.DynamicFeature> dynamicFeatures = new ArrayList<>();
+
+    /** A resource method, as a dynamic feature sees it: its resource class and its Java method. */
+    private record ResourceKey(Class<?> resourceClass, Method method) { }
+
+    /** The resource methods the dynamic features already ran for (§6.5.3: once per resource method). */
+    private final Set<ResourceKey> configured = ConcurrentHashMap.newKeySet();
+    /** Held while the dynamic features run, so that two requests reaching a new method configure it once. */
+    private final ReentrantLock configuring = new ReentrantLock();
 
     public void addDynamicFeature(jakarta.ws.rs.container.DynamicFeature df) { dynamicFeatures.add(df); }
     public List<jakarta.ws.rs.container.DynamicFeature> dynamicFeatures() { return dynamicFeatures; }
@@ -108,22 +126,49 @@ public final class FilterRegistry {
         if (instance instanceof jakarta.ws.rs.container.DynamicFeature df) addDynamicFeature(df);
     }
 
-    /** §6.5.5: executes all DynamicFeatures for each given resource method.
+    /** §6.5.3: executes all DynamicFeatures for each given resource method.
      *  Filters/interceptors registered via featureContext.register
      *  will be bound to this method (dynamic binding). */
-    public void applyDynamicFeatures(java.util.Collection<io.vidocq.cassini.internal.ResourceMethod> routes) {
-        if (dynamicFeatures.isEmpty() || routes.isEmpty()) return;
+    public void applyDynamicFeatures(Collection<io.vidocq.cassini.internal.ResourceMethod> routes) {
+        if (dynamicFeatures.isEmpty()) return;
         for (var route : routes) {
-            java.lang.reflect.Method m = route.javaMethod();
-            Class<?> c = route.beanClass();
-            jakarta.ws.rs.container.ResourceInfo ri = new jakarta.ws.rs.container.ResourceInfo() {
-                @Override public java.lang.reflect.Method getResourceMethod() { return m; }
-                @Override public Class<?> getResourceClass() { return c; }
-            };
-            for (var df : dynamicFeatures) {
-                try { df.configure(ri, new CassiniDynamicFeatureContext(this, m)); }
-                catch (RuntimeException _) { /* a failing feature registers nothing */ }
+            applyDynamicFeatures(route);
+        }
+    }
+
+    /**
+     * §6.5.3: runs the dynamic features for the resource method of {@code route}, once per resource class and
+     * method: at startup for the routes scanned then, at its first request for a method of a class that a
+     * sub-resource locator returns at run time (§3.4.1, CASSINI-052). A route several locators lead to is configured
+     * once, and the route that stands for a locator returning {@code Object} is no resource method: the features
+     * never see it.
+     */
+    public void applyDynamicFeatures(io.vidocq.cassini.internal.ResourceMethod route) {
+        if (dynamicFeatures.isEmpty() || route.dynamicLocator() || route.javaMethod() == null) return;
+        ResourceKey key = new ResourceKey(route.beanClass(), route.javaMethod());
+        if (configured.contains(key)) return;
+        configuring.lock();
+        try {
+            // Noted once the features ran: a request that finds the method configured finds its filters too.
+            if (!configured.contains(key)) {
+                configure(key);
+                configured.add(key);
             }
+        } finally {
+            configuring.unlock();
+        }
+    }
+
+    private void configure(ResourceKey key) {
+        Method m = key.method();
+        Class<?> c = key.resourceClass();
+        jakarta.ws.rs.container.ResourceInfo ri = new jakarta.ws.rs.container.ResourceInfo() {
+            @Override public Method getResourceMethod() { return m; }
+            @Override public Class<?> getResourceClass() { return c; }
+        };
+        for (var df : dynamicFeatures) {
+            try { df.configure(ri, new CassiniDynamicFeatureContext(this, m)); }
+            catch (RuntimeException _) { /* a failing feature registers nothing */ }
         }
     }
 

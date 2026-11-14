@@ -685,3 +685,37 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   both paths. Unchanged, for the TCK: on the static path the negotiation (`415`, `406`) and the arguments still come
   before the locators, and the root resource of a route without locator is still created after the post-matching
   filters.
+
+## CASSINI-052 — A `DynamicFeature` misses the classes a locator returns at run time, and runs twice for some methods
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/locator-filter-order)
+- **Severity**: medium. Spec conformance (Jakarta REST 4.0 §6.5.3, §3.4.1), and a security one: a filter that a
+  `DynamicFeature` binds (an authorization check such as `RolesAllowedDynamicFeature`) never ran on a method of a
+  class that a locator returns as `Object`, so the method answered as if the check had passed.
+- **Symptom**: the dynamic features ran once per route at startup. A class that a sub-resource locator returns as
+  `Object` has no route then, so no feature ever saw its methods, and the filters a feature would bind to them never
+  ran. A method that several typed locators lead to has one route per locator: the features ran once per route and
+  bound their filters as many times, and each filter ran that many times per request. The two routes that stand for a
+  locator returning `Object` were handed to the features too, as resource methods of the class `Object`. The official
+  TCK does not exercise it: its two packages with a dynamic feature (`spec/filter/dynamicfeature`,
+  `jaxrs31/spec/extensions`) have no locator.
+- **Minimal repro**: `LocatorFilterTest` (cassini-core): `aDynamicFeatureBindsItsFiltersOnceToEachMethodALocatorLeadsTo`
+  ran the bound filter 3 times on `/typed/item/dynamic`, `/object/item/dynamic` and `/object/class/dynamic` (`Item` is
+  reached by three typed locators) and never on `/object/runtime-only/dynamic`; `aDynamicFeatureSeesEachResourceMethodOnce`
+  listed 25 configurations for 11 methods, `Object.item` twice among them. All red before the fix.
+- **Spec**: §6.5.3: dynamic features "are used to augment the set of filters and entity interceptors bound to a
+  resource method. [...] JAX-RS implementations SHOULD resolve dynamic features for filters and interceptors once for
+  each resource method. It is RECOMMENDED to process dynamic features at application deployment time." §3.4.1: the
+  methods of the object a locator returns are "treated like a normal resource method", and its class MUST be
+  determined from the object at run time, so deployment time cannot know them all. Jersey builds the model of the
+  class a locator returns at run time (`RuntimeLocatorModelBuilder`, cached per class), and each
+  `ResourceMethodInvoker` it builds runs the dynamic features; RESTEasy's `ResourceLocatorInvoker` keeps a registry
+  per class of the returned object, whose `ResourceMethodInvoker`s run the server dynamic features when built. Neither
+  runs a feature for a locator.
+- **Cause**: `FilterRegistry.applyDynamicFeatures` ran the features for every route `CassiniStackBuilderImpl` passed at
+  startup, without telling routes of the same method apart or leaving out the dynamic-locator routes, and
+  `DynamicLocatorDispatch` never ran them for the routes of a class it scans at run time.
+- **Fix**: `FilterRegistry.applyDynamicFeatures(ResourceMethod)` runs the features once per resource class and method
+  and skips the dynamic-locator routes. `DynamicLocatorDispatch.dispatchOnInstance` calls it before running the method
+  of a class returned at run time; the first request to reach that method configures it, under a lock, and the method
+  counts as configured only once the features ran. The registry's filter and interceptor lists are now copied on
+  write, so that a request reading one while a feature registers a filter for another method reads it whole.

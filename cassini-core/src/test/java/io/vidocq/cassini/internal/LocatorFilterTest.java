@@ -29,9 +29,11 @@ import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.container.ContainerResponseFilter;
+import jakarta.ws.rs.container.DynamicFeature;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.core.Application;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.FeatureContext;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.ExceptionMapper;
@@ -39,7 +41,9 @@ import jakarta.ws.rs.ext.Provider;
 import jakarta.ws.rs.ext.RuntimeDelegate;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.lang.annotation.ElementType;
@@ -52,6 +56,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Jakarta REST 4.0 §6.5: the container filters apply to the resource methods a sub-resource locator leads to, as to
@@ -67,6 +72,12 @@ class LocatorFilterTest {
     private static final String GLOBAL_REQUEST = "global request";
     private static final String AUDITED_REQUEST = "audited request";
     private static final String LOCATOR = "locator";
+    private static final String DYNAMIC = "dynamic";
+    private static final String DYNAMIC_REQUEST = "dynamic request";
+    private static final String DYNAMIC_RESPONSE = "X-Dynamic";
+
+    /** The resource methods the dynamic feature was configured for, as {@code Class.method}. */
+    private static final List<String> CONFIGURED = new CopyOnWriteArrayList<>();
     private static final String GLOBAL_RESPONSE = "X-Global";
     private static final String AUDITED_RESPONSE = "X-Audited";
     private static final String YES = "yes";
@@ -129,6 +140,32 @@ class LocatorFilterTest {
         }
     }
 
+    /** A request and response filter that only a dynamic feature binds (§6.5.3). */
+    public static final class DynamicallyBoundFilter implements ContainerRequestFilter, ContainerResponseFilter {
+        @Override
+        public void filter(ContainerRequestContext request) {
+            TRAIL.add(DYNAMIC_REQUEST);
+        }
+
+        @Override
+        public void filter(ContainerRequestContext request, ContainerResponseContext response) {
+            response.getHeaders().add(DYNAMIC_RESPONSE, YES);
+        }
+    }
+
+    /** Binds {@link DynamicallyBoundFilter} to the resource methods named {@code dynamic}; notes each method. */
+    @Provider
+    public static final class DynamicBinding implements DynamicFeature {
+        @Override
+        public void configure(ResourceInfo resourceInfo, FeatureContext context) {
+            CONFIGURED.add(resourceInfo.getResourceClass().getSimpleName() + "."
+                    + resourceInfo.getResourceMethod().getName());
+            if (DYNAMIC.equals(resourceInfo.getResourceMethod().getName())) {
+                context.register(new DynamicallyBoundFilter());
+            }
+        }
+    }
+
     /** An exception the application maps itself. */
     public static final class ItemFailure extends RuntimeException {
         ItemFailure(String message) { super(message); }
@@ -163,6 +200,23 @@ class LocatorFilterTest {
         @Produces(TEXT)
         public String mapped() {
             throw new ItemFailure("sub-resource method");
+        }
+
+        @GET
+        @Path(DYNAMIC)
+        @Produces(TEXT)
+        public String dynamic() {
+            return DYNAMIC;
+        }
+    }
+
+    /** A sub-resource that only a locator returning {@code Object} leads to: no route names it at startup. */
+    public static class RuntimeOnly {
+        @GET
+        @Path(DYNAMIC)
+        @Produces(TEXT)
+        public String dynamic() {
+            return "runtime only";
         }
     }
 
@@ -229,6 +283,11 @@ class LocatorFilterTest {
             TRAIL.add(LOCATOR);
             return new Item();
         }
+
+        @Path("runtime-only")
+        public Object runtimeOnly() {
+            return new RuntimeOnly();
+        }
     }
 
     private static final CassiniStack STACK = new CassiniStackBuilderImpl().application(new Application() {
@@ -236,9 +295,17 @@ class LocatorFilterTest {
         public Set<Class<?>> getClasses() {
             return Set.of(TypedRoot.class, ObjectRoot.class, ItemFailureMapper.class,
                     GlobalRequestFilter.class, AuditedRequestFilter.class,
-                    GlobalResponseFilter.class, AuditedResponseFilter.class);
+                    GlobalResponseFilter.class, AuditedResponseFilter.class, DynamicBinding.class);
         }
     }).build();
+
+    /** All the values of a response header. */
+    private static List<String> headerValues(InMemoryExchange ex, String name) {
+        return ex.responseHeaders().entrySet().stream()
+                .filter(e -> e.getKey().equalsIgnoreCase(name))
+                .flatMap(e -> e.getValue().stream())
+                .toList();
+    }
 
     private static InMemoryExchange get(String path) {
         InMemoryExchange exchange = InMemoryExchange.get(path);
@@ -300,6 +367,33 @@ class LocatorFilterTest {
         InMemoryExchange ex = get(path);
         assertEquals("plain", ex.responseText());
         assertEquals(List.of(LOCATOR, GLOBAL_REQUEST + " plain"), List.copyOf(TRAIL));
+    }
+
+    /**
+     * §6.5.3: a dynamic feature binds filters to each resource method, once: also to the methods of a class that a
+     * locator returning {@code Object} only gives at run time, and once for a method that several locators lead to
+     * (CASSINI-052). Twice in a row, so that the second request finds the binding in place, not a second one.
+     */
+    @ParameterizedTest(name = "{0}")
+    @CsvSource({"/typed/item/dynamic, dynamic", "/object/item/dynamic, dynamic", "/object/class/dynamic, dynamic",
+            "/object/runtime-only/dynamic, runtime only"})
+    void aDynamicFeatureBindsItsFiltersOnceToEachMethodALocatorLeadsTo(String path, String body) {
+        for (int i = 0; i < 2; i++) {
+            TRAIL.clear();
+            InMemoryExchange ex = get(path);
+            assertEquals(body, ex.responseText());
+            assertEquals(1, TRAIL.stream().filter(DYNAMIC_REQUEST::equals).count(), TRAIL::toString);
+            assertEquals(List.of(YES), headerValues(ex, DYNAMIC_RESPONSE));
+        }
+    }
+
+    /** §6.5.3: the features see resource methods only, each once, never a locator standing for one. */
+    @Test
+    void aDynamicFeatureSeesEachResourceMethodOnce() {
+        get("/object/runtime-only/dynamic");
+        assertEquals(Set.copyOf(CONFIGURED).size(), CONFIGURED.size(), CONFIGURED::toString);
+        assertTrue(CONFIGURED.contains("RuntimeOnly.dynamic"), CONFIGURED::toString);
+        assertTrue(CONFIGURED.stream().noneMatch(m -> m.startsWith("Object.")), CONFIGURED::toString);
     }
 
     /**
