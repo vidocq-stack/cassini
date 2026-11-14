@@ -162,7 +162,10 @@ public final class CassiniUriInfo implements UriInfo {
         return CassiniUriBuilder.fromUri(getAbsolutePath());
     }
 
+    /** The base URI a pre-matching filter set, or the request's scheme and authority with the context path. */
     @Override public URI getBaseUri() {
+        URI set = io.vidocq.cassini.internal.filter.FilteredExchange.baseUriOf(exchange);
+        if (set != null) return set;
         URI req = getRequestUri();
         try {
             return baseUri(req.getScheme(), req.getAuthority(), contextPath);

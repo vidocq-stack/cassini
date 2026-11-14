@@ -156,7 +156,9 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     }
     @Override public void setRequestUri(URI baseUri, URI requestUri) {
         if (postMatching) throw new IllegalStateException("setRequestUri cannot be called in post-matching filters (§6.6)");
-        this.baseUri = baseUri; this.requestUri = requestUri;
+        // The application moves under this base: the matching and every UriInfo follow it (CASSINI-059).
+        this.baseUri = baseUri == null ? null : FilteredExchange.asBase(baseUri);
+        this.requestUri = requestUri;
     }
 
     @Override public jakarta.ws.rs.core.Request getRequest() {
@@ -238,13 +240,13 @@ public final class CassiniRequestContext implements ContainerRequestContext {
     /**
      * The exchange the rest of the request reads once the filters ran on this context (CASSINI-056): the exchange this
      * context was built on, or, when a filter read or changed the headers, replaced the entity stream, or set the
-     * method or the request URI, one that gives them as this context holds them.
+     * method, the request URI or the base URI, one that gives them as this context holds them.
      */
     public CassiniHttpExchange filteredExchange() {
         boolean methodChanged = method != null && !method.equals(exchange.method());
         if (headers == null && !entityReplaced && !methodChanged && requestUri == null) return exchange;
         return new FilteredExchange(exchange, headers, entityReplaced ? entityStream : null,
-                methodChanged ? method : null, requestUri);
+                methodChanged ? method : null, requestUri, baseUri);
     }
 
     @Override public void abortWith(Response response) {

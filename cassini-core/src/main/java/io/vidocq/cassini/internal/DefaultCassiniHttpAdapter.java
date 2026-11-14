@@ -152,12 +152,12 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
             }
             // §6.6.1: if a pre-matching filter called setMethod /
             // setRequestUri, route the mutated values; the rest of the request reads
-            // what the filters changed (CASSINI-056).
+            // what the filters changed (CASSINI-056), relative to the base URI a filter set (CASSINI-059).
             CassiniRequestContext ctx = preMatched.ctx();
             if (ctx != null) {
                 if (ctx.currentMethod() != null) verb = ctx.currentMethod();
-                path = FilteredExchange.routingPath(ctx.currentRequestUri(), exchange.contextPath(), path);
                 filtered = ctx.filteredExchange();
+                path = FilteredExchange.routingPath(ctx.currentRequestUri(), filtered.contextPath(), path);
             }
         }
 
