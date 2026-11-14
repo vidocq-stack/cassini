@@ -169,6 +169,10 @@ final class DynamicLocatorDispatch {
             // §3.7.2: rejected before any resource method is matched — the global response filters only
             // (§6.7.1, CASSINI-053). 405 if another HTTP method matches the path.
             var allowed = subRouter.methodsAllowedFor(remaining);
+            if (!allowed.isEmpty() && jakarta.ws.rs.HttpMethod.OPTIONS.equalsIgnoreCase(httpMethod)) {
+                // §3.3.5: no @OPTIONS method in the class: the automatic answer, as at the root (CASSINI-060).
+                return host.writeUnmatched(Invoker.automaticOptionsAnswer(allowed), request);
+            }
             if (!allowed.isEmpty()) {
                 return host.renderWebAppException(
                         new jakarta.ws.rs.NotAllowedException(allowed.get(0),

@@ -925,3 +925,24 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   `/`. Its `contextPath()` is then the path of that base, which the routing, `UriInfo.getPath()` and the request
   contexts read, and `FilteredExchange.baseUriOf` gives the absolute base to `CassiniUriInfo.getBaseUri()` and to the
   response builder (`Invoker.publishBaseUri`). A relative base is completed with the request's scheme and authority.
+
+## CASSINI-060 — No automatic OPTIONS answer in the class a locator returns as Object
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/options-and-base-uri)
+- **Severity**: low. Spec conformance (Jakarta REST 4.0 §3.3.5); in practice a CORS preflight request to such a
+  sub-resource failed.
+- **Symptom**: an `OPTIONS` request to a sub-resource with no `@OPTIONS` method answered `405`, with an `Allow` header,
+  when a locator returned the sub-resource as `Object`; through a typed locator or at the root it got the automatic
+  `200`. Found while writing the test of CASSINI-058. The official TCK does not exercise it: its packages that send
+  `OPTIONS` have no locator that returns `Object` (checked from the TCK 4.0.1 bytecode).
+- **Minimal repro**: `UnmatchedResponseFilterTest.theGlobalResponseFiltersRunOnTheAutomaticOptionsAnswer`
+  (cassini-core), row `/object/sub`: `OPTIONS /object/sub`, where `@Path("sub") Object sub()` returns a class with a
+  `@GET` method, answered `405`. Red before the fix.
+- **Spec**: §3.3.5: "On receipt of an OPTIONS request an implementation MUST either: Call a method annotated with a
+  request method designator for OPTIONS or, if none present, Generate an automatic response using the metadata
+  provided by the JAX-RS annotations on the matching class and its methods." The matching class is the one the
+  locator returned.
+- **Cause**: `DynamicLocatorDispatch.dispatchOnInstance` answered `405` whenever the router of the returned class had
+  no route for the request method but one for another method; only the root router (`DefaultCassiniHttpAdapter.noRoute`)
+  built the automatic `OPTIONS` answer.
+- **Fix**: both build it with `Invoker.automaticOptionsAnswer` and write it through the global response filters
+  (`Invoker.writeUnmatched`), as CASSINI-058 does at the root.

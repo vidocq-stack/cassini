@@ -55,7 +55,6 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
     private static final String HEAD = "HEAD";
     private static final String OPTIONS = "OPTIONS";
     private static final String ALLOW = "Allow";
-    private static final String CONTENT_TYPE = "Content-Type";
 
     private final UriRouter router;
     private final Invoker invoker;
@@ -193,12 +192,7 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
                     .header(ALLOW, String.join(", ", allowed)).build();
             return invoker.renderThrowable(new jakarta.ws.rs.WebApplicationException(r405), exchange);
         }
-        if (!allowed.contains(OPTIONS)) allowed.add(OPTIONS);
-        if (allowed.contains("GET") && !allowed.contains(HEAD)) allowed.add(HEAD);
-        return invoker.renderUnmatched(jakarta.ws.rs.core.Response.ok()
-                .header(ALLOW, String.join(", ", allowed))
-                .header(CONTENT_TYPE, "application/vnd.sun.wadl+xml")
-                .build(), exchange);
+        return invoker.renderUnmatched(Invoker.automaticOptionsAnswer(allowed), exchange);
     }
 
     private static CassiniHttpResponse withoutBody(CassiniHttpResponse out) {

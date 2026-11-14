@@ -37,9 +37,9 @@ public class UserResource {
 [#locator-classes]
 === The class a locator returns [.tag-new]#NEW#
 
-The object a locator returns is a sub-resource, whatever its class carries (Jakarta REST §3.4.1, §3.7.2): its routes start where the locator's path ends, and a `@Path` on its class is ignored, so a root resource class can also serve as a sub-resource. Its class `@Produces` and `@Consumes` apply to its methods that declare none (§3.5). A locator that returns `Object` is resolved on the class of what it returns at run time, and reads that class the same way as a locator that declares it.
+The object a locator returns is a sub-resource, whatever its class carries (Jakarta REST §3.4.1, §3.7.2): its routes start where the locator's path ends, and a `@Path` on its class is ignored, so a root resource class can also serve as a sub-resource. Its class `@Produces` and `@Consumes` apply to its methods that declare none (§3.5). A locator that returns `Object` is resolved on the class of what it returns at run time, and reads that class the same way as a locator that declares it. An `OPTIONS` request to a sub-resource with no `@OPTIONS` method gets the xref:#automatic-options[automatic answer] (§3.3.5), whichever kind of locator leads to it.
 
-Behaviour change:: Up to {release-version}, a locator returning `Object` routed an object whose class carries `@Path` under that path too (`/users/7/admin` for a class `@Path("admin")`, instead of `/users/7`), and ignored the class `@Produces` and `@Consumes` of what it returned (CASSINI-055).
+Behaviour change:: Up to {release-version}, a locator returning `Object` routed an object whose class carries `@Path` under that path too (`/users/7/admin` for a class `@Path("admin")`, instead of `/users/7`), and ignored the class `@Produces` and `@Consumes` of what it returned (CASSINI-055). An `OPTIONS` request to the class it returned answered `405`, not the automatic `200` with its `Allow` header (CASSINI-060).
 
 == Providers — `MessageBodyReader` / `MessageBodyWriter`
 
