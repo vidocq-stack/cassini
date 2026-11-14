@@ -201,6 +201,23 @@ class UnmatchedResponseFilterTest {
         assertNotNull(ex.responseHeader("Allow"));
     }
 
+    /**
+     * §3.3.5, §6.7.1: the automatic answer to an {@code OPTIONS} request is no resource method, so the global response
+     * filters process it, and the bound ones do not; it keeps its {@code Allow} header (CASSINI-058).
+     */
+    @ParameterizedTest(name = "{0} -> {1}")
+    @CsvSource(delimiter = '|', value = {
+            "/plain      | GET POST HEAD OPTIONS"})
+    void theGlobalResponseFiltersRunOnTheAutomaticOptionsAnswer(String path, String methods) {
+        InMemoryExchange ex = send("OPTIONS", path, null, null);
+        assertEquals(200, ex.status(), ex::responseText);
+        String allow = ex.responseHeader("Allow");
+        assertNotNull(allow, "the automatic answer names the methods of the resource");
+        assertEquals(Set.of(methods.split(" ")), Set.of(allow.split(",\\s*")), allow);
+        assertEquals(List.of(YES), headerValues(ex, GLOBAL), "the global response filter, once");
+        assertNull(ex.responseHeader(BOUND), "no resource method is matched: no bound filter (§6.7.1)");
+    }
+
     /** §4.4: a mapped response goes through the response filters too. */
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {"/missing", "/object/sub/missing"})

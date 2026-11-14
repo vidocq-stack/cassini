@@ -1041,15 +1041,27 @@ public final class Invoker {
      * response filters process it for {@code request}, since no resource method is matched (CASSINI-053).
      */
     public CassiniHttpResponse renderThrowable(Throwable t, CassiniHttpExchange request) throws IOException {
-        return RequestScope.call(() -> renderThrowableInScope(t, request));
+        return RequestScope.call(() -> renderUnmatchedInScope(t, null, request));
     }
 
-    private CassiniHttpResponse renderThrowableInScope(Throwable t, CassiniHttpExchange request) throws IOException {
+    /**
+     * §3.3.5, §6.7.1: renders a response the runtime builds itself before any resource method is matched (the
+     * automatic answer to an {@code OPTIONS} request), through the global response filters for {@code request}
+     * (CASSINI-058).
+     */
+    public CassiniHttpResponse renderUnmatched(jakarta.ws.rs.core.Response response, CassiniHttpExchange request)
+            throws IOException {
+        return RequestScope.call(() -> renderUnmatchedInScope(null, response, request));
+    }
+
+    /** The response of {@code built}, or else the one an exception mapper or the exception {@code t} gives. */
+    private CassiniHttpResponse renderUnmatchedInScope(Throwable t, jakarta.ws.rs.core.Response built,
+                                                       CassiniHttpExchange request) throws IOException {
         if (application != null) RequestScope.current().application = application;
         ParamExtractor.setProviders(new io.vidocq.cassini.internal.context.CassiniProviders(
                 registry, exceptionMappers, filters.contextResolvers()));
         try {
-            jakarta.ws.rs.core.Response response = exceptionMappers.map(t).orElse(null);
+            jakarta.ws.rs.core.Response response = built != null ? built : exceptionMappers.map(t).orElse(null);
             if (response == null && t instanceof WebApplicationException wae) response = wae.getResponse();
             if (response == null) return unmappedFailure();
             CassiniRequestContext rctx = request == null ? null : unmatchedContext(null, request);

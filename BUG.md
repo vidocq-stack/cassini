@@ -862,3 +862,30 @@ The 500 is empty, and the log line names the exception's class only, with a mess
 - **Fix**: since CASSINI-056 the arguments come after the post-matching filters, so their failures are rendered with
   the post-matching context (`Invoker.argumentsContext`), which exists whenever there are response filters: the global
   ones and those bound to the method run.
+
+## CASSINI-058 — No response filter runs on the automatic answer to an OPTIONS request
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/options-and-base-uri)
+- **Severity**: low. Spec conformance (Jakarta REST 4.0 §3.3.5, §6.5.1); in practice a CORS response filter left the
+  answer to a preflight request without its headers.
+- **Symptom**: an `OPTIONS` request to a resource with no `@OPTIONS` method got the automatic `200` with its `Allow`
+  header, but no response filter, global or bound, processed it. The `404` and `405` that the same router builds from
+  the same metadata go through the global response filters since CASSINI-053. Listed as uncertain while fixing
+  CASSINI-050 to CASSINI-057. The official TCK does not exercise it: none of its packages that send `OPTIONS`
+  (`ee/rs/options`, `ee/rs/get`, `spec/resource/requestmatching`, ...) registers a response filter (checked from the
+  TCK 4.0.1 bytecode).
+- **Minimal repro**: `UnmatchedResponseFilterTest.theGlobalResponseFiltersRunOnTheAutomaticOptionsAnswer`
+  (cassini-core): `OPTIONS /plain` (a `@GET` and a `@POST` method) answered `200` with its `Allow` header and without
+  the `X-Global` header of the global response filter. Red before the fix.
+- **Spec**: §3.3.5: "On receipt of an OPTIONS request an implementation MUST either: Call a method annotated with a
+  request method designator for OPTIONS or, if none present, Generate an automatic response using the metadata
+  provided by the JAX-RS annotations on the matching class and its methods." §6.5.1: "A filter or interceptor that
+  has no annotations is assumed to be bound globally, i.e. it applies to all the resource methods in an
+  application." §6.7.1: "If a web resource has been matched [...] everything bound to the method as well as
+  globally; Otherwise, only global filters and interceptors will be included." The spec does not say whether the
+  automatic answer is filtered. Jersey generates it as a resource method (`OptionsMethodProcessor`), so its global
+  request and response filters run; RESTEasy throws `DefaultOptionsMethodException` during the matching and writes
+  its response through the global response filters only. Both run the global response filters.
+- **Cause**: `DefaultCassiniHttpAdapter.noRoute` built the `OPTIONS` answer as a transport response, bypassing the
+  response pipeline that its `404` and `405` go through.
+- **Fix**: the answer is a `Response` rendered by `Invoker.renderUnmatched`, through the global response filters with
+  the request context of a request no resource method matched (`Invoker.unmatchedContext`), as the `404` and `405`.

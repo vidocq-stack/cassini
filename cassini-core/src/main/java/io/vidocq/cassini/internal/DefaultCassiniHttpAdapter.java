@@ -180,7 +180,8 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
 
     /** No route for this verb and path: 404 when no verb has one, 405 otherwise (§3.7.2), through
      *  a WebApplicationException so that an ExceptionMapper can intercept it, then the global
-     *  response filters (§6.7.1, CASSINI-053); OPTIONS answers 200 with the Allow header (§3.3.5). */
+     *  response filters (§6.7.1, CASSINI-053); OPTIONS answers 200 with the Allow header (§3.3.5), through the
+     *  global response filters too (CASSINI-058). */
     private CassiniHttpResponse noRoute(String verb, String path, CassiniHttpExchange exchange) throws IOException {
         List<String> allowed = router.methodsAllowedFor(path);
         if (allowed.isEmpty()) {
@@ -194,12 +195,10 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
         }
         if (!allowed.contains(OPTIONS)) allowed.add(OPTIONS);
         if (allowed.contains("GET") && !allowed.contains(HEAD)) allowed.add(HEAD);
-        return CassiniHttpResponse.builder()
-                .status(200)
+        return invoker.renderUnmatched(jakarta.ws.rs.core.Response.ok()
                 .header(ALLOW, String.join(", ", allowed))
                 .header(CONTENT_TYPE, "application/vnd.sun.wadl+xml")
-                .body(new byte[0])
-                .build();
+                .build(), exchange);
     }
 
     private static CassiniHttpResponse withoutBody(CassiniHttpResponse out) {
