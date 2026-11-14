@@ -43,6 +43,7 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
@@ -450,7 +451,8 @@ public final class Invoker {
     }
 
     /** 1. §3.7.2: content negotiation; a 415 or a 406 goes through a WebApplicationException so
-     *  that an ExceptionMapper can intercept it. */
+     *  that an ExceptionMapper can intercept it. The matching rejects the request before any resource method is
+     *  matched, so only the global response filters process it (§6.7.1, CASSINI-053). */
     private CassiniHttpResponse negotiate(Invocation inv) throws IOException {
         CassiniHttpExchange request = inv.request;
         ResourceMethod route = inv.route;
@@ -460,13 +462,15 @@ public final class Invoker {
         // §3.7.2: if the request has a Content-Type or a body, filter on @Consumes.
         boolean checkConsumes = hasRequestBody(request) || inv.contentTypeHeader != null;
         if (checkConsumes && !consumes.isEmpty() && !MediaTypes.consumesMatches(inv.contentType, consumes)) {
-            return renderWebAppException(new jakarta.ws.rs.NotSupportedException(), route, null, null);
+            return renderWebAppException(new jakarta.ws.rs.NotSupportedException(), route, null,
+                    unmatchedContext(inv.match, request));
         }
         List<MediaType> accepts = MediaTypes.parseList(request.firstHeader("Accept"));
         List<MediaType> produces = MediaTypes.fromSet(route.produces());
         Optional<MediaType> negotiated = MediaTypes.pickProduced(accepts, produces);
         if (negotiated.isEmpty() && !produces.isEmpty()) {
-            return renderWebAppException(new jakarta.ws.rs.NotAcceptableException(), route, null, null);
+            return renderWebAppException(new jakarta.ws.rs.NotAcceptableException(), route, null,
+                    unmatchedContext(inv.match, request));
         }
         inv.chosen = negotiated.orElse(MediaType.WILDCARD_TYPE);
         return null;
@@ -578,13 +582,18 @@ public final class Invoker {
     }
 
     /**
-     * The request context the response filters get for a response that ends a sub-resource locator chain before
-     * its resource method is matched (a failure of a locator, §6.7.1): only the global filters process it. Or
+     * The request context the response filters get for a response that comes before any resource method is matched
+     * (§6.7.1): the failure of a sub-resource locator (CASSINI-051), a request the matching rejects with a
+     * {@code 404}, {@code 405}, {@code 415} or {@code 406} (CASSINI-053). Only the global filters process it. Or
      * {@code null} when there is no response filter.
+     *
+     * @param match the route matched so far, whose path parameters the context gives; {@code null} for none
      */
-    CassiniRequestContext locatorContext(MatchResult match, CassiniHttpExchange request) {
+    CassiniRequestContext unmatchedContext(MatchResult match, CassiniHttpExchange request) {
         if (filters.responseFilters().isEmpty()) return null;
-        CassiniRequestContext rctx = postMatchingContext(match, request);
+        CassiniRequestContext rctx = new CassiniRequestContext(request, new CassiniUriInfo(
+                request, request.contextPath(), match == null ? Map.of() : match.pathParams()));
+        rctx.markPostMatching();
         rctx.markUnmatched();
         return rctx;
     }
@@ -600,7 +609,7 @@ public final class Invoker {
         publishCurrent(inv.match, inv.request);
         List<Object> matched = new ArrayList<>();
         inv.request.setAttribute(ATTR_MATCHED_RESOURCES, matched);
-        CassiniRequestContext rctx = locatorContext(inv.match, inv.request);
+        CassiniRequestContext rctx = unmatchedContext(inv.match, inv.request);
         try {
             return walkLocators(inv, matched, rctx);
         } catch (WebApplicationException wae) {
@@ -989,26 +998,33 @@ public final class Invoker {
     }
 
     /** §3.7.2 / §4.4: renders a response for an exception outside the scope of
-     *  resolution (no MatchResult — typically 404/405 from the bridge).
+     *  resolution (no MatchResult), without a request to filter it for.
      *  Checks application ExceptionMappers first; otherwise returns the
      *  Response carried by the WAE, or a bare 500 (CASSINI-046). */
     public CassiniHttpResponse renderThrowable(Throwable t) throws IOException {
-        return RequestScope.call(() -> renderThrowableInScope(t));
+        return renderThrowable(t, null);
     }
 
-    private CassiniHttpResponse renderThrowableInScope(Throwable t) throws IOException {
+    /**
+     * §3.7.2 / §4.4 / §6.7.1: renders a response for an exception outside the scope of resolution (no MatchResult:
+     * the {@code 404} or {@code 405} of the router), as {@link #renderThrowable(Throwable)} does, then has the global
+     * response filters process it for {@code request}, since no resource method is matched (CASSINI-053).
+     */
+    public CassiniHttpResponse renderThrowable(Throwable t, CassiniHttpExchange request) throws IOException {
+        return RequestScope.call(() -> renderThrowableInScope(t, request));
+    }
+
+    private CassiniHttpResponse renderThrowableInScope(Throwable t, CassiniHttpExchange request) throws IOException {
         if (application != null) RequestScope.current().application = application;
         ParamExtractor.setProviders(new io.vidocq.cassini.internal.context.CassiniProviders(
                 registry, exceptionMappers, filters.contextResolvers()));
         try {
-            var mapped = exceptionMappers.map(t);
-            if (mapped.isPresent()) {
-                return fromJaxRs(mapped.get(), null, MediaType.WILDCARD_TYPE);
-            }
-            if (t instanceof WebApplicationException wae && wae.getResponse() != null) {
-                return fromJaxRs(wae.getResponse(), null, MediaType.WILDCARD_TYPE);
-            }
-            return unmappedFailure();
+            jakarta.ws.rs.core.Response response = exceptionMappers.map(t).orElse(null);
+            if (response == null && t instanceof WebApplicationException wae) response = wae.getResponse();
+            if (response == null) return unmappedFailure();
+            CassiniRequestContext rctx = request == null ? null : unmatchedContext(null, request);
+            if (rctx != null) return runResponseFiltersAndWrite(rctx, response, null, MediaType.WILDCARD_TYPE);
+            return fromJaxRs(response, null, MediaType.WILDCARD_TYPE);
         } finally {
             ParamExtractor.clearProviders();
         }

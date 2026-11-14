@@ -719,3 +719,34 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   of a class returned at run time; the first request to reach that method configures it, under a lock, and the method
   counts as configured only once the features ran. The registry's filter and interceptor lists are now copied on
   write, so that a request reading one while a feature registers a filter for another method reads it whole.
+
+## CASSINI-053 — No response filter runs on a `404`, `405`, `415` or `406` of the matching
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/locator-filter-order)
+- **Severity**: low. Spec conformance (Jakarta REST 4.0 §3.7.2, §3.3.4, §4.4, §6.7.1); in practice a CORS or
+  security-header response filter left these answers without its headers, so a browser could not read them.
+- **Symptom**: a request the matching rejects got its `404` (no resource), `405` (no method), `415` (no consumer) or
+  `406` (no producer) without any `ContainerResponseFilter`, global ones included, even when an `ExceptionMapper`
+  mapped it: at the root router, in the negotiation of a matched route, and in the router of a class a locator returns
+  as `Object`. The official TCK does not exercise it: none of its packages that deploy a response filter expects one
+  of these statuses (checked from the TCK 4.0.1 bytecode; `ee/rs/container/responsecontext` names `NOT_ACCEPTABLE`
+  only as the status its own filter sets on a failure).
+- **Minimal repro**: `UnmatchedResponseFilterTest` (cassini-core): `theGlobalResponseFiltersRunOnARequestTheMatchingRejects`
+  (`GET /missing`, `DELETE /plain`, `POST /plain` in JSON, `GET /plain` accepting JSON, `GET /object/sub/missing`,
+  `DELETE /object/sub`, `GET /object/sub` accepting JSON) and `theGlobalResponseFiltersRunOnAMapped404`: no `X-Global`
+  header on any of the 9 answers before the fix.
+- **Spec**: §3.7.2: "All exceptions reported by this algorithm MUST be processed as described in Exceptions", and the
+  algorithm "MUST generate" a `NotFoundException` (404), `NotAllowedException` (405), `NotSupportedException` (415) or
+  `NotAcceptableException` (406). §3.3.4: the response of a `WebApplicationException`, its own or its mapper's, "is
+  then processed according to Return Type", as a resource method's. §4.4: "a mapped `Response` MUST be processed
+  using the ContainerResponse filter chain". §6.7.1: the chain depends on "whether a resource method has been matched
+  or not at the time the exception is thrown"; when none is, "only global filters and interceptors will be included".
+  Jersey pushes its response filter stage, with the global response filters, in the pre-matching phase, so they run
+  on the answers of the routing too (`ContainerFilteringStage`); RESTEasy's `ServerResponseWriter.executeFilters`
+  takes the global ones (`postMatch(null, null)`) when no resource method is matched.
+- **Cause**: `DefaultCassiniHttpAdapter.noRoute` rendered through `Invoker.renderThrowable`, and
+  `Invoker.negotiate` and `DynamicLocatorDispatch.dispatchOnInstance` through `renderWebAppException`, all without a
+  request context, and the response filters only run with one.
+- **Fix**: those answers get a request context marked unmatched (`Invoker.unmatchedContext`, which the locator
+  failures of CASSINI-051 use too): `ResponsePipeline` runs the global response filters on them, not the bound ones.
+  `Invoker.renderThrowable(Throwable, CassiniHttpExchange)` does it for the router's `404` and `405`. The automatic
+  `OPTIONS` answer (§3.3.5) is unchanged: it is no rejection.

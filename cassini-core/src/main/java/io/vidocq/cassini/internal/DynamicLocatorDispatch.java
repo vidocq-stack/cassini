@@ -97,7 +97,7 @@ final class DynamicLocatorDispatch {
         request.setAttribute(Invoker.ATTR_MATCHED_RESOURCES, matched);
         // §4.4, §6.7.1: a response that ends the chain goes through the response filters. No resource method is
         // matched yet, so only the global ones apply (CASSINI-050, CASSINI-051).
-        CassiniRequestContext rctx = host.locatorContext(match, request);
+        CassiniRequestContext rctx = host.unmatchedContext(match, request);
         Object last;
         try {
             last = walkLocators(match, request, start, matched, rctx);
@@ -164,21 +164,22 @@ final class DynamicLocatorDispatch {
         UriRouter subRouter = SUB_ROUTERS.get(cls);
         if (subRouter == null) {
             return host.renderWebAppException(new jakarta.ws.rs.NotFoundException(),
-                    null, MediaType.WILDCARD_TYPE, null);
+                    null, MediaType.WILDCARD_TYPE, host.unmatchedContext(null, request));
         }
         String httpMethod = request.method() == null ? "GET" : request.method();
         List<MatchResult> subCandidates = subRouter.matchAll(httpMethod, remaining);
         if (subCandidates.isEmpty()) {
-            // 405 if another HTTP method matches the path
+            // §3.7.2: rejected before any resource method is matched — the global response filters only
+            // (§6.7.1, CASSINI-053). 405 if another HTTP method matches the path.
             var allowed = subRouter.methodsAllowedFor(remaining);
             if (!allowed.isEmpty()) {
                 return host.renderWebAppException(
                         new jakarta.ws.rs.NotAllowedException(allowed.get(0),
                                 allowed.subList(1, allowed.size()).toArray(String[]::new)),
-                        null, MediaType.WILDCARD_TYPE, null);
+                        null, MediaType.WILDCARD_TYPE, host.unmatchedContext(null, request));
             }
             return host.renderWebAppException(new jakarta.ws.rs.NotFoundException(),
-                    null, MediaType.WILDCARD_TYPE, null);
+                    null, MediaType.WILDCARD_TYPE, host.unmatchedContext(null, request));
         }
         MatchResult subMatch = host.pickBestMatch(subCandidates, request);
         // Recurse if the sub-route is itself a dynamic locator

@@ -103,8 +103,8 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
             // the RequestScope instead of ThreadLocals.
             RequestScope.<Void, Exception>call(() -> {
                 // The exchange is the request being processed from the first moment, not only once a route
-                // matched: a 404, a 405, a 415 or a 406 is rendered with no match and no request context, and
-                // its writer interceptors must still share the properties the filters set (CASSINI-007).
+                // matched: a 404, a 405, a 415 or a 406 is rendered with no match, and its response filters and
+                // writer interceptors must still share the properties the filters set (CASSINI-007, CASSINI-053).
                 Invoker.publishCurrent(null, exchange);
                 int status = dispatchInternal(exchange);
                 // Counted in here, as an int: carrying the status out would box it on every request.
@@ -180,7 +180,7 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
 
     private CassiniHttpResponse respond(String verb, String path, CassiniHttpExchange exchange) throws Exception {
         List<MatchResult> candidates = router.matchAll(verb, path);
-        if (candidates.isEmpty()) return noRoute(verb, path);
+        if (candidates.isEmpty()) return noRoute(verb, path, exchange);
         MatchResult first = candidates.get(0);
         CassiniHttpResponse out = invoker.invoke(candidates, exchange);
         // §3.3.5: HEAD invoked on a @GET method → the headers without the body.
@@ -191,18 +191,18 @@ public final class DefaultCassiniHttpAdapter implements CassiniHttpAdapter {
     }
 
     /** No route for this verb and path: 404 when no verb has one, 405 otherwise (§3.7.2), through
-     *  a WebApplicationException so that an ExceptionMapper can intercept it; OPTIONS answers
-     *  200 with the Allow header (§3.3.5). */
-    private CassiniHttpResponse noRoute(String verb, String path) throws IOException {
+     *  a WebApplicationException so that an ExceptionMapper can intercept it, then the global
+     *  response filters (§6.7.1, CASSINI-053); OPTIONS answers 200 with the Allow header (§3.3.5). */
+    private CassiniHttpResponse noRoute(String verb, String path, CassiniHttpExchange exchange) throws IOException {
         List<String> allowed = router.methodsAllowedFor(path);
         if (allowed.isEmpty()) {
             return invoker.renderThrowable(
-                    new jakarta.ws.rs.NotFoundException("No resource matches " + verb + " " + path));
+                    new jakarta.ws.rs.NotFoundException("No resource matches " + verb + " " + path), exchange);
         }
         if (!OPTIONS.equalsIgnoreCase(verb)) {
             var r405 = jakarta.ws.rs.core.Response.status(405)
                     .header(ALLOW, String.join(", ", allowed)).build();
-            return invoker.renderThrowable(new jakarta.ws.rs.WebApplicationException(r405));
+            return invoker.renderThrowable(new jakarta.ws.rs.WebApplicationException(r405), exchange);
         }
         if (!allowed.contains(OPTIONS)) allowed.add(OPTIONS);
         if (allowed.contains("GET") && !allowed.contains(HEAD)) allowed.add(HEAD);

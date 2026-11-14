@@ -197,6 +197,13 @@ A `DynamicFeature` (§6.5.3) runs once for each resource method: at startup for 
 
 Behaviour change:: Up to {release-version}, a resource method reached through a locator that returns `Object` ran neither the request filters nor the response filters, global or bound (CASSINI-050). With a locator that returns a typed sub-resource, the post-matching request filters ran before the locators, and the response to a locator's failure went through the filters bound to the method the locator would have led to (CASSINI-051). A `DynamicFeature` never ran for a class a locator returns as `Object`, ran once per locator for a method several typed locators lead to, binding its filters as many times, and ran for each locator that returns `Object`, with `Object` as the resource class (CASSINI-052).
 
+[#unmatched-filters]
+=== Response filters on a rejected request [.tag-new]#NEW#
+
+A request the matching rejects answers the response of a `WebApplicationException`, or the one an `ExceptionMapper` gives for it (Jakarta REST §3.7.2, §4.4): `404` when no resource matches, `405` when none supports the method, `415` when none consumes the request's media type, `406` when none produces an acceptable one. The global response filters process that response as any other, so a filter that adds CORS or security headers adds them to these answers too. No resource method is matched, so the filters bound to one, by `@NameBinding` or by a `DynamicFeature`, do not run (§6.7.1). The same holds in the resources that a sub-resource locator returns as `Object`.
+
+Behaviour change:: Up to {release-version}, no response filter ran on a `404`, `405`, `415` or `406` of the matching, global ones included, even when an `ExceptionMapper` mapped it (CASSINI-053).
+
 == Content negotiation
 
 Cassini fully implements the §3.7 best-match rules and `Request.selectVariant` (§5.1):
