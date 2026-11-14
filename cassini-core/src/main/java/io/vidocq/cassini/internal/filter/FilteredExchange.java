@@ -50,14 +50,42 @@ public final class FilteredExchange implements CassiniHttpExchange {
     private final String method;
     /** The request URI a pre-matching filter set, {@code null} when none did. */
     private final URI requestUri;
+    /** The base URI a pre-matching filter set, ending with a {@code /}; {@code null} when none did (CASSINI-059). */
+    private final URI baseUri;
 
     FilteredExchange(CassiniHttpExchange delegate, MultivaluedMap<String, String> headers, InputStream body,
-                     String method, URI requestUri) {
+                     String method, URI requestUri, URI baseUri) {
         this.delegate = delegate;
         this.headers = headers;
         this.body = body;
         this.method = method;
         this.requestUri = requestUri;
+        this.baseUri = baseUri;
+    }
+
+    /**
+     * A base URI as {@code UriInfo.getBaseUri()} gives it: ending with a {@code /}, so that the path of the request
+     * URI relative to it starts at its first segment ({@code http://host/api} gives {@code http://host/api/}).
+     */
+    static URI asBase(URI base) {
+        String path = base.getRawPath();
+        if (path != null && path.endsWith("/")) return base;
+        String last = path == null ? "" : path.substring(path.lastIndexOf('/') + 1);
+        return base.resolve(last.isEmpty() ? "/" : "./" + last + "/");
+    }
+
+    /**
+     * §6.2, {@code ContainerRequestContext.setRequestUri(URI, URI)}: the absolute base URI a pre-matching filter set on
+     * the request of {@code exchange}, ending with a {@code /}; {@code null} when none did, or when the one it set is
+     * relative, which the scheme and the authority of the request complete (CASSINI-059).
+     */
+    public static URI baseUriOf(CassiniHttpExchange exchange) {
+        CassiniHttpExchange current = exchange;
+        while (current instanceof FilteredExchange filtered) {
+            if (filtered.baseUri != null) return filtered.baseUri.isAbsolute() ? filtered.baseUri : null;
+            current = filtered.delegate;
+        }
+        return null;
     }
 
     /**
@@ -80,7 +108,7 @@ public final class FilteredExchange implements CassiniHttpExchange {
 
     @Override public URI requestUri() { return requestUri != null ? requestUri : delegate.requestUri(); }
 
-    /** The transport's: the base URI of the application stays the same whatever request URI a filter sets. */
+    /** The transport's: a new base URI comes from {@link #baseUriOf} and {@link #contextPath()}. */
     @Override public String requestUriRaw() { return delegate.requestUriRaw(); }
 
     @Override public Map<String, List<String>> requestHeaders() {
@@ -106,7 +134,16 @@ public final class FilteredExchange implements CassiniHttpExchange {
     /** Unknown for a stream a filter set: the entity is read to its end. */
     @Override public long contentLength() { return body != null ? -1L : delegate.contentLength(); }
 
-    @Override public String contextPath() { return delegate.contextPath(); }
+    /**
+     * The path of the base URI a pre-matching filter set, without its trailing {@code /}, as a transport gives its
+     * context path: the request is matched, and {@code UriInfo.getPath()} given, relative to it (CASSINI-059). The
+     * transport's when no filter set a base URI.
+     */
+    @Override public String contextPath() {
+        if (baseUri == null) return delegate.contextPath();
+        String path = baseUri.getRawPath();
+        return path == null || path.length() <= 1 ? "" : path.substring(0, path.length() - 1);
+    }
 
     @Override public String routingPath() {
         return requestUri != null ? routingPath(requestUri, contextPath(), null) : delegate.routingPath();

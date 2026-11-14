@@ -24,6 +24,7 @@ import io.vidocq.cassini.internal.transport.CassiniHttpResponse;
 import io.vidocq.cassini.internal.context.CassiniUriInfo;
 import io.vidocq.cassini.internal.filter.CassiniRequestContext;
 import io.vidocq.cassini.internal.filter.FilterRegistry;
+import io.vidocq.cassini.internal.filter.FilteredExchange;
 import io.vidocq.cassini.internal.runtime.CassiniResponseBuilder;
 import io.vidocq.cassini.internal.sse.CassiniSseEventSink;
 import jakarta.ws.rs.WebApplicationException;
@@ -195,9 +196,15 @@ public final class Invoker {
     /**
      * The base URI of the request, shared with {@code UriInfo.getBaseUri()} and the response
      * builder: one URI per listener and host, not one parse per request. Best effort: a request
-     * that gives none leaves the response builder without a base URI.
+     * that gives none leaves the response builder without a base URI. The one a pre-matching filter set, when it did
+     * (CASSINI-059).
      */
     private static void publishBaseUri(CassiniHttpExchange request) {
+        java.net.URI set = FilteredExchange.baseUriOf(request);
+        if (set != null) {
+            CassiniResponseBuilder.setBaseUri(set);
+            return;
+        }
         try {
             // From the raw request target: building the request URI parses it, for two fields.
             // An exchange without a target gives "": an origin-form target, as far as the base URI goes.

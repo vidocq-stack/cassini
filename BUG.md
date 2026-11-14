@@ -889,3 +889,39 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   response pipeline that its `404` and `405` go through.
 - **Fix**: the answer is a `Response` rendered by `Invoker.renderUnmatched`, through the global response filters with
   the request context of a request no resource method matched (`Invoker.unmatchedContext`), as the `404` and `405`.
+
+## CASSINI-059 — The base URI a pre-matching filter sets is ignored after the filter
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/options-and-base-uri)
+- **Severity**: medium. API contract (`ContainerRequestContext.setRequestUri(URI, URI)`, Jakarta REST 4.0 §6.2); in
+  practice a filter behind a reverse proxy that moves the application under a public prefix got `404`, or wrong
+  `UriInfo` and `Location` values.
+- **Symptom**: after a pre-matching filter called `setRequestUri(base, uri)`, the request was matched on the path of
+  `uri` relative to the context path of the transport, not to `base`: `/api/where/sub` with the base
+  `http://public.example/api/` answered `404`. When it matched, `UriInfo.getBaseUri()` and `resolve()` in the resource
+  method and in the later filters, and the `Location` of `Response.created` with a relative URI, kept the transport's
+  base URI. Only the pre-matching filter's own `getUriInfo()` gave the new base. Listed as uncertain while fixing
+  CASSINI-056. The official TCK does not route after it: its `requestcontext` `setRequestUri2` filter sets the base
+  `http://localhost:888/otherbase`, then aborts with `UriInfo.getAbsolutePath()` (checked from the TCK 4.0.1
+  bytecode), which stays as it was.
+- **Minimal repro**: `RequestFilterBaseUriTest` (cassini-core): a pre-matching filter sets the base and request URIs
+  its headers give. `GET /api/where/sub`, `GET /api/object/where/sub` (an `Object` locator), a base without its
+  trailing `/` on another authority than the request URI, and a `POST` for a relative `Location` answered `404`; with a transport
+  context path `/ctx` and the base `http://public.example/`, `UriInfo.getBaseUri()` gave
+  `http://public.example/ctx/`. 5 of 6 red before the fix; the sixth, `setRequestUri(URI)` alone, keeps the base.
+- **Spec**: `ContainerRequestContext.setRequestUri(URI, URI)`: "Set a new request URI using a new base URI to resolve
+  the application-specific request URI part", `baseUri`: "base URI that will be used to resolve the
+  application-specific part of the request URI"; `setRequestUri(URI)`: "using the current base URI of the
+  application". §6.2: a `@PreMatching` filter "has the ability to modify the input to the matching algorithm".
+  `UriInfo.getBaseUri()`: "Get the base URI of the application. URIs of root resource classes are all relative to
+  this base URI." Jersey's `ContainerRequest.setRequestUri(URI, URI)` replaces both URIs, and the routing and its
+  `UriInfo` take the path relative to the new base; RESTEasy's `PreMatchContainerRequestContext` passes both to
+  `HttpRequest.setRequestUri(URI, URI)`, which rebuilds its `ResteasyUriInfo` on them, so the matching path is
+  relative to the new base too.
+- **Cause**: `CassiniRequestContext` kept the base for its own `getUriInfo()` view only. The routing path stripped the
+  transport's context path (`FilteredExchange.routingPath`), `FilteredExchange` gave the transport's context path, and
+  `CassiniUriInfo.getBaseUri()` and `Invoker.publishBaseUri` built the base from the request URI and that context
+  path.
+- **Fix**: `CassiniRequestContext.filteredExchange()` hands the base to `FilteredExchange`, normalised to end with
+  `/`. Its `contextPath()` is then the path of that base, which the routing, `UriInfo.getPath()` and the request
+  contexts read, and `FilteredExchange.baseUriOf` gives the absolute base to `CassiniUriInfo.getBaseUri()` and to the
+  response builder (`Invoker.publishBaseUri`). A relative base is completed with the request's scheme and authority.
