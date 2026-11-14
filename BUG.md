@@ -543,3 +543,26 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   unchanged. The wrapping of an `Error` stays: Cassini acts as the container of §3.3.4 and answers the 500 itself.
   Rethrown as it is, the `Error` would reach code that catches exceptions only (`JdkHttpAdapter`, the inline dispatch
   of `ChappeHttpAdapter`, Chappe's `HttpConnection.dispatch`), where nothing turns it into a 500.
+
+## CASSINI-047 — An exception thrown by a sub-resource locator skips the ExceptionMappers
+- **Date**: 2026-11-14 — **Status**: FIXED (fix/locator-exceptions-port-race)
+- **Severity**: medium. Spec conformance (Jakarta REST 4.0 §3.3.4, §4.4): the application's mapper never ran, and the
+  client got a bare `500` instead of the mapper's response.
+- **Symptom**: a sub-resource locator that throws an exception other than a `WebApplicationException` (a
+  `RuntimeException` the application maps, for example `EntityNotFoundException` → `404`) answers `500`, and the
+  failure is logged as unmapped (`Cassini dispatch error`), on both locator paths: a locator that returns a typed
+  sub-resource (static routes) and one that returns `Object` (dynamic dispatch). The same exception thrown by a method
+  of the located sub-resource reaches its mapper. A `WebApplicationException` thrown by a locator was answered right.
+  The official TCK does not exercise it: no locator of the TCK throws from its body; its locator tests only throw from
+  the conversion of a locator parameter, which Cassini turns into a `WebApplicationException` before the locator runs.
+- **Minimal repro**: `LocatorExceptionMappingTest.anExceptionTheApplicationMapsIsAnsweredByItsMapper` (cassini-core),
+  `/typed/mapped` and `/object/mapped`, and `theResponseFiltersRunOnTheMappedResponseOfAStaticLocatorAsOnAResourceMethods`
+  on `/typed/mapped`: red before the fix (`500` instead of the mapper's `409`).
+- **Cause**: `Invoker.resolveTarget` (static path) and `DynamicLocatorDispatch.walkThenDispatch` (dynamic path) handed
+  only a `WebApplicationException` cause of the locator's `InvocationTargetException` to `renderWebAppException`; any
+  other cause was thrown at once (`Invocation.fail`, `asException`), without asking `ExceptionMapperRegistry`, so it
+  reached `DefaultCassiniHttpAdapter.dispatch` as an unmapped failure.
+- **Fix**: both go through the handler of a resource method's failure: `Invoker.mapResourceThrowable` (extracted from
+  `handleResourceThrowable`, and reused by `mapFilterThrowable`) renders a `WebApplicationException` or asks the
+  mappers, and runs the response filters on the static path. Only a failure no mapper handles is still thrown, and
+  answered with the bare `500` of CASSINI-046.

@@ -572,10 +572,9 @@ public final class Invoker {
         } catch (WebApplicationException wae) {
             return renderWebAppException(wae, route, inv.chosen, inv.rctx);
         } catch (InvocationTargetException ite) {
-            if (ite.getCause() instanceof WebApplicationException wae) {
-                return renderWebAppException(wae, route, inv.chosen, inv.rctx);
-            }
-            return inv.fail(ite.getCause());
+            // §3.3.4: what a sub-resource locator throws is mapped as what a resource method throws (CASSINI-047).
+            CassiniHttpResponse mapped = mapResourceThrowable(ite.getCause(), route, inv.chosen, inv.rctx);
+            return mapped != null ? mapped : inv.fail(ite.getCause());
         }
     }
 
@@ -881,8 +880,8 @@ public final class Invoker {
     }
 
     /**
-     * Shared handler for exceptions thrown by a resource method — whether via reflective
-     * {@code Method.invoke} ({@code ite.getCause()}) or via the direct adapter call.
+     * Shared handler for exceptions thrown by a resource method or a sub-resource locator — whether via
+     * reflective {@code Method.invoke} ({@code ite.getCause()}) or via the direct adapter call.
      *
      * <p>Priority:</p>
      * <ol>
@@ -903,20 +902,29 @@ public final class Invoker {
                                                         ResourceMethod route,
                                                         MediaType chosen,
                                                         CassiniRequestContext rctx) throws Exception {
+        CassiniHttpResponse mapped = mapResourceThrowable(cause, route, chosen, rctx);
+        if (mapped != null) return mapped;
+        if (cause instanceof Exception ex) throw ex;
+        throw new IllegalStateException(cause);
+    }
+
+    /**
+     * §3.3.4 / §4.4: the response to a failure of a resource method or a sub-resource locator, or {@code null}
+     * when no mapper handles it: a {@code WebApplicationException} is rendered (its own response or its mapper's),
+     * another failure goes to the application's {@code ExceptionMapper}. The response filters run on a mapped
+     * response when there is a request context (post-matching path); the dynamic-locator path has none.
+     */
+    CassiniHttpResponse mapResourceThrowable(Throwable cause, ResourceMethod route, MediaType chosen,
+                                             CassiniRequestContext rctx) throws IOException {
         if (cause instanceof WebApplicationException wae) {
             return renderWebAppException(wae, route, chosen, rctx);
         }
         var mapped = exceptionMappers.map(cause);
-        if (mapped.isPresent()) {
-            // Run response filters if we have a request context (post-matching path),
-            // otherwise fall back to fromJaxRs (dynamic-locator final path has no rctx).
-            if (rctx != null && !filters.responseFilters().isEmpty()) {
-                return runResponseFiltersAndWrite(rctx, mapped.get(), route, chosen);
-            }
-            return fromJaxRs(mapped.get(), route, chosen);
+        if (mapped.isEmpty()) return null;
+        if (rctx != null && !filters.responseFilters().isEmpty()) {
+            return runResponseFiltersAndWrite(rctx, mapped.get(), route, chosen);
         }
-        if (cause instanceof Exception ex) throw ex;
-        throw new IllegalStateException(cause);
+        return fromJaxRs(mapped.get(), route, chosen);
     }
 
     /** §3.7.2 / §4.4: renders a response for an exception outside the scope of
@@ -955,14 +963,7 @@ public final class Invoker {
         if (cause instanceof WebApplicationException wae) {
             return renderWebAppException(wae, route, chosen, rctx);
         }
-        var mapped = exceptionMappers.map(cause);
-        if (mapped.isPresent()) {
-            MediaType mt = chosen == null ? MediaType.WILDCARD_TYPE : chosen;
-            if (rctx != null && !filters.responseFilters().isEmpty())
-                return runResponseFiltersAndWrite(rctx, mapped.get(), route, mt);
-            return fromJaxRs(mapped.get(), route, mt);
-        }
-        return null;
+        return mapResourceThrowable(cause, route, chosen == null ? MediaType.WILDCARD_TYPE : chosen, rctx);
     }
 
     /**

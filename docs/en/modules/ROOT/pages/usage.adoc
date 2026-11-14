@@ -82,6 +82,13 @@ public class NotFoundExceptionMapper implements ExceptionMapper<NotFoundExceptio
 }
 ----
 
+[#locator-exceptions]
+=== Exceptions thrown by a sub-resource locator [.tag-new]#NEW#
+
+An exception that a sub-resource locator throws goes through the `ExceptionMapper`s as one that a resource method throws (Jakarta REST §3.3.4), whether the locator returns a typed sub-resource or `Object`. A `WebApplicationException` is answered with its own response, as from a resource method.
+
+Behaviour change:: Up to {release-version}, only a `WebApplicationException` thrown by a locator reached the mappers: any other exception skipped them and answered `500` (CASSINI-047).
+
 [#unmapped-exceptions]
 === Exceptions no mapper handles [.tag-new]#NEW#
 

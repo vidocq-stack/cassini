@@ -103,10 +103,8 @@ final class DynamicLocatorDispatch {
         try {
             last = walkLocators(match, request, start, matched);
         } catch (InvocationTargetException ite) {
-            if (ite.getCause() instanceof WebApplicationException wae) {
-                return host.renderWebAppException(wae, route, MediaType.WILDCARD_TYPE, null);
-            }
-            throw asException(ite.getCause());
+            // §3.3.4: what a sub-resource locator throws is mapped as what a resource method throws (CASSINI-047).
+            return host.handleResourceThrowable(ite.getCause(), route, MediaType.WILDCARD_TYPE, null);
         }
         if (last instanceof CassiniHttpResponse ended) return ended;
         return dispatchOnInstance(last, remainingPath(match), request, matched);
