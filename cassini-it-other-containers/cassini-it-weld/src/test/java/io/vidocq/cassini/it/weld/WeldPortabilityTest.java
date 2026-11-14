@@ -24,7 +24,6 @@ import io.vidocq.cassini.spi.http.CassiniStack;
 import io.vidocq.chappe.api.Server;
 import jakarta.ws.rs.core.Application;
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -52,18 +51,15 @@ class WeldPortabilityTest {
     private static String base;
 
     @BeforeAll
-    static void start() throws Exception {
+    static void start() {
         container = new Weld().initialize();
-        int port;
-        try (var socket = new ServerSocket(0)) {
-            port = socket.getLocalPort();
-        }
         var stack = CassiniStack.builder().application(new Application() {}).build();
-        server = Server.builder().host("127.0.0.1").port(port)
+        // Port 0: the server keeps the free port the system gives it (CASSINI-048).
+        server = Server.builder().host("127.0.0.1").port(0)
                 .handler(new ChappeHttpAdapter(stack.adapter()))
                 .build();
         server.start();
-        base = "http://127.0.0.1:" + port;
+        base = "http://127.0.0.1:" + server.port();
     }
 
     @AfterAll

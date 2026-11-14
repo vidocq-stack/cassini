@@ -566,3 +566,28 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   `handleResourceThrowable`, and reused by `mapFilterThrowable`) renders a `WebApplicationException` or asks the
   mappers, and runs the response filters on the static path. Only a failure no mapper handles is still thrown, and
   answered with the bare `500` of CASSINI-046.
+
+## CASSINI-048 — Test servers pick a free port, close it, then bind it again: another process can take it
+- **Date**: 2026-11-14 — **Status**: FIXED in the tests (fix/locator-exceptions-port-race); see "Not covered"
+- **Severity**: low (test only). A flaky build, not a defect of what ships.
+- **Symptom**: a full `-Pquality` build failed once in `cassini-examples-jdkhttp`: all 7 tests of `TodoResourceTest`
+  errored with `java.net.ProtocolException: Invalid status line: "SSH-2.0-OpenSSH_10.0p2 Debian-7+deb13u4"`. The
+  client reached an SSH server on the test server's port.
+- **Minimal repro**: the race cannot be forced from a test. The mechanism was checked on macOS with JDK 25 (scratch
+  program, not committed): a listener on `127.0.0.1:P` does not stop the JDK `HttpServer` from binding `*:P`, and a
+  client of `127.0.0.1:P` then reaches that listener; a listener on `127.0.0.1` can also bind the port of a running
+  `*:P` server and take its `127.0.0.1` clients. Only a server bound on `127.0.0.1:0` refuses a second listener on its
+  port (`BindException`).
+- **Cause**: the test servers took a port with `new ServerSocket(0)`, closed it, and had the server bind it later.
+  Another process could take the port in between. In `cassini-examples-jdkhttp` the server then bound the wildcard
+  address (`JdkHttpAdapter.serve(int)`), so a listener on `127.0.0.1` shadowed it silently instead of failing the
+  bind.
+- **Fix**: each server binds port 0 itself and the test reads the port it got. Chappe servers (`cassini-examples-vauban`,
+  `cassini-it-vauban`, `cassini-it-weld`) bind `127.0.0.1` on port 0 and read `Server.port()`.
+  `cassini-examples-jdkhttp` binds its `HttpServer` on `127.0.0.1:0` with `JdkHttpAdapter.asHandler()`, since
+  `serve(int)` binds every address. `cassini-examples-chappe` asks `SeBootstrap` for `FREE_PORT` and reads
+  `configuration().port()`.
+- **Not covered**: the same pick-then-bind remains in main code. `ChappeRuntimeDelegate.portOf` and
+  `JdkHttpRuntimeDelegate` (`SeBootstrap` with `FREE_PORT` or no port) pick a port on `127.0.0.1` and bind it again,
+  the JDK one on every address; `CassiniTestHarness.freePort` does it for a harness without a fixed port, with
+  retries. `CassiniTestHarnessTest.aFixedPortIsUsedAsGiven` needs a free port number before the start, by design.

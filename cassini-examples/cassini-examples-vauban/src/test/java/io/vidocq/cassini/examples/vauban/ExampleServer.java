@@ -22,8 +22,6 @@ package io.vidocq.cassini.examples.vauban;
 import io.vidocq.chappe.api.Server;
 import io.vidocq.vauban.core.container.VaubanContainer;
 
-import java.net.ServerSocket;
-
 /**
  * Test server — starts Vauban CDI + Chappe composite handler (static content
  * on {@code /} + Cassini on {@code /api/*}) on a random port.
@@ -35,19 +33,17 @@ public class ExampleServer implements AutoCloseable {
     private final int port;
 
     public ExampleServer() throws Exception {
-        try (var ss = new ServerSocket(0)) {
-            this.port = ss.getLocalPort();
-        }
-
         this.container = VaubanContainer.builder()
                 .scanClasspath()
                 .build();
 
+        // Port 0: the server keeps the free port the system gives it (CASSINI-048).
         this.server = Server.builder()
-                .host("127.0.0.1").port(this.port)
+                .host("127.0.0.1").port(0)
                 .handler(VaubanApp.composeHandler())
                 .build();
         this.server.start();
+        this.port = server.port();
     }
 
     public int port()                  { return port; }

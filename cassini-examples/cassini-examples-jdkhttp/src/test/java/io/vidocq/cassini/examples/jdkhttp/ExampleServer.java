@@ -26,8 +26,10 @@ import io.vidocq.cassini.spi.http.CassiniStack;
 import com.sun.net.httpserver.HttpServer;
 import jakarta.ws.rs.core.Application;
 
-import java.net.ServerSocket;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.Set;
+import java.util.concurrent.Executors;
 
 /**
  * Test server — starts Cassini + JDK HttpServer on a random port.
@@ -37,14 +39,12 @@ import java.util.Set;
  */
 public class ExampleServer implements AutoCloseable {
 
+    private static final String LOOPBACK = "127.0.0.1";
+
     private final HttpServer server;
     private final int port;
 
     public ExampleServer() throws Exception {
-        try (var ss = new ServerSocket(0)) {
-            this.port = ss.getLocalPort();
-        }
-
         var stack = CassiniStack.builder()
                 .application(new Application() {
                     @Override public Set<Class<?>> getClasses() {
@@ -53,11 +53,18 @@ public class ExampleServer implements AutoCloseable {
                 })
                 .build();
 
-        this.server = new JdkHttpAdapter(stack.adapter()).serve(this.port);
+        // Port 0 on the address the tests call: the server keeps the free port the system gives it, and no other
+        // listener can take 127.0.0.1 on that port (CASSINI-048). JdkHttpAdapter.serve(int) binds the wildcard
+        // address, which a listener on 127.0.0.1 and the same port shadows, so the test binds the server itself.
+        this.server = HttpServer.create(new InetSocketAddress(InetAddress.getByName(LOOPBACK), 0), 0);
+        server.createContext("/", new JdkHttpAdapter(stack.adapter()).asHandler());
+        server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        server.start();
+        this.port = server.getAddress().getPort();
     }
 
     public int port()       { return port; }
-    public String baseUrl() { return "http://127.0.0.1:" + port; }
+    public String baseUrl() { return "http://" + LOOPBACK + ":" + port; }
 
     @Override
     public void close() {

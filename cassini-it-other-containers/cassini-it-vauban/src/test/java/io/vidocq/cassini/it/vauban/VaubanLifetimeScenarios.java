@@ -25,7 +25,6 @@ import io.vidocq.cassini.spi.http.CassiniStack;
 import io.vidocq.chappe.api.Server;
 import io.vidocq.vauban.core.container.VaubanContainer;
 import jakarta.ws.rs.core.Application;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -59,21 +58,18 @@ abstract class VaubanLifetimeScenarios {
     abstract ChappeHttpAdapter handler(CassiniStack stack, VaubanContainer container);
 
     @BeforeAll
-    void start() throws Exception {
+    void start() {
         container = VaubanContainer.builder()
                 .addBeanClass(CassiniScopeExtension.class)
                 .addBeanClass(RequestToken.class)
                 .addBeanClass(ScopeEvents.class)
                 .addBeanClass(LifetimeResource.class)
                 .build();
-        int port;
-        try (var socket = new ServerSocket(0)) {
-            port = socket.getLocalPort();
-        }
         var stack = CassiniStack.builder().application(new Application() {}).build();
-        server = Server.builder().host("127.0.0.1").port(port).handler(handler(stack, container)).build();
+        // Port 0: the server keeps the free port the system gives it (CASSINI-048).
+        server = Server.builder().host("127.0.0.1").port(0).handler(handler(stack, container)).build();
         server.start();
-        base = "http://127.0.0.1:" + port;
+        base = "http://127.0.0.1:" + server.port();
     }
 
     @AfterAll

@@ -21,8 +21,6 @@ package io.vidocq.cassini.examples.chappe;
 
 import jakarta.ws.rs.SeBootstrap;
 
-import java.net.ServerSocket;
-
 /**
  * AutoCloseable test server — starts Cassini Chappe on a random port.
  *
@@ -43,17 +41,17 @@ public class ExampleServer implements AutoCloseable {
     private final int port;
 
     public ExampleServer() throws Exception {
-        // Obtain a free random port
-        try (var ss = new ServerSocket(0)) {
-            this.port = ss.getLocalPort();
-        }
+        // FREE_PORT: the runtime takes a free port on the host and reports it. The test no longer picks a port on
+        // every address, closes it and has the server bind it again later, which let another process take it in
+        // between (CASSINI-048).
         this.instance = SeBootstrap.start(new Main.ExamplesApp(),
                 SeBootstrap.Configuration.builder()
                         .host("127.0.0.1")
-                        .port(this.port)
+                        .port(SeBootstrap.Configuration.FREE_PORT)
                         .build())
                 .toCompletableFuture()
                 .get();
+        this.port = instance.configuration().port();
     }
 
     public int port() {
