@@ -204,9 +204,21 @@ public final class InMemoryExchange implements CassiniHttpExchange {
     }
     @Override public SocketAddress remoteAddress() { return null; }
     @Override public boolean isSecure() { return false; }
-    @Override public String authScheme() { return null; }
-    @Override public Principal userPrincipal() { return null; }
-    @Override public boolean isUserInRole(String role) { return false; }
+    private String scheme;
+    private Principal principal;
+    private java.util.Set<String> roles = java.util.Set.of();
+
+    /** The caller the transport (a Servlet container, say) authenticated, as {@code userPrincipal()} and company answer. */
+    public InMemoryExchange authenticatedBy(String authScheme, Principal caller, java.util.Set<String> callerRoles) {
+        this.scheme = authScheme;
+        this.principal = caller;
+        this.roles = callerRoles;
+        return this;
+    }
+
+    @Override public String authScheme() { return scheme; }
+    @Override public Principal userPrincipal() { return principal; }
+    @Override public boolean isUserInRole(String role) { return roles.contains(role); }
     @Override public void setAttribute(String key, Object value) { attributes.put(key, value); }
     @Override public Object getAttribute(String key) { return attributes.get(key); }
 }

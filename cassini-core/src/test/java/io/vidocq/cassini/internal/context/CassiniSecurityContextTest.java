@@ -25,6 +25,8 @@ import org.junit.jupiter.api.Test;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 /** §9.2.5 {@code SecurityContext}: the principal comes from the authentication the transport recorded. */
@@ -42,5 +44,31 @@ class CassiniSecurityContextTest {
     @Test
     void withoutAuthenticationThereIsNoPrincipal() {
         assertNull(new CassiniSecurityContext(InMemoryExchange.get("/")).getUserPrincipal());
+    }
+
+    @Test
+    void theCallerTheTransportAuthenticatedIsThePrincipalWhenNoFilterRecordedOne() {
+        InMemoryExchange exchange = InMemoryExchange.get("/")
+                .authenticatedBy("BASIC", () -> "bob", Set.of("user"));
+        CassiniSecurityContext context = new CassiniSecurityContext(exchange);
+
+        assertEquals("bob", context.getUserPrincipal().getName());
+        assertEquals("BASIC", context.getAuthenticationScheme());
+        assertTrue(context.isUserInRole("user"));
+        assertFalse(context.isUserInRole("admin"));
+    }
+
+    @Test
+    void theAuthenticationAFilterRecordedWinsOverTheTransportsOwn() {
+        InMemoryExchange exchange = InMemoryExchange.get("/")
+                .authenticatedBy("BASIC", () -> "bob", Set.of("user"));
+        exchange.setAttribute(CassiniSecurityContext.ATTR_AUTH,
+                new CassiniSecurityContext.AuthInfo("alice", "BEARER", Set.of("admin")));
+        CassiniSecurityContext context = new CassiniSecurityContext(exchange);
+
+        assertEquals("alice", context.getUserPrincipal().getName());
+        assertEquals("BEARER", context.getAuthenticationScheme());
+        assertTrue(context.isUserInRole("admin"));
+        assertFalse(context.isUserInRole("user"));
     }
 }

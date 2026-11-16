@@ -28,7 +28,9 @@ import java.security.Principal;
  * Default security context: anonymous, unsecured (HTTP).
  * If an {@link AuthInfo} has been attached to the exchange (attribute
  * {@link #ATTR_AUTH}, set by an upstream BASIC filter or any transport
- * adapter), it is used to expose userPrincipal / userInRole / scheme.
+ * adapter), it is used to expose userPrincipal / userInRole / scheme. Without one,
+ * the transport's own answer is used ({@code CassiniHttpExchange#userPrincipal()} and
+ * company: a Servlet container reports the caller it authenticated).
  *
  * <p>M2h: the exchange reference is captured at construction, so threads
  * spawned by an async resource method still see the request's
@@ -55,21 +57,30 @@ public final class CassiniSecurityContext implements SecurityContext {
         return exchange == null ? null : (AuthInfo) exchange.getAttribute(ATTR_AUTH);
     }
 
+    /** The recorded {@link AuthInfo} wins; without one, the transport's own answer is the caller. */
     @Override public Principal getUserPrincipal() {
         AuthInfo a = authInfo();
-        if (a == null || a.username() == null) return null;
-        return a::username;
+        if (a != null) {
+            return a.username() == null ? null : a::username;
+        }
+        return exchange == null ? null : exchange.userPrincipal();
     }
 
     @Override public boolean isUserInRole(String role) {
         AuthInfo a = authInfo();
-        return a != null && a.roles() != null && a.roles().contains(role);
+        if (a != null) {
+            return a.roles() != null && a.roles().contains(role);
+        }
+        return exchange != null && exchange.isUserInRole(role);
     }
 
     @Override public boolean isSecure() { return exchange != null && exchange.isSecure(); }
 
     @Override public String getAuthenticationScheme() {
         AuthInfo a = authInfo();
-        return a == null ? null : a.authScheme();
+        if (a != null) {
+            return a.authScheme();
+        }
+        return exchange == null ? null : exchange.authScheme();
     }
 }
