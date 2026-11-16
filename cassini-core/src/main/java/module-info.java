@@ -55,6 +55,7 @@ module io.vidocq.cassini.core {
             to io.vidocq.cassini.tck,
                io.vidocq.cassini.chappe,
                io.vidocq.cassini.jdkhttp,
+               io.vidocq.cassini.servlet,
                io.vidocq.cassini.client;
     exports io.vidocq.cassini.internal.transport
             to io.vidocq.cassini.tck;

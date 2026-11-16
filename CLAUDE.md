@@ -41,6 +41,7 @@ cassini-maven-plugin ← Maven plugin — pre-generates CassiniAdapter for exter
 cassini-cdi-vauban   ← Vauban CDI adapter (BeanProvider + BCE @RequestScoped, optional)
 cassini-chappe       ← Chappe adapter (reference transport, used for the TCK)
 cassini-jdk-http     ← Pure JDK adapter (com.sun.net.httpserver, zero external dependencies)
+cassini-servlet      ← Servlet adapter: the application runs as a Servlet of a Servlet container (Servlet API provided)
 cassini-tck          ← Arquillian runner + official Jakarta REST 4.0 harness
 ```
 
@@ -109,7 +110,7 @@ Classpath JARs → write into `target/classes`. Java Modules named-module → fa
 - Mode A: `new()` via `ResourceFactory.defaultFactory()` (jdk-http, standalone)
 - Mode B: DI through public SPI `BeanProvider` (`cassini-cdi-vauban` or any other ServiceLoader adapter). No `jakarta.cdi` import in `cassini-api`/`cassini-core` — strict decoupling.
 
-**`RuntimeDelegate`:** declared only in `cassini-chappe` and `cassini-jdk-http` through ServiceLoader. `cassini-core` contains `CassiniRuntimeDelegate` but no longer exposes it to avoid collisions.
+**`RuntimeDelegate`:** declared only in `cassini-chappe`, `cassini-jdk-http` and `cassini-servlet` through ServiceLoader. `cassini-core` contains `CassiniRuntimeDelegate` but no longer exposes it to avoid collisions.
 
 ## Architectural constraints that must not be violated
 

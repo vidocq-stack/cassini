@@ -161,6 +161,21 @@ final class ArchitectureRules {
             CLAUDE_CONSTRAINTS + "; module-info.java of cassini-jdk-http");
 
     /**
+     * cassini-servlet runs the application as a Servlet: the Servlet API (a container brings it), the REST API and
+     * the Cassini SPI, nothing else.
+     */
+    static final ArchRule SERVLET_DEPENDENCIES = VidocqArchRules.dependOnlyOn(
+            new String[] {"io.vidocq.cassini.servlet.."},
+            Packages.of(
+                    Jdk.RUNTIME,
+                    "jakarta.servlet..",
+                    "jakarta.ws.rs..",
+                    "io.vidocq.cassini.spi..",
+                    "io.vidocq.cassini.internal..",
+                    "io.vidocq.cassini.servlet.."),
+            CLAUDE_CONSTRAINTS + "; module-info.java of cassini-servlet");
+
+    /**
      * CLAUDE.md, Architecture: cassini-client is the zero-dependency JAX-RS client on {@code java.net.http}. Its
      * module descriptor reads cassini-api, cassini-core, the REST, JSON-B and annotation APIs.
      */
@@ -310,7 +325,8 @@ final class ArchitectureRules {
             internal + "filter.FilterEntry",
             internal + "ResponsePipeline",
             "io.vidocq.cassini.cdi.CdiBeanProvider",
-            "io.vidocq.cassini.cdi.vauban.VaubanBeanProvider"
+            "io.vidocq.cassini.cdi.vauban.VaubanBeanProvider",
+            "io.vidocq.cassini.servlet.CassiniServletInitializer"
         }) {
             fallbacks.put(annotated, ANNOTATIONS);
         }
@@ -326,6 +342,7 @@ final class ArchitectureRules {
             internal + "runtime.CassiniRuntimeDelegate",
             "io.vidocq.cassini.chappe.ChappeRuntimeDelegate",
             "io.vidocq.cassini.jdkhttp.JdkHttpRuntimeDelegate",
+            "io.vidocq.cassini.servlet.CassiniServlet",
             "io.vidocq.cassini.client.internal.CassiniClientConfiguration"
         }) {
             fallbacks.put(instantiating, INSTANTIATION);

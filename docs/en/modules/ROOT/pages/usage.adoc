@@ -387,3 +387,21 @@ System.out.printf("%d requests, %d in flight, %d server errors, mean %.2f ms, ma
 A request is timed from the moment the transport hands it to Cassini to the moment Cassini has written its status, headers and body: filters, routing, the resource method, exception mappers and serialisation included, the network excluded. A request suspended with `@Suspended AsyncResponse` is timed until it is resumed. A server-sent event request is timed until its resource method returns, which is not when the stream closes if the method hands the sink to another thread. The figures are totals since the stack was built, with no breakdown per route: a host that wants a rate subtracts two readings.
 
 Reading them takes no lock, does no I/O and creates no resource or provider instance, so they can be polled from any thread. Updating them allocates nothing and costs about 25 ns per request, the price of two clock reads, measured in `BENCH.md`. They are therefore on by default; `CassiniStack.builder().statistics(false)` builds a stack without them, whose `statistics()` is empty.
+
+== Running as a Servlet
+
+`cassini-servlet` runs a Jakarta REST application as a Servlet of a Servlet container, as Jakarta REST 4.0 section 2 describes: the container's context path, filters, security constraints and authentication mechanism apply to the resources like to any servlet, and `SecurityContext` answers with the caller the container authenticated.
+
+[source,xml]
+----
+<dependency>
+    <groupId>io.vidocq.cassini</groupId>
+    <artifactId>cassini-servlet</artifactId>
+</dependency>
+----
+
+The Servlet API is `provided`: the container brings it. A `ServletContainerInitializer` registers a servlet, mapped at its path, for each `Application` subclass that carries `@ApplicationPath`; a servlet of the same name that the application declared itself, in `web.xml` for instance, is left alone.
+
+The beans come from the `BeanProvider` that the host stores in the `io.vidocq.cassini.servlet.beanProvider` attribute of the `ServletContext` before the servlet starts; without it, from the one `ServiceLoader` finds. `ServletRuntimeDelegate` is the `RuntimeDelegate` of this deployment; name it with `-Djakarta.ws.rs.ext.RuntimeDelegate=io.vidocq.cassini.servlet.ServletRuntimeDelegate` when another Cassini transport is on the module path too.
+
+WARNING: Deploying on an application server: keep the server's own Jakarta REST feature off (Jersey, RESTEasy), or two implementations would register a servlet for the same `Application`. `cassini-servlet` itself brings no dependency beyond `cassini-api` and `cassini-core`.

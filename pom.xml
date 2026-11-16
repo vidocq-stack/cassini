@@ -118,6 +118,7 @@
         <module>cassini-it-other-containers</module>
         <module>cassini-chappe</module>
         <module>cassini-jdk-http</module>
+        <module>cassini-servlet</module>
         <module>cassini-client</module>
         <!-- Published test support: the embedded harness other bricks drive their
              own TCK runners with. Extracted from cassini-tck, which is not deployed
@@ -260,6 +261,11 @@
             <dependency>
                 <groupId>io.vidocq.cassini</groupId>
                 <artifactId>cassini-jdk-http</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.vidocq.cassini</groupId>
+                <artifactId>cassini-servlet</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

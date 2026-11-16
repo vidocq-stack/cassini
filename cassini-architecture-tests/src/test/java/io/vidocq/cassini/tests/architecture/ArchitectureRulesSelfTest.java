@@ -44,6 +44,7 @@ import io.vidocq.cassini.client.internal.archfixture.ClientReachingIntoTheChappe
 import io.vidocq.cassini.internal.archfixture.CoreReachingIntoTheChappeAdapter;
 import io.vidocq.cassini.internal.archfixture.CoreReachingIntoVauban;
 import io.vidocq.cassini.jdkhttp.archfixture.JdkHttpReachingIntoCdi;
+import io.vidocq.cassini.servlet.archfixture.ServletReachingIntoCdi;
 import io.vidocq.cassini.processor.archfixture.ProcessorReachingIntoCore;
 import io.vidocq.cassini.spi.archfixture.SpiReachingIntoCore;
 import io.vidocq.cassini.testing.archfixture.TestingReachingIntoVauban;
@@ -85,6 +86,7 @@ class ArchitectureRulesSelfTest {
                         CdiVaubanReachingIntoChappe.class),
                 ruleWith("CHAPPE_DEPENDENCIES", ArchitectureRules.CHAPPE_DEPENDENCIES, ChappeAdapterReachingIntoVauban.class),
                 ruleWith("JDK_HTTP_DEPENDENCIES", ArchitectureRules.JDK_HTTP_DEPENDENCIES, JdkHttpReachingIntoCdi.class),
+                ruleWith("SERVLET_DEPENDENCIES", ArchitectureRules.SERVLET_DEPENDENCIES, ServletReachingIntoCdi.class),
                 ruleWith("LAYERS", ArchitectureRules.LAYERS, JdkHttpReachingIntoCdi.class),
                 ruleWith(
                         "CLIENT_DEPENDENCIES",

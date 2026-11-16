@@ -29,7 +29,7 @@ final class CassiniClasses {
     /**
      * The root package of each shipped module: cassini-api ({@code spi}), cassini-core ({@code internal} and
      * {@code runtime}), cassini-processor, cassini-cdi and cassini-cdi-vauban ({@code cdi}), cassini-chappe,
-     * cassini-jdk-http, cassini-client and cassini-testing. cassini-maven-plugin is a build tool that runs inside
+     * cassini-jdk-http, cassini-servlet, cassini-client and cassini-testing. cassini-maven-plugin is a build tool that runs inside
      * Maven, not what ships in an application.
      */
     private static final String[] SHIPPED_PACKAGES = {
@@ -40,6 +40,7 @@ final class CassiniClasses {
         "io.vidocq.cassini.cdi",
         "io.vidocq.cassini.chappe",
         "io.vidocq.cassini.jdkhttp",
+        "io.vidocq.cassini.servlet",
         "io.vidocq.cassini.client",
         "io.vidocq.cassini.testing"
     };

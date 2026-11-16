@@ -204,6 +204,7 @@ Codegen does not erase reflection entirely; the remainder is one-time or structu
 
 * `ResourceScanner` runs once at startup, only for classes without a generated `$$CassiniRoutes` (i.e. those with locators).
 * Resource / bean instantiation (`getDeclaredConstructor().newInstance()`) — one-time per scope; M6a prefers a generated `newInstance()` factory when an accessible no-arg constructor exists.
+* `cassini-servlet` reads the `@ApplicationPath` of the `Application` classes a Servlet container hands to its initializer, and instantiates the one it serves, once, at deployment.
 * The `FieldInjector` filet applies only when codegen *cannot*: a closed application module (no `opens` → `privateLookupIn` fails), or a field whose **type** is a package-private class from another package than the resource (a Java language rule, not a bug).
 
 Benefits: cold start under ~50 ms, **AOT**-compatible (GraalVM `native-image`, Leyden CDS), and predictable.

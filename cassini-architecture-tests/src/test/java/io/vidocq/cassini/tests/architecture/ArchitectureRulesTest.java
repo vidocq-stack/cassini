@@ -47,6 +47,7 @@ class ArchitectureRulesTest {
         assertTrue(SHIPPED.contain("io.vidocq.cassini.cdi.vauban.VaubanBeanProvider"), "cdi-vauban imported");
         assertTrue(SHIPPED.contain("io.vidocq.cassini.chappe.ChappeHttpAdapter"), "cassini-chappe imported");
         assertTrue(SHIPPED.contain("io.vidocq.cassini.jdkhttp.JdkHttpAdapter"), "cassini-jdk-http imported");
+        assertTrue(SHIPPED.contain("io.vidocq.cassini.servlet.CassiniServlet"), "cassini-servlet imported");
         assertTrue(SHIPPED.contain("io.vidocq.cassini.client.internal.CassiniClient"), "cassini-client imported");
         assertTrue(SHIPPED.contain("io.vidocq.cassini.testing.CassiniTestHarness"), "cassini-testing imported");
     }
@@ -60,6 +61,7 @@ class ArchitectureRulesTest {
                 named("CDI_VAUBAN_DEPENDENCIES", ArchitectureRules.CDI_VAUBAN_DEPENDENCIES),
                 named("CHAPPE_DEPENDENCIES", ArchitectureRules.CHAPPE_DEPENDENCIES),
                 named("JDK_HTTP_DEPENDENCIES", ArchitectureRules.JDK_HTTP_DEPENDENCIES),
+                named("SERVLET_DEPENDENCIES", ArchitectureRules.SERVLET_DEPENDENCIES),
                 named("CLIENT_DEPENDENCIES", ArchitectureRules.CLIENT_DEPENDENCIES),
                 named("TESTING_DEPENDENCIES", ArchitectureRules.TESTING_DEPENDENCIES),
                 named("API_NEVER_DEPENDS_ON_CORE", ArchitectureRules.API_NEVER_DEPENDS_ON_CORE),
