@@ -99,14 +99,36 @@ class CassiniScopeExtensionTest {
                 levels::toString);
     }
 
+    /**
+     * A generic managed bean must be {@code @Dependent} (CDI 4.1 §3.1): Vauban, as Weld, refuses the deployment when
+     * it has another scope, one an extension added included (Vauban BUG-20261117-35). A generic class without a scope
+     * gets {@code @Dependent}, where a plain one gets {@code @RequestScoped} or {@code @ApplicationScoped}
+     * (CASSINI-065).
+     */
+    @Test
+    void aGenericPathClassOrApplicationWithoutScopeIsDependent() {
+        List<Class<?>> path = new ArrayList<>();
+        List<Class<?>> application = new ArrayList<>();
+        extension.addPathDefaultScope(config(false, true, path));
+        extension.addApplicationDefaultScope(config(false, true, application));
+        assertEquals(List.of(jakarta.enterprise.context.Dependent.class), path);
+        assertEquals(List.of(jakarta.enterprise.context.Dependent.class), application);
+    }
+
     /** A class (or interface) without any annotation; records the annotations added to it. */
     private static ClassConfig config(boolean isInterface, List<Class<?>> added) {
+        return config(isInterface, false, added);
+    }
+
+    /** As {@link #config(boolean, List)}, with a type parameter when {@code generic}. */
+    private static ClassConfig config(boolean isInterface, boolean generic, List<Class<?>> added) {
         ClassInfo info = (ClassInfo) Proxy.newProxyInstance(CassiniScopeExtensionTest.class.getClassLoader(),
                 new Class<?>[]{ClassInfo.class}, (proxy, method, args) -> switch (method.getName()) {
                     case "isInterface" -> isInterface;
                     case "isAbstract" -> isInterface;
                     case "hasAnnotation" -> false;
                     case "name" -> "Sample";
+                    case "typeParameters" -> generic ? List.of("T") : List.of();
                     default -> throw new UnsupportedOperationException(method.getName());
                 });
         return (ClassConfig) Proxy.newProxyInstance(CassiniScopeExtensionTest.class.getClassLoader(),

@@ -31,8 +31,8 @@ import jakarta.ws.rs.core.UriInfo;
 
 /**
  * A resource of a bounded generic class that declares no scope. {@code CassiniScopeExtension} gives it
- * {@code @RequestScoped}, which CDI 4.1 §3.1 does not allow a generic managed bean; Vauban does not report that
- * definition error (Vauban BUG-20261117-35). See {@link ScopelessBoundedGenericResourceTest}.
+ * {@code @Dependent}, the only scope CDI 4.1 §3.1 allows a generic managed bean, which Vauban checks (Vauban
+ * BUG-20261117-35, CASSINI-065). See {@link ScopelessBoundedGenericResourceTest}.
  */
 @Path("/scopeless-numbers")
 public class ScopelessNumberResource<T extends Number> {

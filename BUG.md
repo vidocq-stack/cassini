@@ -985,7 +985,8 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   makes its instances in the creational context of a contextual it keeps in the application context, released at
   shutdown.
 - **Transitional path, a normal-scoped generic bean**: a scope-less generic `@Path` class gets `@RequestScoped` from
-  `CassiniScopeExtension`, a definition error under §3.1 that Vauban accepts (Vauban BUG-20261117-35); Weld rejects an
+  `CassiniScopeExtension`, a definition error under §3.1 that Vauban accepts (Vauban BUG-20261117-35; removed by
+  CASSINI-065, the extension gives such a class `@Dependent`); Weld rejects an
   explicit one (WELD-000071). Its bean, found by its bean class, goes the way of a normal-scoped bean its raw class
   resolves: `VaubanBeanProvider` keeps its client proxy (from `getReference`, `getBeans` resolving nothing) and
   `contextualInstance` looks behind it, in both providers. So `@Inject`, the `@Context` fields and the `@PreDestroy`
@@ -1063,5 +1064,37 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   `WeldBoundedGenericBeansTest.aClassWhoseBeanHasOnlyAnotherQualifierIsStillNotResolvable` (cassini-it-weld).
 - **Cause**: a lookup by class asks for `@Default`, and Cassini has no other qualifier to ask for.
 - **Fix**: none yet; no parked branch (nothing was written for it in the CASSINI-061 round). A fix takes the bean of
-  the class whatever its qualifiers and serves it as CASSINI-061 serves a bean found by its bean class: a client
-  proxy for a normal scope, which `contextualInstance` looks behind in both providers.
+  the class whatever its qualifiers and serves it as CASSINI-061 serves a bean found by its bean class, plus a client
+  proxy for a normal scope, which `contextualInstance` looks behind in both providers: CASSINI-065 removed that
+  normal-scoped path, which only a generic class took, and such a class is not generic.
+
+## CASSINI-065 — `CassiniScopeExtension` gives a generic `@Path` class `@RequestScoped`, which CDI 4.1 §3.1 forbids
+- **Date**: 2026-11-18 — **Status**: FIXED (fix/vauban-bug-stack)
+- **Severity**: high once Vauban checks the rule: an application with a scope-less generic `@Path` class no longer
+  starts. Before, Vauban accepted the definition error, and Cassini served the class through a transitional path.
+- **Symptom**: with Vauban BUG-20261117-35 fixed (a scope an extension adds counts in the CDI 4.1 §3.1 check, as in
+  Weld's WELD-000071), `VaubanContainer.builder().addBeanClass(CassiniScopeExtension.class)
+  .addBeanClass(ScopelessResource.class).build()`, `@Path class ScopelessResource<T extends Number>` without a scope,
+  throws `DefinitionException: ... Managed bean ...ScopelessResource has type parameters and is not @Dependent:
+  @jakarta.enterprise.context.RequestScoped`.
+- **Minimal repro**: `ScopelessBoundedGenericBeanTest` (cassini-cdi-vauban, formerly
+  `RequestScopedBoundedGenericBeanTest`), `ScopelessBoundedGenericResourceTest` (cassini-it-vauban), both tagged
+  `vauban-BUG-20261117-35` before; `CassiniScopeExtensionTest.aGenericPathClassOrApplicationWithoutScopeIsDependent`.
+- **Spec**: CDI 4.1 §3.1: "If the managed bean class is a generic type, it must have scope `@Dependent`."
+- **Cause**: `addPathDefaultScope` and `addApplicationDefaultScope` gave their default scope to any class without one,
+  generic or not.
+- **Fix**: `CassiniScopeExtension.addDefaultScope` gives a generic class without a scope `@Dependent`, a plain one the
+  default of its kind (`@RequestScoped` for `@Path`, `@ApplicationScoped` for an `Application` subclass, `@Dependent`
+  for `@Provider`). Cassini looks a resource up on each request, so a generic resource is still one instance per
+  request; it is not destroyed at the end of the request, as for any `@Dependent` resource. The transitional
+  normal-scoped path of CASSINI-061 is removed: a bean found by its bean class is generic, so `@Dependent`;
+  `VaubanBeanProvider` keeps no client proxy for it, and `CdiBeanProvider.contextualInstance` returns the instance
+  for a class whose raw type resolves no bean.
+- **Verification**: log `session-swap/stack-l3-cassini.log` of the lane L3 scratchpad, Vauban `stack/l3-container`
+  with BUG-35 installed in its private repository: "CASSINI-065 red: tests only, Cassini main code of d851fe1" (3
+  errors in `ScopelessBoundedGenericBeanTest`, the container refused), "CASSINI-065 red, round 3" (with the test
+  failures ignored: `CassiniScopeExtensionTest` 1 failure, `@RequestScoped` given; `ScopelessBoundedGenericBeanTest` 3
+  errors; `ScopelessBoundedGenericResourceTest` 1 error, all the `DefinitionException`), and the green runs of
+  cassini-cdi, cassini-cdi-vauban, cassini-it-vauban and cassini-it-weld ("CASSINI-065 dev"), then the full reactor
+  (`stack-l3-cassini-full.log`, "CASSINI-065 fix: full Cassini reactor clean install with tests": 1176 tests, 0
+  failures, 0 errors, 1 skipped).

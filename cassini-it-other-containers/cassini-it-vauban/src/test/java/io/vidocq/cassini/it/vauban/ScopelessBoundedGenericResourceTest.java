@@ -31,7 +31,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
@@ -39,18 +38,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Vauban BUG-20261117-35-aware, not BUG-35-proof. {@link ScopelessNumberResource}, a bounded generic {@code @Path}
- * class without a scope, gets {@code @RequestScoped} from {@code CassiniScopeExtension}: a definition error under CDI
- * 4.1 §3.1 that Vauban does not report. Its raw class resolves no bean through the {@code BeanManager}, on Vauban
- * main as on vauban#335, and Cassini finds the bean by its bean class (CASSINI-061). It is served as the
- * request-scoped bean it is: injected, its {@code @Context} field set on the contextual instance, and destroyed at the
- * end of the request. Before CASSINI-061 it answered {@code 500} on both: built by Cassini on vauban#335, its client
- * proxy not looked behind on Vauban main.
- *
- * <p>When Vauban reports BUG-35's definition error, this container no longer starts: the Cassini companion of BUG-35
- * gives a generic {@code @Path} class {@code @Dependent} and adapts or drops this test.</p>
+ * {@link ScopelessNumberResource}, a bounded generic {@code @Path} class without a scope, gets {@code @Dependent} from
+ * {@code CassiniScopeExtension}: CDI 4.1 §3.1 makes a generic managed bean {@code @Dependent}, and Vauban treats any
+ * other scope as a definition error (Vauban BUG-20261117-35). The extension gave it {@code @RequestScoped}, which the
+ * container now refuses at start (CASSINI-065). Its raw class resolves no bean through the {@code BeanManager}, and
+ * Cassini finds the bean by its bean class (CASSINI-061). It is served as the {@code @Dependent} resource it is:
+ * injected, its {@code @Context} field set, one instance per request, and destroyed when a plain {@code @Dependent}
+ * resource is.
  */
-@Tag("vauban-BUG-20261117-35")
 class ScopelessBoundedGenericResourceTest {
 
     private final HttpClient http = HttpClient.newHttpClient();
@@ -65,6 +60,7 @@ class ScopelessBoundedGenericResourceTest {
                 .addBeanClass(CassiniScopeExtension.class)
                 .addBeanClass(Formats.class)
                 .addBeanClass(ScopelessNumberResource.class)
+                .addBeanClass(PlainResource.class)
                 .build();
         var stack = CassiniStack.builder().application(new Application() {}).build();
         // Port 0: the server keeps the free port the system gives it (CASSINI-048).
@@ -91,17 +87,19 @@ class ScopelessBoundedGenericResourceTest {
     }
 
     @Test
-    void itIsTheRequestScopedBeanItsScopeMakesIt() throws Exception {
+    void itIsTheDependentResourceItsScopeMakesIt() throws Exception {
         String first = get("/scopeless-numbers");
+        get("/plain");
         assertAll("after one request",
                 () -> assertTrue(first.startsWith("scopeless:42:"), "injected: " + first),
                 () -> assertTrue(first.endsWith("scopeless-numbers"), "its @Context field set: " + first),
-                () -> assertEquals(1, Lifecycles.createdCount(ScopelessNumberResource.class), "created"),
-                () -> assertEquals(1, Lifecycles.destroyedCount(ScopelessNumberResource.class),
-                        "destroyed at the end of the request"));
+                () -> assertEquals(1, Lifecycles.createdCount(ScopelessNumberResource.class), "created"));
         get("/scopeless-numbers");
+        get("/plain");
         assertAll("after two requests",
                 () -> assertEquals(2, Lifecycles.createdCount(ScopelessNumberResource.class), "one per request"),
-                () -> assertEquals(2, Lifecycles.destroyedCount(ScopelessNumberResource.class), "one per request"));
+                () -> assertEquals(Lifecycles.destroyedCount(PlainResource.class),
+                        Lifecycles.destroyedCount(ScopelessNumberResource.class),
+                        "destroyed when a plain @Dependent resource is"));
     }
 }

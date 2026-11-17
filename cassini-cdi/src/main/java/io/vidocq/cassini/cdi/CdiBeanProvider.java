@@ -85,8 +85,8 @@ public final class CdiBeanProvider implements BeanProvider {
         if (found == null) {
             throw new IllegalArgumentException("Not a resolvable CDI bean: " + type);
         }
-        // Made as one its raw class resolves: a @Dependent instance, in the creational context of DependentsOwner, or
-        // the client proxy of a normal-scoped bean, which contextualInstance looks behind.
+        // Made as one its raw class resolves: a @Dependent instance, in the creational context of DependentsOwner. A
+        // generic managed bean is @Dependent (CDI 4.1 §3.1): no client proxy to look behind (CASSINI-065).
         BeanManager bm = cdi.getBeanManager();
         Owner owner = fromContext(bm.getContext(ApplicationScoped.class), dependentsOwner, bm);
         return (T) found.reference(bm, owner.context());
@@ -98,8 +98,10 @@ public final class CdiBeanProvider implements BeanProvider {
         try {
             BeanManager bm = cdi.getBeanManager();
             Set<Bean<?>> candidates = bm.getBeans(type);
-            // A bean found by its bean class (CASSINI-061) is looked behind as one its raw class resolves.
-            Bean<?> resolved = candidates.isEmpty() ? foundByItsBeanClass(type) : bm.resolve(candidates);
+            // A bean found by its bean class (CASSINI-061) is generic, so @Dependent: the instance itself
+            // (CASSINI-065).
+            if (candidates.isEmpty()) return bean;
+            Bean<?> resolved = bm.resolve(candidates);
             if (resolved == null) return bean;
             Class<? extends Annotation> scope = resolved.getScope();
             // Only normal-scoped beans are reached through a client proxy; for @Dependent and the
@@ -111,17 +113,6 @@ public final class CdiBeanProvider implements BeanProvider {
             // Inactive scope or unresolved bean: keep the client proxy.
             return bean;
         }
-    }
-
-    /**
-     * The bean of a class its raw type does not resolve, or {@code null}. A normal-scoped one is transitional: CDI 4.1
-     * §3.1 makes a generic managed bean {@code @Dependent}, but Vauban accepts the {@code @RequestScoped} that
-     * {@code CassiniScopeExtension} gives a scope-less generic {@code @Path} class (Vauban BUG-20261117-35), and the
-     * Cassini companion of BUG-35 removes that case.
-     */
-    private Bean<?> foundByItsBeanClass(Class<?> type) {
-        BeanOfClass found = byBeanClass(type).found();
-        return found == null ? null : found.bean();
     }
 
     private static <T> T fromContext(Context ctx, Contextual<T> contextual, BeanManager bm) {

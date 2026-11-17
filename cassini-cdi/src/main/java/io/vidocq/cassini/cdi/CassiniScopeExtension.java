@@ -30,6 +30,8 @@ import jakarta.inject.Singleton;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.ext.Provider;
 
+import java.lang.annotation.Annotation;
+
 /**
  * {@link BuildCompatibleExtension} that aligns a CDI container with JAX-RS 4.0 spec §11.2.5:
  * classes annotated with {@code @Path} or {@code @Provider} must be discoverable
@@ -43,9 +45,12 @@ import jakarta.ws.rs.ext.Provider;
  * so give it a scope or list it in a {@code beans.xml} with {@code bean-discovery-mode="all"}.</p>
  *
  * <ul>
+ *   <li>{@code Application} subclass without a scope → {@code @ApplicationScoped}; a generic one
+ *       gets {@code @Dependent}, as below</li>
  *   <li>{@code @Path} without a scope → {@code @RequestScoped} (standard JAX-RS semantics:
  *       a new resource instance per request); interfaces, such as Rest Client contracts, are
- *       left alone</li>
+ *       left alone. A generic class gets {@code @Dependent}, the only scope CDI 4.1 §3.1 allows a
+ *       generic managed bean: Cassini still asks for one instance per request (CASSINI-065)</li>
  *   <li>{@code @Provider} without a scope → {@code @Dependent} (JAX-RS-side singleton equivalent:
  *       providers are singleton per class by default — {@code @Dependent}
  *       allows on-demand instantiation without the overhead of a normal-scope proxy)</li>
@@ -71,12 +76,7 @@ public class CassiniScopeExtension implements BuildCompatibleExtension {
         if (clazz.info().isAbstract()) {
             return;
         }
-        if (!hasAnyScope(clazz)) {
-            clazz.addAnnotation(ApplicationScoped.class);
-            LOG.log(System.Logger.Level.DEBUG,
-                    "  Application subclass {0} has no CDI scope, defaulting to @ApplicationScoped",
-                    clazz.info().name());
-        }
+        addDefaultScope(clazz, "Application subclass", ApplicationScoped.class);
     }
 
     /**
@@ -88,12 +88,7 @@ public class CassiniScopeExtension implements BuildCompatibleExtension {
     @Enhancement(types = Object.class, withAnnotations = Path.class)
     public void addPathDefaultScope(ClassConfig clazz) {
         if (clazz.info().isInterface()) return;
-        if (!hasAnyScope(clazz)) {
-            clazz.addAnnotation(RequestScoped.class);
-            LOG.log(System.Logger.Level.DEBUG,
-                    "  @Path class {0} has no CDI scope, defaulting to @RequestScoped",
-                    clazz.info().name());
-        }
+        addDefaultScope(clazz, "@Path class", RequestScoped.class);
     }
 
     /** {@code @Provider} class without a scope → {@code @Dependent}; an interface is skipped. */
@@ -103,12 +98,19 @@ public class CassiniScopeExtension implements BuildCompatibleExtension {
         if (clazz.info().isInterface()) return;
         // Exclude classes that are also @Path (already handled by addPathDefaultScope)
         if (clazz.info().hasAnnotation(Path.class)) return;
-        if (!hasAnyScope(clazz)) {
-            clazz.addAnnotation(Dependent.class);
-            LOG.log(System.Logger.Level.DEBUG,
-                    "  @Provider class {0} has no CDI scope, defaulting to @Dependent",
-                    clazz.info().name());
-        }
+        addDefaultScope(clazz, "@Provider class", Dependent.class);
+    }
+
+    /**
+     * Gives {@code clazz}, when it has no scope, {@code scope}, or {@code @Dependent} when it is generic: a generic
+     * managed bean must be {@code @Dependent} (CDI 4.1 §3.1), and any other scope fails the deployment (CASSINI-065).
+     */
+    private static void addDefaultScope(ClassConfig clazz, String kind, Class<? extends Annotation> scope) {
+        if (hasAnyScope(clazz)) return;
+        Class<? extends Annotation> given = clazz.info().typeParameters().isEmpty() ? scope : Dependent.class;
+        clazz.addAnnotation(given);
+        LOG.log(System.Logger.Level.DEBUG, "  {0} {1} has no CDI scope, defaulting to @{2}",
+                kind, clazz.info().name(), given.getSimpleName());
     }
 
     private static boolean hasAnyScope(ClassConfig clazz) {

@@ -151,19 +151,13 @@ public final class VaubanBeanProvider implements BeanProvider {
     }
 
     /**
-     * A bounded generic class: its bean, found by its bean class, is served as {@link #resolve} serves the bean of a
-     * raw class. A normal-scoped one hands out its client proxy, which {@link #contextualInstance} looks behind; the
-     * raw class selecting nothing, the proxy comes from {@code getReference} with the bean type. CDI 4.1 §3.1 makes a
-     * generic managed bean {@code @Dependent}, but Vauban accepts the {@code @RequestScoped} that
-     * {@code CassiniScopeExtension} gives a scope-less generic {@code @Path} class (Vauban BUG-20261117-35): this
-     * normal-scoped path is transitional, and the Cassini companion of BUG-35 removes it.
+     * A bounded generic class: its bean, found by its bean class, is served as {@link #resolve} serves a
+     * {@code @Dependent} bean of a raw class, a new instance on each lookup. A generic managed bean is
+     * {@code @Dependent} (CDI 4.1 §3.1), which Vauban checks (BUG-20261117-35), so no client proxy (CASSINI-065).
      */
     private Resolution byBeanClass(Class<?> type, BeanManager bm) {
         BeanOfClass ofBeanClass = beansByClass().beanOf(type, bm);
-        if (ofBeanClass == null) return UNRESOLVED;
-        Bean<?> bean = ofBeanClass.bean();
-        Object clientProxy = isNormalScoped(bean) ? ofBeanClass.reference(bm, bm.createCreationalContext(bean)) : null;
-        return new Resolution(bean, clientProxy, ofBeanClass);
+        return ofBeanClass == null ? UNRESOLVED : new Resolution(ofBeanClass.bean(), null, ofBeanClass);
     }
 
     private static boolean isNormalScoped(Bean<?> bean) {
