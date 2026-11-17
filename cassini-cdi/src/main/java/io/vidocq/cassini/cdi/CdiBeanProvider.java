@@ -19,10 +19,14 @@
  */
 package io.vidocq.cassini.cdi;
 
+import io.vidocq.cassini.cdi.internal.BeansByClass;
+import io.vidocq.cassini.cdi.internal.BeansByClass.BeanOfClass;
 import io.vidocq.cassini.spi.bean.BeanProvider;
+import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.NormalScope;
 import jakarta.enterprise.context.spi.Context;
-import jakarta.enterprise.inject.Any;
+import jakarta.enterprise.context.spi.Contextual;
+import jakarta.enterprise.context.spi.CreationalContext;
 import jakarta.enterprise.inject.spi.Bean;
 import jakarta.enterprise.inject.spi.BeanManager;
 import jakarta.enterprise.inject.spi.CDI;
@@ -31,6 +35,8 @@ import jakarta.ws.rs.ext.Provider;
 import java.lang.annotation.Annotation;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * {@link BeanProvider} built only on the standard CDI APIs — {@link CDI}, the {@link BeanManager}
@@ -39,11 +45,26 @@ import java.util.Set;
  *
  * <p>{@link #getResourceClasses()} adds {@link CdiRequestScopeFilter}, which activates the request
  * context around each request; {@link #getBean(Class)} returns its single instance.</p>
+ *
+ * <p>A class its raw type does not resolve, a bounded generic {@code @Dependent} class (CDI 4.1 §5.2.4), is found
+ * by its bean class (CASSINI-061).</p>
  */
 public final class CdiBeanProvider implements BeanProvider {
 
+    /** The bean of a class its raw type does not resolve, found by its bean class with its bean type; null when it
+     *  has none. Never changes while the container runs. */
+    private record ByBeanClass(BeanOfClass found) {}
+
+    private static final ByBeanClass NONE = new ByBeanClass(null);
+
     private final CDI<Object> cdi;
     private final CdiRequestScopeFilter requestScopeFilter;
+    /** Per class its raw type does not resolve, decided on its first lookup. */
+    private final ConcurrentHashMap<Class<?>, ByBeanClass> foundByBeanClass = new ConcurrentHashMap<>();
+    /** The beans by bean class, read once: by {@link #getResourceClasses()} at stack build, or by the first
+     *  class its raw type does not resolve. */
+    private final AtomicReference<BeansByClass> beanIndex = new AtomicReference<>();
+    private final DependentsOwner dependentsOwner = new DependentsOwner();
 
     public CdiBeanProvider(CDI<Object> cdi) {
         this.cdi = cdi;
@@ -57,10 +78,18 @@ public final class CdiBeanProvider implements BeanProvider {
             return (T) requestScopeFilter;
         }
         var instance = cdi.select(type);
-        if (!instance.isResolvable()) {
+        if (instance.isResolvable()) {
+            return instance.get();
+        }
+        BeanOfClass found = byBeanClass(type).found();
+        if (found == null) {
             throw new IllegalArgumentException("Not a resolvable CDI bean: " + type);
         }
-        return instance.get();
+        // Made as one its raw class resolves: a @Dependent instance, in the creational context of DependentsOwner, or
+        // the client proxy of a normal-scoped bean, which contextualInstance looks behind.
+        BeanManager bm = cdi.getBeanManager();
+        Owner owner = fromContext(bm.getContext(ApplicationScoped.class), dependentsOwner, bm);
+        return (T) found.reference(bm, owner.context());
     }
 
     @Override
@@ -69,8 +98,8 @@ public final class CdiBeanProvider implements BeanProvider {
         try {
             BeanManager bm = cdi.getBeanManager();
             Set<Bean<?>> candidates = bm.getBeans(type);
-            if (candidates.isEmpty()) return bean;
-            Bean<?> resolved = bm.resolve(candidates);
+            // A bean found by its bean class (CASSINI-061) is looked behind as one its raw class resolves.
+            Bean<?> resolved = candidates.isEmpty() ? foundByItsBeanClass(type) : bm.resolve(candidates);
             if (resolved == null) return bean;
             Class<? extends Annotation> scope = resolved.getScope();
             // Only normal-scoped beans are reached through a client proxy; for @Dependent and the
@@ -84,18 +113,81 @@ public final class CdiBeanProvider implements BeanProvider {
         }
     }
 
-    private static <T> Object fromContext(Context ctx, Bean<T> bean, BeanManager bm) {
-        T existing = ctx.get(bean);
+    /**
+     * The bean of a class its raw type does not resolve, or {@code null}. A normal-scoped one is transitional: CDI 4.1
+     * §3.1 makes a generic managed bean {@code @Dependent}, but Vauban accepts the {@code @RequestScoped} that
+     * {@code CassiniScopeExtension} gives a scope-less generic {@code @Path} class (Vauban BUG-20261117-35), and the
+     * Cassini companion of BUG-35 removes that case.
+     */
+    private Bean<?> foundByItsBeanClass(Class<?> type) {
+        BeanOfClass found = byBeanClass(type).found();
+        return found == null ? null : found.bean();
+    }
+
+    private static <T> T fromContext(Context ctx, Contextual<T> contextual, BeanManager bm) {
+        T existing = ctx.get(contextual);
         if (existing != null) return existing;
-        return ctx.get(bean, bm.createCreationalContext(bean));
+        return ctx.get(contextual, bm.createCreationalContext(contextual));
+    }
+
+    private ByBeanClass byBeanClass(Class<?> type) {
+        ByBeanClass known = foundByBeanClass.get(type);
+        if (known != null) return known;
+        ByBeanClass found = findByBeanClass(type);
+        ByBeanClass raced = foundByBeanClass.putIfAbsent(type, found);
+        return raced != null ? raced : found;
+    }
+
+    /**
+     * Only a class whose raw type resolves no bean at all is looked up as a bean class: when it resolves several, an
+     * ambiguity stays one, as before.
+     */
+    private ByBeanClass findByBeanClass(Class<?> type) {
+        try {
+            BeanManager bm = cdi.getBeanManager();
+            if (!bm.getBeans(type).isEmpty()) return NONE;
+            BeanOfClass found = beansByClass(bm).beanOf(type, bm);
+            return found == null ? NONE : new ByBeanClass(found);
+        } catch (RuntimeException _) {
+            // Several beans of that bean class: nothing resolves, as getBean() reports.
+            return NONE;
+        }
+    }
+
+    private BeansByClass beansByClass(BeanManager bm) {
+        BeansByClass known = beanIndex.get();
+        if (known != null) return known;
+        BeansByClass read = new BeansByClass(bm);
+        return beanIndex.compareAndSet(null, read) ? read : beanIndex.get();
+    }
+
+    /** The creational context of {@link DependentsOwner}, which the container gives it on its creation. */
+    private record Owner(CreationalContext<Owner> context) {}
+
+    /**
+     * The parent of the {@code @Dependent} instances {@link #getBean(Class)} makes from a bean found by its bean class,
+     * so they are destroyed when the instances of {@code cdi.select(type).get()} are. Weld keeps those, when they have
+     * a {@code @PreDestroy}, until the container shuts down, and destroys them then. This contextual lives in the
+     * application context: when that context ends, at shutdown, the container destroys it, and its creational context,
+     * released, destroys the instances made in it.
+     */
+    private static final class DependentsOwner implements Contextual<Owner> {
+
+        @Override
+        public Owner create(CreationalContext<Owner> context) {
+            return new Owner(context);
+        }
+
+        @Override
+        public void destroy(Owner owner, CreationalContext<Owner> context) {
+            context.release();
+        }
     }
 
     @Override
     public Set<Class<?>> getResourceClasses() {
         Set<Class<?>> result = new LinkedHashSet<>();
-        for (Bean<?> bean : cdi.getBeanManager().getBeans(Object.class, Any.Literal.INSTANCE)) {
-            Class<?> beanClass = bean.getBeanClass();
-            if (beanClass == null) continue;
+        for (Class<?> beanClass : beansByClass(cdi.getBeanManager()).beanClasses()) {
             if (beanClass.isAnnotationPresent(Path.class) || beanClass.isAnnotationPresent(Provider.class)) {
                 result.add(beanClass);
             }

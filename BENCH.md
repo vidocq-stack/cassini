@@ -6,6 +6,61 @@ raw results, delta vs previous run).
 
 ---
 
+## 2026-11-17 — Bean lookup of a bounded generic `@Dependent` resource by its bean class (CASSINI-061)
+
+**Purpose**: the raw class of a bounded generic resource resolves no bean through the `BeanManager`, on Vauban main as
+on vauban#335, where `VaubanContainer.select` refuses it too (CDI 4.1 §5.2.4); `VaubanBeanProvider` finds it by its
+bean class. Its request path changes on both: a `BeanManager.getReference(bean, NumberResource<T>, …)` in a new
+creational context, where it was `VaubanContainer.select(type)`, which on Vauban main took the raw class. The beans by
+bean class are read once, at stack build; the request path reads the per-class resolution, as before. The path of
+every class whose raw type resolves its bean is unchanged.
+
+- **Commit**: Cassini `59e2ad7` plus the fix (branch `fix/raw-type-assignability`, fix round 1, before its amend);
+  Vauban main `455067f5` (local repository `m2-bug12`) and vauban#335 `131fb3e6` (`m2-bug16r4`), identified by the
+  bytes of `AssignabilityRules.class` in the `vauban-core` jar each run resolved; Weld 6.0.4.
+- **Hardware / JVM**: Apple M5 Max, 18 cores, 128 GB RAM, OpenJDK 25 LTS (Temurin 25+36), macOS 27.2.1 (Darwin
+  27.2.0). Machine shared with other builds (load average 7 to 13): the times are indicative only.
+- **Harness**: `BeanLookupBenchIT` (cassini-cdi-vauban) and `WeldBeanLookupBenchIT` (cassini-it-weld), opt-in. A
+  container with a `@Dependent` resource of a plain class and one of `class NumberResource<T extends Number>`, a
+  provider that has listed its resource classes, then per class 50 000 unmeasured `getBean` calls, the bytes the
+  thread allocates over 10 000 calls (HotSpot's `getCurrentThreadAllocatedBytes`), and three rounds of 200 000 timed
+  calls (`System.nanoTime`). Each result goes to a `static volatile` field. "Before" is the same bench with
+  `VaubanBeanProvider` of `59e2ad7`. On Weld both fixtures have a `@PreDestroy`, so Weld keeps every instance until
+  shutdown (CASSINI-062).
+- **Command** (three runs each, one for vauban#335 before; the local repositories of the session, offline):
+  ```bash
+  ./mvnw -ntp -pl cassini-cdi-vauban -am test -Dtest=BeanLookupBenchIT \
+    -Dsurefire.failIfNoSpecifiedTests=false -Dcassini.bench=true
+  ./mvnw -ntp -pl cassini-it-other-containers/cassini-it-weld -am test -Dtest=WeldBeanLookupBenchIT \
+    -Dsurefire.failIfNoSpecifiedTests=false -Dcassini.bench=true
+  # each run also: -o -Dmaven.repo.local=<s>/m2-casmain (Vauban main) or <s>/m2-cas16 (vauban#335)
+  #   -Dmaven.repo.local.tail=<s>/m2-bug12 or <s>/m2-bug16r4,<s>/m2-bug16r3, then <s>/m2-onclose,$HOME/.m2/repository
+  ```
+- **Raw results** (bytes allocated per `getBean`, one figure per run; ns per call, lowest and highest of the nine
+  timed rounds):
+
+  | Container, Cassini | Plain `@Dependent` resource | `NumberResource<T extends Number>` |
+  |---|---|---|
+  | Vauban main, before (`select`, `select`) | 973 / 848 / 1 008 B, 595-668 ns | 976 / 848 / 848 B, 601-656 ns |
+  | Vauban main, after (`select`, `getReference`) | 864 / 874 / 880 B, 605-639 ns | 1 080 / 1 080 / 1 080 B, 541-614 ns |
+  | vauban#335, before (`select`, fails) | 1 017 B, 629-643 ns | `Not managed by Vauban` |
+  | vauban#335, after (`select`, `getReference`) | 892 / 1 018 / 976 B, 591-688 ns | 2 216 / 2 216 / 2 216 B, 711-935 ns |
+  | Weld, after (`CDI.select`, `getReference`) | 7 736 / 7 740 / 7 751 B, 975-1 157 ns | 7 984 / 7 984 / 7 984 B, 918-1 722 ns |
+
+  The first version of the fix, before review, passed `Object.class` to `getReference` (same method, a scratch
+  harness): `NumberResource` cost 1 104 / 1 104 / 1 104 B and 586-608 ns on vauban#335, 7 744 B on Weld. With the bean
+  type that names the class, each `getReference` has the container check that type against the bean types:
+  `VaubanBeanManager.getReference` streams `Bean.getTypes()` through `deploymentTypesMatching(type)`, and that check
+  makes the difference for a parameterized type with a bounded type variable: about 1.1 KB and 150 to 300 ns per call.
+  On Weld the difference is 240 B. On Vauban main, `NumberResource` takes `getReference` after the fix too: 1 080 B
+  against 848 to 976 B with `select`.
+
+- **Delta vs previous run**: first entry for this measure.
+- **Conclusion**: the lookup by bean class reads no bean per request. On vauban#335 a bounded generic resource costs
+  about 2.2 KB and 0.7 to 0.9 µs per lookup, where a plain one costs about 0.9 KB and 0.6 to 0.7 µs: half of the
+  bytes are the container's check of the bean type `getReference` is given. On Weld it costs what
+  `CDI.current().select(type)` costs, within 3 % of the bytes.
+
 ## 2026-10-29 — Object sub-resource locators: the returned class scanned once
 
 **Purpose**: a sub-resource locator that returns `Object` is routed at run time on the class of what it returned

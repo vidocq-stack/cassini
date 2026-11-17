@@ -946,3 +946,122 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   built the automatic `OPTIONS` answer.
 - **Fix**: both build it with `Invoker.automaticOptionsAnswer` and write it through the global response filters
   (`Invoker.writeUnmatched`), as CASSINI-058 does at the root.
+
+## CASSINI-061 — A resource or provider of a bounded generic class is not served as its bean under CDI 4.1 §5.2.4
+- **Date**: 2026-11-17 — **Status**: FIXED (fix/raw-type-assignability)
+- **Severity**: medium. A valid application loses the CDI injection and lifecycle of a `@Dependent` resource or
+  provider of a bounded generic class on vauban#335 (BUG-20261117-16), and already on Weld: Cassini builds the class
+  itself.
+- **Symptom**: with vauban#335, which applies CDI 4.1 §5.2.4 as Weld does, `VaubanBeanProvider.getBean` of `@Provider
+  class NumberWriter<T extends Number> implements MessageBodyWriter<T>` threw `IllegalArgumentException: Not managed
+  by Vauban: class …NumberWriter` (cause: `UnsatisfiedResolutionException: No bean found for type`). Cassini caught it
+  and built the class with its no-arg constructor: no injection, no `@PostConstruct`, and a `500` once the provider or
+  resource used an injected bean. `CdiBeanProvider` failed the same way on Weld 6.0.4. On Vauban main the case worked:
+  `VaubanContainer.select` took the raw class, though `BeanManager.getBeans` already returned no bean for it.
+- **Minimal repro**: `BoundedGenericBeansTest` (cassini-it-vauban): `GET /numbers` on `@Path @Dependent class
+  NumberResource<T extends Number>`, whose `Integer` goes through the scope-less `@Provider NumberWriter<T extends
+  Number>`, answered `500`; `BoundedGenericBeanTest` (cassini-cdi-vauban): `getBean` threw `Not managed by Vauban`;
+  `WeldBoundedGenericBeansTest` (cassini-it-weld): `500` on Weld. Red on vauban#335 and on Weld, green on Vauban main,
+  before the fix.
+- **Spec**: CDI 4.1 §5.2.4: "A parameterized bean type is considered assignable to a raw required type if the raw
+  types are identical and all type parameters of the bean type are either unbounded type variables or
+  java.lang.Object." §3.1: a managed bean whose class is generic must be `@Dependent`.
+- **Cause**: both providers looked a class up by typesafe resolution of its raw type (`VaubanContainer.select`,
+  `BeanManager.getBeans`, `CDI.select`). The bean type of `NumberWriter<T extends Number>` is
+  `NumberWriter<T extends Number>`, which the raw type does not resolve.
+- **Fix**: typesafe resolution of the raw type stays the first path, so an alternative, a specialization or a producer
+  of the class resolves as before, and a class that is no bean still fails. Only a class it resolves no bean for is
+  looked up by its bean class: `BeansByClass` (cassini-cdi, exported to cassini-cdi-vauban alone) indexes the beans by
+  bean class once, when `getResourceClasses()` runs at stack build. Among the beans of that class it takes those a
+  lookup by class takes, the ones with `@Default`, that have the class itself among their bean types, raw or
+  parameterized (not a producer the class declares), and resolves them with `BeanManager.resolve`. Only the type match
+  changes: a class whose bean has only other qualifiers is still built by Cassini, as before (CASSINI-064, pinned by
+  `BoundedGenericBeanTest` on Vauban and `WeldBoundedGenericBeansTest` on Weld). The bean found is then served as one
+  the raw class resolves: a reference from `BeanManager.getReference` with the bean type that names the class,
+  `NumberWriter<T>`, which is the instance itself for a `@Dependent` bean. The resolution is cached per class, as
+  before. Instances are destroyed as before: Vauban destroys no `@Dependent` instance `select` hands out (no
+  `@PreDestroy` after the requests nor after the container closes), so `VaubanBeanProvider` keeps no creational
+  context; Weld destroys those of `CDI.current().select(type).get()` at shutdown (CASSINI-062), so `CdiBeanProvider`
+  makes its instances in the creational context of a contextual it keeps in the application context, released at
+  shutdown.
+- **Transitional path, a normal-scoped generic bean**: a scope-less generic `@Path` class gets `@RequestScoped` from
+  `CassiniScopeExtension`, a definition error under §3.1 that Vauban accepts (Vauban BUG-20261117-35); Weld rejects an
+  explicit one (WELD-000071). Its bean, found by its bean class, goes the way of a normal-scoped bean its raw class
+  resolves: `VaubanBeanProvider` keeps its client proxy (from `getReference`, `getBeans` resolving nothing) and
+  `contextualInstance` looks behind it, in both providers. So `@Inject`, the `@Context` fields and the `@PreDestroy`
+  at the end of the request work on vauban#335 and on Vauban main (`ScopelessBoundedGenericResourceTest`,
+  `RequestScopedBoundedGenericBeanTest`, tagged `vauban-BUG-20261117-35`). This path exists because Vauban accepts the
+  scope; the Cassini companion of BUG-35, which gives a generic class `@Dependent`, removes it. Before the fix,
+  `getBeans` resolving no bean for the raw class on either Vauban, such a class failed in two ways. On vauban#335
+  Cassini built it itself: a class that used `@Inject` answered `500`, while one that used only `@Context` answered
+  `200`. On Vauban main `VaubanContainer.select` handed out its client proxy, which `contextualInstance` did not look
+  behind: a class that read a `@Context` field answered `500`.
+- **Verification**: (1) vauban#335 without the fix: `BoundedGenericBeanTest` 2 errors (`Not managed by Vauban`),
+  `BoundedGenericBeansTest` 3 failures and `WeldBoundedGenericBeansTest` 3 failures (`500`); (2) Vauban main without
+  the fix: green, 4 and 3 tests; (3) with the fix, green on vauban#335 and on Vauban main, with the existing tests of
+  cassini-cdi, cassini-cdi-vauban, cassini-it-vauban and cassini-it-weld. A `CdiBeanProvider` that makes the instance
+  in a new creational context turns `theyAreDestroyedWhenAPlainDependentResourceAndProviderAre` red on Weld; a
+  `BeansByClass` that also takes the producer `NumberResource` declares turns `BoundedGenericBeanTest` red, and one
+  that drops the `@Default` filter turns the qualified-only pins of `BoundedGenericBeanTest` and
+  `WeldBoundedGenericBeansTest` red. The committed tests, with the main code of the fix set aside, are red again on
+  vauban#335 and on Weld (fix round 1). The request-scoped generic class: `500` and the client proxy handed back as
+  the instance on vauban#335 before the transitional path; without the fix, `500` and `Not managed by Vauban` on
+  vauban#335, `500` and the client proxy not looked behind on Vauban main; green with it on both (fix round 2). Cost:
+  BENCH.md, 2026-11-17.
+
+## CASSINI-062 — On Weld, a `@Dependent` resource stays in memory until shutdown, one per request
+- **Date**: 2026-11-17 — **Status**: OPEN
+- **Severity**: medium. Memory grows with the requests, and a `@PreDestroy` that frees a resource runs only at
+  shutdown.
+- **Symptom**: `CdiBeanProvider.getBean` makes a `@Dependent` resource with `CDI.current().select(type).get()`. Weld
+  keeps the instances of a bean that has a `@PreDestroy` in that `Instance` until the container shuts down: after two
+  `GET /plain`, `PlainResource` was created twice and destroyed 0 times; after the server stopped, still 0; after the
+  container closed, 2. `PlainFilter`, a `@Dependent` provider, was created once and destroyed at close only.
+- **Minimal repro**: Weld 6.0.4, the fixtures of cassini-it-weld (`PlainResource`, `PlainFilter`, counters in
+  `Lifecycles`), two requests, then read `Lifecycles.destroyedCount(PlainResource.class)` before and after
+  `WeldContainer.close()` (scratch probe C of the CASSINI-061 session; `WeldBoundedGenericBeansTest` pins only that
+  the generic fixtures follow the plain ones).
+- **Cause (hypothesis)**: Cassini never calls `Instance.destroy` on what it obtained, and per CDI an `Instance` keeps
+  the `@Dependent` instances it made until it is destroyed itself. Since CASSINI-061, `CdiBeanProvider` makes the
+  instances of a bounded generic class in a creational context that lives until shutdown, so they behave the same.
+- **Observed on Vauban**: `VaubanBeanProvider`'s `select` never runs the `@PreDestroy` of a `@Dependent` resource, not
+  even when the container closes (probe A of the same session: destroyed 0 after close).
+- **Fix**: none yet. A candidate: destroy the `@Dependent` instance in the end-of-request action Cassini already runs
+  (`io.vidocq.cassini.requestCompleted`), for resources; providers live as long as the stack.
+
+## CASSINI-063 — On Weld, `CassiniScopeExtension` adds no scope: a scope-less `@Path` class stays `@Dependent`
+- **Date**: 2026-11-17 — **Status**: OPEN
+- **Severity**: low to medium. On Weld a scope-less resource is `@Dependent`, not `@RequestScoped` as on Vauban and as
+  the extension's Javadoc says: no client proxy, a new instance on each lookup, and its `@PreDestroy` at shutdown
+  (CASSINI-062).
+- **Symptom**: `new Weld().disableDiscovery().addBeanClasses(ScopelessPlain.class)
+  .addBuildCompatibleExtensions(CassiniScopeExtension.class).initialize()`, with `@Path("/scopeless-plain") class
+  ScopelessPlain` and no scope: the bean's scope is `jakarta.enterprise.context.Dependent`. The same for a scope-less
+  bounded generic `@Path` class. On vauban#335 the same extension gives the generic class `@RequestScoped`.
+- **Minimal repro**: the probe above, in cassini-it-weld, reading `getBeans(Object.class, Any.Literal.INSTANCE)` for
+  the class and printing `getScope()` (scratch probe C of the CASSINI-061 session).
+- **Cause (hypothesis)**: `addPathDefaultScope` and `addProviderDefaultScope` declare
+  `@Enhancement(types = Object.class, withAnnotations = …)` without `withSubtypes = true`. The CDI 4.1 language model
+  then matches `java.lang.Object` alone, which Weld follows; Vauban applies the method to every class. For a provider
+  the outcome is the same, `@Dependent` being Weld's default.
+- **Fix**: none yet. Candidate: `withSubtypes = true` on both methods, with a Weld test of the scope of a scope-less
+  `@Path` class. `withSubtypes = true` alone would make every scope-less generic `@Path` class fail to deploy on Weld:
+  it would get `@RequestScoped`, and Weld rejects a generic managed bean that is not `@Dependent` (WELD-000071). The
+  fix must also give a generic class `@Dependent`, which is the Cassini companion of Vauban BUG-20261117-35.
+
+## CASSINI-064 — A resource or provider whose bean has only non-default qualifiers is built by Cassini
+- **Date**: 2026-11-17 — **Status**: OPEN
+- **Severity**: medium. The class is a bean, but Cassini builds it with its no-arg constructor: no injection, no
+  interceptors, no `@PostConstruct`, and not the contextual instance of its scope.
+- **Symptom**: `@Path("/tagged") @Dependent @Tagged class TaggedResource`, where `@Tagged` is a qualifier: its bean
+  has `@Tagged` and `@Any`, not `@Default`. `getResourceClasses()` lists it, but `VaubanBeanProvider.getBean` throws
+  `Not managed by Vauban`: `select(type)` and the lookup by bean class require `@Default`. Cassini catches it and
+  builds the class itself (`CassiniStackBuilderImpl.resolver` and `instantiateProvider`). `CdiBeanProvider` throws
+  `Not a resolvable CDI bean` for it on Weld 6.0.4, for the same reason.
+- **Minimal repro**: `BoundedGenericBeanTest.aClassWhoseBeanHasOnlyAnotherQualifierIsStillNotManaged`
+  (cassini-cdi-vauban), which pins today's behaviour, the same on Vauban main and on vauban#335, and
+  `WeldBoundedGenericBeansTest.aClassWhoseBeanHasOnlyAnotherQualifierIsStillNotResolvable` (cassini-it-weld).
+- **Cause**: a lookup by class asks for `@Default`, and Cassini has no other qualifier to ask for.
+- **Fix**: none yet; no parked branch (nothing was written for it in the CASSINI-061 round). A fix takes the bean of
+  the class whatever its qualifiers and serves it as CASSINI-061 serves a bean found by its bean class: a client
+  proxy for a normal scope, which `contextualInstance` looks behind in both providers.

@@ -248,7 +248,9 @@ final class ArchitectureRules {
                     .in("io.vidocq.cassini.internal..", "io.vidocq.cassini.runtime..")
                     .accessibleOnlyBy("Chappe adapter", "JDK HTTP adapter", "Client", "Test support"),
             Layer.named("Processor").in("io.vidocq.cassini.processor..").accessibleByNone(),
-            Layer.named("CDI").in("io.vidocq.cassini.cdi").accessibleOnlyBy("CDI Vauban"),
+            Layer.named("CDI")
+                    .in("io.vidocq.cassini.cdi", "io.vidocq.cassini.cdi.internal")
+                    .accessibleOnlyBy("CDI Vauban"),
             Layer.named("CDI Vauban").in("io.vidocq.cassini.cdi.vauban..").accessibleByNone(),
             Layer.named("Chappe adapter").in("io.vidocq.cassini.chappe..").accessibleOnlyBy("Test support"),
             Layer.named("JDK HTTP adapter").in("io.vidocq.cassini.jdkhttp..").accessibleByNone(),
@@ -264,6 +266,12 @@ final class ArchitectureRules {
     /** Reason: the class only holds a {@code java.lang.reflect.Type}, which the JAX-RS API itself passes around. */
     private static final String API_TYPE = "carries the java.lang.reflect.Type of an entity, a type of the JAX-RS API"
             + " signatures (MessageBodyReader/Writer, interceptor and request contexts); it reads no member";
+
+    /** Reason: the class only reads a {@code java.lang.reflect.Type} the standard CDI API gives for a bean. */
+    private static final String CDI_BEAN_TYPE = "reads the java.lang.reflect.Type that the standard CDI API returns"
+            + " from Bean.getTypes(), the raw class of a ParameterizedType bean type; it looks up no class and no"
+            + " member. It is the lookup of a bounded generic resource or provider on every CDI container (CDI 4.1"
+            + " §5.2.4, CASSINI-061), not a way around something an upstream brick lacks";
 
     /** Reason: type arguments of a generic entity or provider type, as the JAX-RS spec defines them. */
     private static final String GENERIC_TYPE = "resolves the type arguments of a generic entity or provider type"
@@ -307,6 +315,8 @@ final class ArchitectureRules {
         }) {
             fallbacks.put(type, API_TYPE);
         }
+        // The bean types, as the CDI API passes them.
+        fallbacks.put("io.vidocq.cassini.cdi.internal.BeansByClass", CDI_BEAN_TYPE);
         // Generic entity and provider types.
         for (String generic : new String[] {
             internal + "ExceptionMapperRegistry",

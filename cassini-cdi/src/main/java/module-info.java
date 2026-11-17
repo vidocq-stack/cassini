@@ -30,6 +30,8 @@ module io.vidocq.cassini.cdi {
     requires jakarta.annotation;
 
     exports io.vidocq.cassini.cdi;
+    // The beans by bean class, which the Vauban provider shares (CASSINI-061): no public API.
+    exports io.vidocq.cassini.cdi.internal to io.vidocq.cassini.cdi.vauban;
 
     provides io.vidocq.cassini.spi.bean.BeanProvider.Factory
             with io.vidocq.cassini.cdi.CdiBeanProviderFactory;
