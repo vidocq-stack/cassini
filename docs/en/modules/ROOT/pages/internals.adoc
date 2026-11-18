@@ -284,3 +284,8 @@ Real-time chunked SSE streaming shipped with **M2i** (lazy-commit latch + thread
 | `MessageBodyReader/Writer` | Extend serialization to new media types.
 | `ParamConverterProvider` | Convert custom types in `@*Param`.
 |===
+
+[#dependent-resource-release]
+=== A `@Dependent` resource ends with its request
+
+Cassini asks the bean provider for a resource with `BeanProvider.getRequestBean`, which returns the instance and what ends it (`RequestInstance`). Cassini runs that release at the end of the dispatch, before the end-of-request action that ends the request scope, so a `@PreDestroy` can still use it. Both providers end a `@Dependent` resource there: `VaubanBeanProvider` makes it in a creational context of its own and destroys it through its bean, and `CdiBeanProvider` destroys it through its `Instance.Handle`, or through its bean when it was found by its bean class. Before, Vauban never destroyed it, and Weld kept it until the container shut down, one per request (CASSINI-062). A resource of another scope is left to it, a normal scope's client proxy as a `@Singleton`; a provider lives as long as the stack. A `BeanProvider` that does not implement `getRequestBean` serves `getBean` and releases nothing.

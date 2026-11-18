@@ -108,6 +108,9 @@ class WeldBoundedGenericBeansTest {
         var provider = new CdiBeanProvider(CDI.current());
         var failure = assertThrows(IllegalArgumentException.class, () -> provider.getBean(Lifecycles.class));
         assertTrue(failure.getMessage().startsWith("Not a resolvable CDI bean"), failure.getMessage());
+        var forRequest = assertThrows(IllegalArgumentException.class,
+                () -> provider.getRequestBean(Lifecycles.class));
+        assertTrue(forRequest.getMessage().startsWith("Not a resolvable CDI bean"), forRequest.getMessage());
     }
 
     /**
@@ -124,14 +127,19 @@ class WeldBoundedGenericBeansTest {
         assertTrue(failure.getMessage().startsWith("Not a resolvable CDI bean"), failure.getMessage());
     }
 
-    /** A {@code @PreDestroy} runs, or does not, at the moments it does for the plain fixtures. */
+    /**
+     * A {@code @PreDestroy} runs, or does not, at the moments it does for the plain fixtures: a resource's when its
+     * request ends, which Weld ran at shutdown only (CASSINI-062).
+     */
     @Test
     void theyAreDestroyedWhenAPlainDependentResourceAndProviderAre() throws Exception {
         get("/numbers");
         get("/plain");
         assertAll("after the requests",
-                () -> assertEquals(Lifecycles.destroyedCount(PlainResource.class),
-                        Lifecycles.destroyedCount(NumberResource.class), "resources"),
+                () -> assertEquals(1, Lifecycles.destroyedCount(PlainResource.class),
+                        "a plain resource destroyed when its request ends (CASSINI-062)"),
+                () -> assertEquals(1, Lifecycles.destroyedCount(NumberResource.class),
+                        "a generic resource destroyed when its request ends (CASSINI-062)"),
                 () -> assertEquals(Lifecycles.destroyedCount(PlainFilter.class),
                         Lifecycles.destroyedCount(NumberWriter.class), "providers"));
         stop();

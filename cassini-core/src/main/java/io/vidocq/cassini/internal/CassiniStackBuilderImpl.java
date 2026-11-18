@@ -180,7 +180,9 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
             if (fixed != null) return fixed;
             if (bp != null) {
                 try {
-                    return bp.getBean(cls);
+                    var requestBean = bp.getRequestBean(cls);
+                    RequestCompletion.release(Invoker.currentRequest(), requestBean.release());
+                    return requestBean.instance();
                 } catch (IllegalArgumentException _) {
                     // fallback: factory or newInstance
                 }

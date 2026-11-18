@@ -80,6 +80,30 @@ public interface BeanProvider {
     }
 
     /**
+     * Returns a managed instance of a resource class for the request being processed, with what ends it: Cassini
+     * runs {@link RequestInstance#release()} once the request is over, before the request scope ends. A
+     * {@code @Dependent} resource is destroyed there, its {@code @PreDestroy} run, instead of living as long as the
+     * container (CASSINI-062).
+     *
+     * <p>Default implementation: {@link #getBean(Class)}, and nothing to release.</p>
+     *
+     * @throws IllegalArgumentException if the class is not managed by this provider
+     */
+    default <T> RequestInstance<T> getRequestBean(Class<T> type) {
+        return new RequestInstance<>(getBean(type), null);
+    }
+
+    /**
+     * An instance {@link #getRequestBean(Class)} made for one request.
+     *
+     * @param instance the instance, as {@link #getBean(Class)} returns it
+     * @param release  what ends it when the request is over, {@code null} when nothing does: a client proxy, a
+     *                 singleton
+     */
+    record RequestInstance<T>(T instance, Runnable release) {
+    }
+
+    /**
      * SPI ServiceLoader — implementations registered via
      * {@code provides BeanProvider.Factory with ...} in {@code module-info}.
      */

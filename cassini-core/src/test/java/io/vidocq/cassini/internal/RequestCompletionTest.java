@@ -308,4 +308,48 @@ class RequestCompletionTest {
         assertTrue(records.stream().anyMatch(r -> r.getLevel() == java.util.logging.Level.WARNING
                 && r.getMessage().contains("not a Runnable")), () -> "no warning among " + records);
     }
+
+    // ---- the releases of the resource instances (CASSINI-062) ----
+
+    @Test
+    void theReleasesRunBeforeTheActionOnceAndAFailingOneStopsNone() {
+        InMemoryExchange exchange = InMemoryExchange.request("GET", "/done", null, null);
+        RequestCompletion.release(exchange, () -> EVENTS.add("first released"));
+        RequestCompletion.release(exchange, () -> {
+            throw new IllegalStateException("the release fails");
+        });
+        RequestCompletion.release(exchange, null);
+        RequestCompletion.release(null, () -> EVENTS.add("never kept"));
+        RequestCompletion.release(exchange, () -> EVENTS.add("third released"));
+        RequestCompletion.run(exchange, null);
+        RequestCompletion.run(exchange, null);
+        assertEquals(List.of("first released", "third released"), events());
+    }
+
+    @Test
+    void anErrorOfAReleaseIsRethrownOnceEverythingRan() {
+        InMemoryExchange exchange = InMemoryExchange.request("GET", "/done", null, null);
+        RequestCompletion.release(exchange, () -> {
+            throw new Fatal("the first release");
+        });
+        RequestCompletion.release(exchange, () -> {
+            throw new Fatal("the second release");
+        });
+        RequestCompletion.release(exchange, () -> EVENTS.add("released"));
+        Fatal thrown = assertThrows(Fatal.class, () -> RequestCompletion.run(exchange, null));
+        assertEquals("the first release", thrown.getMessage());
+        assertEquals("the second release", thrown.getSuppressed()[0].getMessage());
+        assertEquals(List.of("released"), events());
+    }
+
+    @Test
+    void anErrorOfAReleaseIsAttachedToTheOneInFlight() {
+        InMemoryExchange exchange = InMemoryExchange.request("GET", "/done", null, null);
+        RequestCompletion.release(exchange, () -> {
+            throw new Fatal("the release");
+        });
+        Fatal pending = new Fatal("the request");
+        RequestCompletion.run(exchange, pending);
+        assertEquals("the release", pending.getSuppressed()[0].getMessage());
+    }
 }

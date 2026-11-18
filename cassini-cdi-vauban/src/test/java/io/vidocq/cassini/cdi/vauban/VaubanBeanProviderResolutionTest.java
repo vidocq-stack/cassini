@@ -21,6 +21,7 @@ package io.vidocq.cassini.cdi.vauban;
 
 import io.vidocq.cassini.cdi.CassiniScopeExtension;
 import io.vidocq.vauban.core.container.VaubanContainer;
+import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.context.RequestScoped;
@@ -31,8 +32,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -65,9 +72,32 @@ class VaubanBeanProviderResolutionTest {
     @Path("/dependent")
     @Dependent
     public static class DependentResource {
+        static final AtomicInteger DESTROYED = new AtomicInteger();
+
         @GET
         public String get() {
             return "dependent";
+        }
+
+        @PreDestroy
+        void destroyed() {
+            DESTROYED.incrementAndGet();
+        }
+    }
+
+    @Path("/singleton")
+    @jakarta.inject.Singleton
+    public static class SingletonResource {
+        static final AtomicInteger DESTROYED = new AtomicInteger();
+
+        @GET
+        public String get() {
+            return "singleton";
+        }
+
+        @PreDestroy
+        void destroyed() {
+            DESTROYED.incrementAndGet();
         }
     }
 
@@ -81,6 +111,7 @@ class VaubanBeanProviderResolutionTest {
                 .addBeanClass(AppResource.class)
                 .addBeanClass(RequestResource.class)
                 .addBeanClass(DependentResource.class)
+                .addBeanClass(SingletonResource.class)
                 .build();
         provider = new VaubanBeanProvider(container);
     }
@@ -116,6 +147,36 @@ class VaubanBeanProviderResolutionTest {
         } finally {
             container.requestContext().deactivate();
         }
+    }
+
+    /** A resource for one request ends with it when it is {@code @Dependent}, and only then (CASSINI-062). */
+    @Test
+    void aDependentResourceForARequestIsDestroyedByItsRelease() {
+        DependentResource.DESTROYED.set(0);
+        var dependent = provider.getRequestBean(DependentResource.class);
+        assertNotNull(dependent.release(), "a @Dependent resource is released");
+        dependent.release().run();
+        assertEquals(1, DependentResource.DESTROYED.get(), "destroyed by its release");
+        var app = provider.getRequestBean(AppResource.class);
+        assertSame(provider.getBean(AppResource.class), app.instance(), "the client proxy");
+        assertNull(app.release(), "an @ApplicationScoped resource is left to its scope");
+        assertThrows(IllegalArgumentException.class, () -> provider.getRequestBean(String.class));
+    }
+
+    /**
+     * A {@code @Singleton} resource has no client proxy, and lives as long as the container: no release ends it, and
+     * every request gets the same instance. Its release destroyed it at the end of each request (CASSINI-062, review).
+     */
+    @Test
+    void aSingletonResourceForARequestIsNeverReleased() {
+        SingletonResource.DESTROYED.set(0);
+        var first = provider.getRequestBean(SingletonResource.class);
+        var second = provider.getRequestBean(SingletonResource.class);
+        if (first.release() != null) first.release().run();
+        if (second.release() != null) second.release().run();
+        assertAll(() -> assertNull(first.release(), "a @Singleton resource is released"),
+                () -> assertEquals(0, SingletonResource.DESTROYED.get(), "destroyed"),
+                () -> assertSame(first.instance(), second.instance(), "one instance"));
     }
 
     @Test

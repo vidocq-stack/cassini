@@ -24,14 +24,20 @@ import io.vidocq.cassini.chappe.ChappeHttpAdapter;
 import io.vidocq.cassini.spi.http.CassiniStack;
 import io.vidocq.chappe.api.Server;
 import io.vidocq.vauban.core.container.VaubanContainer;
+import io.vidocq.vauban.core.container.VaubanContainerBuilder;
 import jakarta.ws.rs.core.Application;
+import java.net.MalformedURLException;
 import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,25 +49,54 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * other scope as a definition error (Vauban BUG-20261117-35). The extension gave it {@code @RequestScoped}, which the
  * container now refuses at start (CASSINI-065). Its raw class resolves no bean through the {@code BeanManager}, and
  * Cassini finds the bean by its bean class (CASSINI-061). It is served as the {@code @Dependent} resource it is:
- * injected, its {@code @Context} field set, one instance per request, and destroyed when a plain {@code @Dependent}
- * resource is.
+ * injected, its {@code @Context} field set, one instance per request, destroyed when its request ends as a plain
+ * {@code @Dependent} resource is (CASSINI-062), with the extension run at start and frozen at build.
  */
 class ScopelessBoundedGenericResourceTest {
+
+    /** How the start gets what {@code CassiniScopeExtension} did. */
+    enum ExtensionsAtStart {
+        /** It runs the extension. */
+        RUN,
+        /** It reads the record a build froze, and runs no extension. */
+        FROZEN
+    }
 
     private final HttpClient http = HttpClient.newHttpClient();
     private VaubanContainer container;
     private Server server;
     private String base;
 
-    @BeforeEach
-    void start() {
-        Lifecycles.reset();
-        container = VaubanContainer.builder()
+    @TempDir
+    Path output;
+
+    private VaubanContainerBuilder deployment() {
+        return VaubanContainer.builder()
+                .classLoader(outputLoader())
                 .addBeanClass(CassiniScopeExtension.class)
                 .addBeanClass(Formats.class)
                 .addBeanClass(ScopelessNumberResource.class)
                 .addBeanClass(PlainResource.class)
-                .build();
+                .addBeanClass(SingletonResource.class);
+    }
+
+    /** The loader of a start: the build's output first, where a record is, then the classes of this test. */
+    private ClassLoader outputLoader() {
+        try {
+            return new URLClassLoader(new URL[] {output.toUri().toURL()}, getClass().getClassLoader());
+        } catch (MalformedURLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private void start(ExtensionsAtStart extensions) {
+        if (extensions == ExtensionsAtStart.FROZEN) {
+            var outcome = deployment().freezeExtensions(output);
+            assertTrue(outcome.frozen(), outcome.reason());
+        }
+        Lifecycles.reset();
+        container = deployment().build();
+        assertEquals(extensions == ExtensionsAtStart.FROZEN, container.extensionsAtStart().frozen(), "frozen");
         var stack = CassiniStack.builder().application(new Application() {}).build();
         // Port 0: the server keeps the free port the system gives it (CASSINI-048).
         server = Server.builder().host("127.0.0.1").port(0).handler(new ChappeHttpAdapter(stack.adapter())).build();
@@ -86,8 +121,10 @@ class ScopelessBoundedGenericResourceTest {
         return response.body();
     }
 
-    @Test
-    void itIsTheDependentResourceItsScopeMakesIt() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ExtensionsAtStart.class)
+    void itIsTheDependentResourceItsScopeMakesIt(ExtensionsAtStart extensions) throws Exception {
+        start(extensions);
         String first = get("/scopeless-numbers");
         get("/plain");
         assertAll("after one request",
@@ -96,10 +133,16 @@ class ScopelessBoundedGenericResourceTest {
                 () -> assertEquals(1, Lifecycles.createdCount(ScopelessNumberResource.class), "created"));
         get("/scopeless-numbers");
         get("/plain");
+        get("/singleton");
+        get("/singleton");
         assertAll("after two requests",
+                () -> assertEquals(1, Lifecycles.createdCount(SingletonResource.class), "one @Singleton resource"),
+                () -> assertEquals(0, Lifecycles.destroyedCount(SingletonResource.class),
+                        "a @Singleton resource no request ends"),
                 () -> assertEquals(2, Lifecycles.createdCount(ScopelessNumberResource.class), "one per request"),
-                () -> assertEquals(Lifecycles.destroyedCount(PlainResource.class),
-                        Lifecycles.destroyedCount(ScopelessNumberResource.class),
-                        "destroyed when a plain @Dependent resource is"));
+                () -> assertEquals(2, Lifecycles.destroyedCount(ScopelessNumberResource.class),
+                        "destroyed when its request ends"),
+                () -> assertEquals(2, Lifecycles.destroyedCount(PlainResource.class),
+                        "a plain @Dependent resource destroyed when its request ends"));
     }
 }

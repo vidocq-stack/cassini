@@ -23,8 +23,10 @@ import io.vidocq.cassini.cdi.internal.BeansByClass;
 import io.vidocq.cassini.cdi.internal.BeansByClass.BeanOfClass;
 import io.vidocq.cassini.spi.bean.BeanProvider;
 import io.vidocq.vauban.core.container.VaubanContainer;
+import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.context.NormalScope;
 import jakarta.enterprise.context.spi.Context;
+import jakarta.enterprise.context.spi.CreationalContext;
 import jakarta.enterprise.inject.spi.Bean;
 import jakarta.enterprise.inject.spi.BeanManager;
 import jakarta.ws.rs.Path;
@@ -89,11 +91,37 @@ public final class VaubanBeanProvider implements BeanProvider {
     }
 
     /** A new instance of a {@code @Dependent} bean found by its bean class, typed as its class. Its creational
-     *  context is not kept: Vauban destroys no {@code @Dependent} instance that {@link VaubanContainer#select(Class)}
-     *  hands out either. */
+     *  context is not kept: a provider lives as long as the stack, and {@link #getRequestBean(Class)} ends a
+     *  resource. */
     private Object dependent(BeanOfClass ofBeanClass) {
         BeanManager bm = container.getBeanManager();
         return ofBeanClass.reference(bm, bm.createCreationalContext(ofBeanClass.bean()));
+    }
+
+    /**
+     * A resource for one request: a {@code @Dependent} one is made in a creational context of its own, and destroyed,
+     * its {@code @PreDestroy} run, when the request ends. {@link VaubanContainer#select(Class)} keeps no creational
+     * context, and Vauban never destroyed it (CASSINI-062). A resource of any other scope is left to it: a client
+     * proxy for a normal scope, the one instance of a {@code @Singleton}.
+     */
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> RequestInstance<T> getRequestBean(Class<T> type) {
+        Resolution resolution = resolution(type);
+        // A pseudo-scope other than @Dependent, @Singleton, has no client proxy either: the container keeps it
+        if (resolution.bean() == null || resolution.bean().getScope() != Dependent.class) {
+            return new RequestInstance<>(getBean(type), null);
+        }
+        try {
+            BeanManager bm = container.getBeanManager();
+            var bean = (Bean<Object>) resolution.bean();
+            CreationalContext<Object> context = bm.createCreationalContext(bean);
+            Object instance = resolution.ofBeanClass() != null ? resolution.ofBeanClass().reference(bm, context)
+                    : bm.getReference(bean, type, context);
+            return new RequestInstance<>((T) instance, () -> bean.destroy(instance, context));
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("Not managed by Vauban: " + type, e);
+        }
     }
 
     /**

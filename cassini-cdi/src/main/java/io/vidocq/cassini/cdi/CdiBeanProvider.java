@@ -23,6 +23,7 @@ import io.vidocq.cassini.cdi.internal.BeansByClass;
 import io.vidocq.cassini.cdi.internal.BeansByClass.BeanOfClass;
 import io.vidocq.cassini.spi.bean.BeanProvider;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.context.NormalScope;
 import jakarta.enterprise.context.spi.Context;
 import jakarta.enterprise.context.spi.Contextual;
@@ -90,6 +91,37 @@ public final class CdiBeanProvider implements BeanProvider {
         BeanManager bm = cdi.getBeanManager();
         Owner owner = fromContext(bm.getContext(ApplicationScoped.class), dependentsOwner, bm);
         return (T) found.reference(bm, owner.context());
+    }
+
+    /**
+     * A resource for one request, destroyed when the request ends: {@code Instance.destroy} for one its raw class
+     * resolves, which a {@code @Dependent} instance needs, as the {@code Instance} keeps it until it is destroyed
+     * itself, at shutdown for {@code CDI.current()}; for one found by its bean class, a creational context of its own,
+     * which its bean destroys. A resource of another scope is left to it (CASSINI-062).
+     */
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> RequestInstance<T> getRequestBean(Class<T> type) {
+        if (type == CdiRequestScopeFilter.class) {
+            return new RequestInstance<>(getBean(type), null);
+        }
+        var instance = cdi.select(type);
+        if (instance.isResolvable()) {
+            var handle = instance.getHandle();
+            T bean = handle.get();
+            // Destroying a client proxy would end its contextual instance, an application-scoped one included
+            boolean dependent = handle.getBean().getScope() == Dependent.class;
+            return new RequestInstance<>(bean, dependent ? handle::destroy : null);
+        }
+        BeanOfClass found = byBeanClass(type).found();
+        if (found == null) {
+            throw new IllegalArgumentException("Not a resolvable CDI bean: " + type);
+        }
+        BeanManager bm = cdi.getBeanManager();
+        var bean = (Bean<Object>) found.bean();
+        CreationalContext<Object> context = bm.createCreationalContext(bean);
+        Object made = found.reference(bm, context);
+        return new RequestInstance<>((T) made, () -> bean.destroy(made, context));
     }
 
     @Override

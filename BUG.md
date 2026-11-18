@@ -1011,7 +1011,7 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   BENCH.md, 2026-11-17.
 
 ## CASSINI-062 — On Weld, a `@Dependent` resource stays in memory until shutdown, one per request
-- **Date**: 2026-11-17 — **Status**: OPEN
+- **Date**: 2026-11-17 — **Status**: FIXED 2026-11-18 on `fix/vauban-bug-stack`
 - **Severity**: medium. Memory grows with the requests, and a `@PreDestroy` that frees a resource runs only at
   shutdown.
 - **Symptom**: `CdiBeanProvider.getBean` makes a `@Dependent` resource with `CDI.current().select(type).get()`. Weld
@@ -1022,13 +1022,34 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   `Lifecycles`), two requests, then read `Lifecycles.destroyedCount(PlainResource.class)` before and after
   `WeldContainer.close()` (scratch probe C of the CASSINI-061 session; `WeldBoundedGenericBeansTest` pins only that
   the generic fixtures follow the plain ones).
-- **Cause (hypothesis)**: Cassini never calls `Instance.destroy` on what it obtained, and per CDI an `Instance` keeps
+- **Cause** (proved by the fix): Cassini never calls `Instance.destroy` on what it obtained, and per CDI an `Instance`
+  keeps
   the `@Dependent` instances it made until it is destroyed itself. Since CASSINI-061, `CdiBeanProvider` makes the
   instances of a bounded generic class in a creational context that lives until shutdown, so they behave the same.
 - **Observed on Vauban**: `VaubanBeanProvider`'s `select` never runs the `@PreDestroy` of a `@Dependent` resource, not
   even when the container closes (probe A of the same session: destroyed 0 after close).
-- **Fix**: none yet. A candidate: destroy the `@Dependent` instance in the end-of-request action Cassini already runs
-  (`io.vidocq.cassini.requestCompleted`), for resources; providers live as long as the stack.
+- **Fix**: `BeanProvider.getRequestBean` (new, `cassini-api`) returns a resource with what ends it
+  (`RequestInstance`); its default serves `getBean` and releases nothing. Cassini's resolver keeps the release with the
+  exchange (`RequestCompletion.release`), and `RequestCompletion.run` runs the releases first, then the end-of-request
+  action that ends the request scope, the same guard on each: a failure is logged, an `Error` reaches the caller.
+  `VaubanBeanProvider` makes a `@Dependent` resource in a creational context of its own and destroys it through its
+  bean; `CdiBeanProvider` destroys it through its `Instance.Handle`, a normal-scoped one left to its scope (destroying
+  its client proxy would end an `@ApplicationScoped` instance), or through its bean when found by its bean class.
+  Providers keep `getBean`: they live as long as the stack.
+- **Review round 2** (2026-11-18): `VaubanBeanProvider` released every resource without a client proxy, so a
+  `@Singleton` resource was destroyed at the end of each request and handed out again after its `@PreDestroy` (the
+  review's probe: created 1, destroyed 3). It now releases a `@Dependent` resource only, as `CdiBeanProvider` does.
+  Red: `stack-l3-cassini-red.log`, "CASSINI-062 review round 2 red"
+  (`VaubanBeanProviderResolutionTest#aSingletonResourceForARequestIsNeverReleased`) and "CASSINI-062 review round 2
+  red, IT" (`SingletonResource` destroyed by the requests); green: `stack-l3-cassini-green.log`, "CASSINI-062 review
+  round 2 fix" (cdi-vauban 19 tests, it-weld 14, it-vauban 15).
+- **Verification**: red on CASSINI-065's commit, "a generic class without a scope gets @Dependent"
+  (`stack-l3-cassini-red.log`, "CASSINI-062 red": on Vauban, `ScopelessBoundedGenericResourceTest` destroyed 0 of 2
+  plain and generic resources, with the extension run at start and frozen at build; on Weld,
+  `WeldBoundedGenericBeansTest#theyAreDestroyedWhenAPlainDependentResourceAndProviderAre` 0 of 1 each). Green:
+  `stack-l3-cassini-green.log`, "CASSINI-062 fix, run 2" (core 701 tests, cdi-vauban 18, it-weld 14, it-vauban 15),
+  then the whole reactor, `stack-l3-cassini-full.log`. The frozen run also covers the `@Dependent` default of
+  CASSINI-065, which a Vauban freeze records.
 
 ## CASSINI-063 — On Weld, `CassiniScopeExtension` adds no scope: a scope-less `@Path` class stays `@Dependent`
 - **Date**: 2026-11-17 — **Status**: OPEN
