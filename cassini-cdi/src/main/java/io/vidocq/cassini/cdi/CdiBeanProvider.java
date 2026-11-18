@@ -28,6 +28,7 @@ import jakarta.enterprise.context.NormalScope;
 import jakarta.enterprise.context.spi.Context;
 import jakarta.enterprise.context.spi.Contextual;
 import jakarta.enterprise.context.spi.CreationalContext;
+import jakarta.enterprise.inject.UnproxyableResolutionException;
 import jakarta.enterprise.inject.spi.Bean;
 import jakarta.enterprise.inject.spi.BeanManager;
 import jakarta.enterprise.inject.spi.CDI;
@@ -80,7 +81,11 @@ public final class CdiBeanProvider implements BeanProvider {
         }
         var instance = cdi.select(type);
         if (instance.isResolvable()) {
-            return instance.get();
+            try {
+                return instance.get();
+            } catch (UnproxyableResolutionException _) {
+                return (T) clientProxyAsObject(type);
+            }
         }
         BeanOfClass found = byBeanClass(type).found();
         if (found == null) {
@@ -108,7 +113,15 @@ public final class CdiBeanProvider implements BeanProvider {
         var instance = cdi.select(type);
         if (instance.isResolvable()) {
             var handle = instance.getHandle();
-            T bean = handle.get();
+            T bean;
+            try {
+                bean = handle.get();
+            } catch (UnproxyableResolutionException _) {
+                // No client proxy is typed by the class: the request runs on the contextual instance (CASSINI-066).
+                Bean<?> resolved = handle.getBean();
+                BeanManager bm = cdi.getBeanManager();
+                return new RequestInstance<>((T) fromContext(bm.getContext(resolved.getScope()), resolved, bm), null);
+            }
             // Destroying a client proxy would end its contextual instance, an application-scoped one included
             boolean dependent = handle.getBean().getScope() == Dependent.class;
             return new RequestInstance<>(bean, dependent ? handle::destroy : null);
@@ -127,24 +140,41 @@ public final class CdiBeanProvider implements BeanProvider {
     @Override
     public Object contextualInstance(Class<?> type, Object bean) {
         if (bean == null) return null;
+        BeanManager bm = cdi.getBeanManager();
+        Bean<?> resolved = normalScopedBean(bm, type);
+        if (resolved == null) return bean;
+        // An inactive scope throws ContextNotActiveException, as the client proxy would on its first call: the
+        // proxy is no instance to inject into (CASSINI-066).
+        Object contextual = fromContext(bm.getContext(resolved.getScope()), resolved, bm);
+        return contextual != null ? contextual : bean;
+    }
+
+    /**
+     * The normal-scoped bean {@code type} resolves to, or {@code null}: only such a bean is reached through a client
+     * proxy; for {@code @Dependent} and the other pseudo-scopes, getBean() already returns the instance itself. A bean
+     * found by its bean class (CASSINI-061) is generic, so {@code @Dependent} (CASSINI-065).
+     */
+    private static Bean<?> normalScopedBean(BeanManager bm, Class<?> type) {
         try {
-            BeanManager bm = cdi.getBeanManager();
             Set<Bean<?>> candidates = bm.getBeans(type);
-            // A bean found by its bean class (CASSINI-061) is generic, so @Dependent: the instance itself
-            // (CASSINI-065).
-            if (candidates.isEmpty()) return bean;
-            Bean<?> resolved = bm.resolve(candidates);
-            if (resolved == null) return bean;
-            Class<? extends Annotation> scope = resolved.getScope();
-            // Only normal-scoped beans are reached through a client proxy; for @Dependent and the
-            // other pseudo-scopes, getBean() already returns the instance itself.
-            if (scope == null || !scope.isAnnotationPresent(NormalScope.class)) return bean;
-            Object contextual = fromContext(bm.getContext(scope), resolved, bm);
-            return contextual != null ? contextual : bean;
+            Bean<?> resolved = candidates.isEmpty() ? null : bm.resolve(candidates);
+            Class<? extends Annotation> scope = resolved == null ? null : resolved.getScope();
+            return scope != null && scope.isAnnotationPresent(NormalScope.class) ? resolved : null;
         } catch (RuntimeException _) {
-            // Inactive scope or unresolved bean: keep the client proxy.
-            return bean;
+            // An ambiguous or unresolved bean: the object Cassini holds is the instance.
+            return null;
         }
+    }
+
+    /**
+     * The client proxy of the normal-scoped bean {@code type} resolves to, typed as {@code Object}: no client proxy
+     * stands for a class with a final method (CDI 4.1 §3.10), whose lookup throws. That proxy implements the
+     * interfaces of the class, and Cassini reads the annotations on the class it asked for (CASSINI-066).
+     */
+    private Object clientProxyAsObject(Class<?> type) {
+        BeanManager bm = cdi.getBeanManager();
+        Bean<?> bean = bm.resolve(bm.getBeans(type));
+        return bm.getReference(bean, Object.class, bm.createCreationalContext(bean));
     }
 
     private static <T> T fromContext(Context ctx, Contextual<T> contextual, BeanManager bm) {

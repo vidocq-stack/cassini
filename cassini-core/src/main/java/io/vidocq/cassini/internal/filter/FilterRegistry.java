@@ -33,7 +33,9 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -63,6 +65,8 @@ public final class FilterRegistry {
     private final List<FilterEntry<WriterInterceptor>> writerInterceptors = new CopyOnWriteArrayList<>();
     private final List<ContextResolver<?>> contextResolvers = new ArrayList<>();
     private final List<ParamConverterProvider> paramConverterProviders = new ArrayList<>();
+    /** The priority of each converter provider, read on the class it was registered as (CASSINI-066). */
+    private final Map<ParamConverterProvider, Integer> converterPriorities = new IdentityHashMap<>();
     private final List<jakarta.ws.rs.container.DynamicFeature> dynamicFeatures = new ArrayList<>();
 
     /** A resource method, as a dynamic feature sees it: its resource class and its Java method. */
@@ -99,7 +103,12 @@ public final class FilterRegistry {
     }
 
     public void addRequest(ContainerRequestFilter filter) {
-        requestFilters.add(FilterEntry.of(filter));
+        addRequest(filter, filter.getClass());
+    }
+
+    /** Adds {@code filter}, whose annotations are those of {@code registeredClass} (CASSINI-066). */
+    public void addRequest(ContainerRequestFilter filter, Class<?> registeredClass) {
+        requestFilters.add(FilterEntry.of(filter, registeredClass));
         requestFilters.sort(Comparator.comparingInt(FilterEntry::priority));
         splitRequestFilters();
     }
@@ -110,19 +119,33 @@ public final class FilterRegistry {
     }
 
     public void addResponse(ContainerResponseFilter filter) {
-        responseFilters.add(FilterEntry.of(filter));
+        addResponse(filter, filter.getClass());
+    }
+
+    /** Adds {@code filter}, whose annotations are those of {@code registeredClass} (CASSINI-066). */
+    public void addResponse(ContainerResponseFilter filter, Class<?> registeredClass) {
+        responseFilters.add(FilterEntry.of(filter, registeredClass));
         responseFilters.sort(Comparator.comparingInt(FilterEntry<ContainerResponseFilter>::priority).reversed());
     }
 
     /** Registers a filter by its type, regardless of request/response.
      *  If the instance implements both, it is added to both lists. */
     public void register(Object instance) {
-        if (instance instanceof ContainerRequestFilter r) addRequest(r);
-        if (instance instanceof ContainerResponseFilter r) addResponse(r);
-        if (instance instanceof ReaderInterceptor r) addReaderInterceptor(r);
-        if (instance instanceof WriterInterceptor r) addWriterInterceptor(r);
+        register(instance, instance.getClass());
+    }
+
+    /**
+     * Registers {@code instance} as {@link #register(Object)} does, its annotations read on
+     * {@code registeredClass}: the provider class a bean provider was asked for, which its client proxy may not
+     * extend (CASSINI-066).
+     */
+    public void register(Object instance, Class<?> registeredClass) {
+        if (instance instanceof ContainerRequestFilter r) addRequest(r, registeredClass);
+        if (instance instanceof ContainerResponseFilter r) addResponse(r, registeredClass);
+        if (instance instanceof ReaderInterceptor r) addInterceptor(readerInterceptors, r, registeredClass);
+        if (instance instanceof WriterInterceptor r) addInterceptor(writerInterceptors, r, registeredClass);
         if (instance instanceof ContextResolver<?> r) addContextResolver(r);
-        if (instance instanceof ParamConverterProvider p) addParamConverterProvider(p);
+        if (instance instanceof ParamConverterProvider p) addParamConverterProvider(p, registeredClass);
         if (instance instanceof jakarta.ws.rs.container.DynamicFeature df) addDynamicFeature(df);
     }
 
@@ -176,28 +199,37 @@ public final class FilterRegistry {
     public List<ContextResolver<?>> contextResolvers() { return contextResolvers; }
 
     public void addParamConverterProvider(ParamConverterProvider p) {
+        addParamConverterProvider(p, p.getClass());
+    }
+
+    /** Adds {@code p}, whose {@code @Priority} is that of {@code registeredClass} (CASSINI-066). */
+    public void addParamConverterProvider(ParamConverterProvider p, Class<?> registeredClass) {
+        converterPriorities.put(p, priorityOf(registeredClass));
         paramConverterProviders.add(p);
         // §4.1.4 : sort by @Priority ascending (high priority = low value).
-        paramConverterProviders.sort(Comparator.comparingInt(FilterRegistry::priorityOf));
+        paramConverterProviders.sort(Comparator.comparingInt(converterPriorities::get));
     }
     public List<ParamConverterProvider> paramConverterProviders() { return paramConverterProviders; }
 
-    private static int priorityOf(Object instance) {
+    private static int priorityOf(Class<?> registeredClass) {
         // CASSINI-040: the generated descriptor first, the annotation read by reflection otherwise.
-        ProviderDescriptor d = ProviderDescriptors.of(instance.getClass());
+        ProviderDescriptor d = ProviderDescriptors.of(registeredClass);
         if (d != null) return d.priority() == null ? jakarta.ws.rs.Priorities.USER : d.priority();
-        jakarta.annotation.Priority p = instance.getClass().getAnnotation(jakarta.annotation.Priority.class);
+        jakarta.annotation.Priority p = registeredClass.getAnnotation(jakarta.annotation.Priority.class);
         return p == null ? jakarta.ws.rs.Priorities.USER : p.value();
     }
 
     public void addReaderInterceptor(ReaderInterceptor i) {
-        readerInterceptors.add(FilterEntry.of(i));
-        readerInterceptors.sort(Comparator.comparingInt(FilterEntry::priority));
+        addInterceptor(readerInterceptors, i, i.getClass());
     }
 
     public void addWriterInterceptor(WriterInterceptor i) {
-        writerInterceptors.add(FilterEntry.of(i));
-        writerInterceptors.sort(Comparator.comparingInt(FilterEntry::priority));
+        addInterceptor(writerInterceptors, i, i.getClass());
+    }
+
+    private static <T> void addInterceptor(List<FilterEntry<T>> interceptors, T interceptor, Class<?> registeredClass) {
+        interceptors.add(FilterEntry.of(interceptor, registeredClass));
+        interceptors.sort(Comparator.comparingInt(FilterEntry::priority));
     }
 
     public List<FilterEntry<ReaderInterceptor>> readerInterceptors() { return readerInterceptors; }

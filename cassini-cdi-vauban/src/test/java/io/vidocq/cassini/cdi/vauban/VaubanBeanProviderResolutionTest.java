@@ -20,9 +20,12 @@
 package io.vidocq.cassini.cdi.vauban;
 
 import io.vidocq.cassini.cdi.CassiniScopeExtension;
+import io.vidocq.cassini.cdi.CdiBeanProvider;
+import io.vidocq.cassini.spi.bean.BeanProvider;
 import io.vidocq.vauban.core.container.VaubanContainer;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.ContextNotActiveException;
 import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.ws.rs.GET;
@@ -127,6 +130,23 @@ class VaubanBeanProviderResolutionTest {
         assertSame(first, provider.getBean(AppResource.class));
         long perCall = bytesPerCall(() -> provider.getBean(AppResource.class));
         assertTrue(perCall < 32, "looking up an @ApplicationScoped resource allocates " + perCall + " bytes per call");
+    }
+
+    /**
+     * CASSINI-066 review: with its scope inactive, the contextual instance of a normal-scoped bean was the client
+     * proxy itself, and Cassini injected its {@code @Context} fields into the proxy, where the resource method never
+     * reads them. Both providers now throw what the proxy would throw on its first call.
+     */
+    @Test
+    void theContextualInstanceOfABeanWhoseScopeIsInactiveIsAnError() {
+        assertAll(() -> assertInactive(provider),
+                () -> assertInactive(new CdiBeanProvider(jakarta.enterprise.inject.spi.CDI.current())));
+    }
+
+    private static void assertInactive(BeanProvider beans) {
+        Object proxy = beans.getBean(RequestResource.class);
+        assertThrows(ContextNotActiveException.class, () -> beans.contextualInstance(RequestResource.class, proxy),
+                beans.getClass().getSimpleName());
     }
 
     @Test

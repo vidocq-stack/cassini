@@ -74,9 +74,9 @@ public final class MessageBodyRegistry {
         final Class<?> entityType;
         final MediaType[] declared;
 
-        Registered(P instance, Class<?> providerInterface, String[] declaredValues) {
+        Registered(P instance, Class<?> registeredClass, Class<?> providerInterface, String[] declaredValues) {
             this.instance = instance;
-            this.entityType = entityType(instance.getClass(), providerInterface);
+            this.entityType = entityType(registeredClass, providerInterface);
             this.declared = parseDeclared(declaredValues);
         }
 
@@ -155,12 +155,27 @@ public final class MessageBodyRegistry {
     }
 
     public void addReader(MessageBodyReader<?> r) {
-        if (clientOnly(r.getClass())) return;
-        readers.add(0, registeredReader(r));
+        addReader(r, r.getClass());
     }
+
+    /**
+     * Adds {@code r}, whose entity type, {@code @Consumes} and {@code @ConstrainedTo} are those of
+     * {@code registeredClass}: the provider class a bean provider was asked for, which its client proxy may not
+     * extend, nor declare the type argument of (CASSINI-066).
+     */
+    public void addReader(MessageBodyReader<?> r, Class<?> registeredClass) {
+        if (clientOnly(registeredClass)) return;
+        readers.add(0, registeredReader(r, registeredClass));
+    }
+
     public void addWriter(MessageBodyWriter<?> w) {
-        if (clientOnly(w.getClass())) return;
-        writers.add(0, registeredWriter(w));
+        addWriter(w, w.getClass());
+    }
+
+    /** As {@link #addReader(MessageBodyReader, Class)}, for a writer and its {@code @Produces}. */
+    public void addWriter(MessageBodyWriter<?> w, Class<?> registeredClass) {
+        if (clientOnly(registeredClass)) return;
+        writers.add(0, registeredWriter(w, registeredClass));
     }
 
     /** {@code @ConstrainedTo(CLIENT)}, from the generated descriptor when there is one (CASSINI-040). */
@@ -171,18 +186,28 @@ public final class MessageBodyRegistry {
         return ct != null && ct.value() == jakarta.ws.rs.RuntimeType.CLIENT;
     }
 
-    private static Registered<MessageBodyReader<?>> registeredReader(MessageBodyReader<?> r) {
-        ProviderDescriptor d = ProviderDescriptors.of(r.getClass());
-        if (d != null) return new Registered<>(r, MessageBodyReader.class, d.consumes());
-        Consumes consumes = r.getClass().getAnnotation(Consumes.class);
-        return new Registered<>(r, MessageBodyReader.class, consumes == null ? null : consumes.value());
+    private static Registered<MessageBodyReader<?>> registeredReader(MessageBodyReader<?> r, Class<?> cls) {
+        ProviderDescriptor d = ProviderDescriptors.of(cls);
+        if (d != null) return new Registered<>(r, cls, MessageBodyReader.class, d.consumes());
+        Consumes consumes = cls.getAnnotation(Consumes.class);
+        return new Registered<>(r, cls, MessageBodyReader.class, consumes == null ? null : consumes.value());
     }
 
+    /** A built-in reader, registered as its own class. */
+    private static Registered<MessageBodyReader<?>> registeredReader(MessageBodyReader<?> r) {
+        return registeredReader(r, r.getClass());
+    }
+
+    /** A built-in writer, registered as its own class. */
     private static Registered<MessageBodyWriter<?>> registeredWriter(MessageBodyWriter<?> w) {
-        ProviderDescriptor d = ProviderDescriptors.of(w.getClass());
-        if (d != null) return new Registered<>(w, MessageBodyWriter.class, d.produces());
-        Produces produces = w.getClass().getAnnotation(Produces.class);
-        return new Registered<>(w, MessageBodyWriter.class, produces == null ? null : produces.value());
+        return registeredWriter(w, w.getClass());
+    }
+
+    private static Registered<MessageBodyWriter<?>> registeredWriter(MessageBodyWriter<?> w, Class<?> cls) {
+        ProviderDescriptor d = ProviderDescriptors.of(cls);
+        if (d != null) return new Registered<>(w, cls, MessageBodyWriter.class, d.produces());
+        Produces produces = cls.getAnnotation(Produces.class);
+        return new Registered<>(w, cls, MessageBodyWriter.class, produces == null ? null : produces.value());
     }
 
     @SuppressWarnings("unchecked")

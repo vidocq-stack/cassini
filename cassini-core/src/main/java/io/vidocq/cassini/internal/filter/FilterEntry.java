@@ -46,8 +46,17 @@ public record FilterEntry<T>(
     public static final int DEFAULT_PRIORITY = 5000;
 
     public static <T> FilterEntry<T> of(T instance) {
+        return of(instance, instance.getClass());
+    }
+
+    /**
+     * The entry of {@code instance}, registered as {@code registeredClass}, whose annotations it reads. A bean
+     * provider may hand out a client proxy that does not extend that class: past a final method of the class, a Vauban
+     * proxy extends a class above it, or {@code Object}, and implements its interfaces (CASSINI-066).
+     */
+    public static <T> FilterEntry<T> of(T instance, Class<?> registeredClass) {
         // CASSINI-040: the generated descriptor, when there is one, already holds what follows.
-        ProviderDescriptor described = described(instance.getClass());
+        ProviderDescriptor described = described(registeredClass);
         if (described != null) {
             return new FilterEntry<>(instance, described.providerClass(), priorityOf(described),
                     described.preMatching(), Set.copyOf(described.nameBindings()), null);
@@ -58,7 +67,7 @@ public record FilterEntry<T>(
         // hierarchy to the @Provider class (cf. CassiniStackBuilderImpl.jaxrsAnnotatedClass)
         // to read them — otherwise @PreMatching is read as false and the filter is
         // classified as post-matching.
-        Class<?> cls = providerClass(instance.getClass());
+        Class<?> cls = providerClass(registeredClass);
         int prio = DEFAULT_PRIORITY;
         Priority p = cls.getAnnotation(Priority.class);
         if (p != null) prio = p.value();
@@ -104,7 +113,7 @@ public record FilterEntry<T>(
      * registered programmatically).
      */
     private static Class<?> providerClass(Class<?> c) {
-        // c is the class of an instance: its superclass chain always ends at Object.
+        // c is a class, of an instance or registered: its superclass chain always ends at Object.
         Class<?> cur = c;
         while (cur != Object.class && !cur.isAnnotationPresent(jakarta.ws.rs.ext.Provider.class)) {
             cur = cur.getSuperclass();

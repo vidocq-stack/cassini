@@ -1119,3 +1119,48 @@ The 500 is empty, and the log line names the exception's class only, with a mess
   cassini-cdi, cassini-cdi-vauban, cassini-it-vauban and cassini-it-weld ("CASSINI-065 dev"), then the full reactor
   (`stack-l3-cassini-full.log`, "CASSINI-065 fix: full Cassini reactor clean install with tests": 1176 tests, 0
   failures, 0 errors, 1 skipped).
+
+## CASSINI-066 — A provider or resource whose class has a final method is made with `new` on Vauban, outside CDI
+- **Date**: 2026-11-18 — **Status**: FIXED (fix/vauban-bug-stack)
+- **Severity**: high on Vauban with BUG-20261118-19/20: a normal-scoped `@Provider` or `@Path` class with a `final`
+  method, of its own or of a superclass, runs with nothing injected.
+- **Symptom**: `@Provider @ApplicationScoped class FinalFilter implements ContainerRequestFilter` with an `@Inject`
+  field and a `public final String name()`. `VaubanBeanProvider.getBean(FinalFilter.class)` throws
+  `IllegalArgumentException: Not managed by Vauban`, caused by `UnproxyableResolutionException`, and
+  `CassiniStackBuilderImpl.instantiateProvider` falls back to the no-arg constructor: the filter is no bean, its field
+  is `null`. A `@RequestScoped` resource of that kind is made the same way on each request. Behind a client proxy that
+  does not extend the provider class, the annotations, read on the instance's class and its superclasses, were lost:
+  a `@PreMatching` filter ran after matching, a name-bound filter on every method, an `ExceptionMapper<E>` or a
+  `MessageBodyWriter<T>` of a raw proxy interface was dropped or applied to every type, a `ParamConverterProvider`
+  lost its `@Priority`. On Weld, the lookup threw `UnproxyableResolutionException` out of the stack build.
+- **Minimal repro**: `ProviderBehindAClientProxyTest` (cassini-core: a bean provider that hands out proxies
+  implementing the provider interfaces only; pre-matching, name binding, exception mapper, writer);
+  `FinalMethodProviderTest` (cassini-cdi-vauban: a filter and a resource with a final method);
+  `WeldFinalMethodBeansTest` (cassini-it-weld: a name-bound filter and a resource with a final method, on Weld, where
+  the lookup of the filter's class threw `WELD-001480` out of the stack build).
+- **Spec**: CDI 4.1 §3.10: a class with a non-static, non-private final method is unproxyable as a bean type; a
+  lookup of that type throws `UnproxyableResolutionException`. Vauban now checks it on the looked-up type
+  (BUG-20261118-19), and its client proxy of such a bean extends a class above the method, often `Object`, with the
+  bean's interfaces (BUG-20261118-20).
+- **Cause**: `VaubanBeanProvider.resolve` looked a normal-scoped bean up as its class; the registries read the
+  annotations and type arguments on `instance.getClass()` (`FilterEntry`, `MessageBodyRegistry`,
+  `ExceptionMapperRegistry`), which `FilterEntry` walked up to the `@Provider` class.
+- **Fix**: `CassiniStackBuilderImpl` registers a provider with the class it asked for, and the registries read on that
+  class (`FilterRegistry.register(Object, Class)`, `MessageBodyRegistry.addReader/addWriter(…, Class)`,
+  `ExceptionMapperRegistry.register(Object, Class)`, `FilterEntry.of(Object, Class)`); an instance registered without
+  a class keeps its own. `VaubanBeanProvider` looks a normal-scoped bean its class cannot type up as `Object`, the
+  client proxy, and `getRequestBean` hands out the contextual instance when that proxy is no instance of the resource
+  class. Review: `CdiBeanProvider` (Weld and other containers) does the same: the client proxy as `Object` for a
+  provider, the contextual instance for a resource (Weld refuses an `Object` proxy of a class without an interface,
+  "Proxied bean type cannot be java.lang.Object without an interface"); `FilterRegistry` reads a
+  `ParamConverterProvider`'s `@Priority` on the registered class too. Review round 8: `contextualInstance` of both
+  providers throws `ContextNotActiveException` when the bean's scope is inactive, as the proxy would on its first
+  call, where it returned the proxy and Cassini injected `@Context` fields into it; `CassiniStack.Builder.provider`
+  states that an instance is read on its own class.
+- **Verification**: `stack-cassini-066-red.log` of the BUG-49 lane scratchpad, Vauban lane 5b7ddcd6 installed in
+  `m2-bug49`: "Red run 1" (4 failures: 404 for 418, no stamp, 500 for 409, an empty body), "Red run 2" (2 errors, `Not
+  managed by Vauban`), "Red run 3" (review: the low-priority converter converted behind a proxy; Weld's stack build
+  threw `WELD-001480`). Green, `stack-cassini-066-dev.log`, "Dev run 2" (cassini-core, 705 tests), "Dev run 3"
+  (cassini-cdi-vauban, 21 tests), "Dev run 4" and "Dev run 5" (cassini-core 706, cassini-cdi, cassini-it-weld 15).
+  Review round 8: "Red run 4" (both providers returned the proxy on an inactive scope), "Dev run 6" (17 tests); then
+  "Red run 5", every CASSINI-066 test against the final commit's tests with the main sources of its parent.

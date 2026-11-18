@@ -99,14 +99,15 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
             if (c.isAnnotationPresent(jakarta.ws.rs.Path.class)) pathClasses.add(c);
             if (c.isAnnotationPresent(jakarta.ws.rs.ext.Provider.class)) {
                 Object inst = resourceSingletons.computeIfAbsent(c, this::instantiateProvider);
-                if (inst != null) providers.register(inst);
+                // Its annotations are c's: a bean provider may hand out a client proxy that does not extend c.
+                if (inst != null) providers.register(inst, c);
             }
         }
 
         // Extra providers passed explicitly via builder.provider()
         for (Object inst : extraProviders) {
             resourceSingletons.putIfAbsent(jaxrsAnnotatedClass(inst.getClass()), inst);
-            providers.register(inst);
+            providers.register(inst, inst.getClass());
         }
 
         var routes = RouteRegistry.discover(pathClasses.toArray(Class<?>[]::new));
@@ -134,11 +135,12 @@ final class CassiniStackBuilderImpl implements CassiniStack.Builder {
 
     /** The registries a provider instance is added to. */
     private record Registries(FilterRegistry filters, MessageBodyRegistry bodies, ExceptionMapperRegistry mappers) {
-        void register(Object inst) {
-            filters.register(inst);
-            if (inst instanceof jakarta.ws.rs.ext.MessageBodyReader<?> r) bodies.addReader(r);
-            if (inst instanceof jakarta.ws.rs.ext.MessageBodyWriter<?> w) bodies.addWriter(w);
-            mappers.register(inst);
+        /** Registers {@code inst}, its annotations and type arguments read on {@code registeredClass} (CASSINI-066). */
+        void register(Object inst, Class<?> registeredClass) {
+            filters.register(inst, registeredClass);
+            if (inst instanceof jakarta.ws.rs.ext.MessageBodyReader<?> r) bodies.addReader(r, registeredClass);
+            if (inst instanceof jakarta.ws.rs.ext.MessageBodyWriter<?> w) bodies.addWriter(w, registeredClass);
+            mappers.register(inst, registeredClass);
         }
     }
 

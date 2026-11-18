@@ -73,6 +73,10 @@ public interface BeanProvider {
      *
      * @param type the resource/provider class requested via {@link #getBean(Class)}
      * @param bean the object returned by {@link #getBean(Class)} (potentially a proxy)
+     * <p>When the scope of a normal-scoped bean is not active, a CDI provider throws the container's
+     * {@code ContextNotActiveException}, as the proxy would on its first call: the proxy is no instance to inject into
+     * (CASSINI-066).</p>
+     *
      * @return the real contextual instance, or {@code bean} if not applicable
      */
     default Object contextualInstance(Class<?> type, Object bean) {

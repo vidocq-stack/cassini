@@ -96,7 +96,12 @@ public interface CassiniStack {
         Builder application(Application app);
         Builder resourceFactory(ResourceFactory factory);
 
-        /** Adds a manually registered {@code @Provider} instance. */
+        /**
+         * Adds a manually registered {@code @Provider} instance. Its annotations ({@code @Priority},
+         * {@code @NameBinding}, {@code @Produces}, {@code @Consumes}, {@code @ConstrainedTo}) and the provider
+         * interfaces it implements are read on its own class, {@code providerInstance.getClass()}: register the
+         * instance itself, not a client proxy or a wrapper, whose class does not carry them (CASSINI-066).
+         */
         Builder provider(Object providerInstance);
 
         /**

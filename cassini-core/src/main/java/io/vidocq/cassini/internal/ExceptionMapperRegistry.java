@@ -40,7 +40,13 @@ public final class ExceptionMapperRegistry {
 
     private final List<Registration<?>> mappers = new ArrayList<>();
 
-    public record Registration<T extends Throwable>(Class<T> exceptionType, ExceptionMapper<T> mapper) {}
+    /** A mapper, the exception type it maps, and the class whose {@code @Priority} it has (CASSINI-066). */
+    public record Registration<T extends Throwable>(Class<T> exceptionType, ExceptionMapper<T> mapper,
+                                                    Class<?> registeredClass) {
+        public Registration(Class<T> exceptionType, ExceptionMapper<T> mapper) {
+            this(exceptionType, mapper, mapper.getClass());
+        }
+    }
 
     public <T extends Throwable> void register(Class<T> exceptionType, ExceptionMapper<T> mapper) {
         mappers.add(new Registration<>(exceptionType, mapper));
@@ -48,12 +54,21 @@ public final class ExceptionMapperRegistry {
 
     /** Registers a {@code @Provider} instance implementing {@link ExceptionMapper} if applicable.
      *  Resolves the exception type via generic interfaces. */
-    @SuppressWarnings({"unchecked", "rawtypes"})
     public void register(Object instance) {
+        register(instance, instance.getClass());
+    }
+
+    /**
+     * Registers {@code instance} as {@link #register(Object)} does, its exception type and priority read on
+     * {@code registeredClass}: the provider class a bean provider was asked for, which its client proxy may not
+     * extend, nor declare the type argument of (CASSINI-066).
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public void register(Object instance, Class<?> registeredClass) {
         if (!(instance instanceof ExceptionMapper)) return;
-        Class<? extends Throwable> excType = exceptionType(instance.getClass());
+        Class<? extends Throwable> excType = exceptionType(registeredClass);
         if (excType == null) return;
-        mappers.add(new Registration(excType, (ExceptionMapper) instance));
+        mappers.add(new Registration(excType, (ExceptionMapper) instance, registeredClass));
     }
 
     /** §4.4: if an ExceptionMapper itself throws an exception during
@@ -71,7 +86,7 @@ public final class ExceptionMapperRegistry {
                     best = r;
                 } else if (best.exceptionType() == r.exceptionType()) {
                     // §4.4 / §4.1.4: same exception type → lower priority wins.
-                    if (priorityOf(r.mapper()) < priorityOf(best.mapper())) best = r;
+                    if (priorityOf(r.registeredClass()) < priorityOf(best.registeredClass())) best = r;
                 } else if (best.exceptionType().isAssignableFrom(r.exceptionType())) {
                     best = r;
                 }
@@ -101,11 +116,11 @@ public final class ExceptionMapperRegistry {
 
     public int size() { return mappers.size(); }
 
-    private static int priorityOf(Object o) {
+    private static int priorityOf(Class<?> registeredClass) {
         // CASSINI-040: the generated descriptor first, the annotation read by reflection otherwise.
-        ProviderDescriptor d = ProviderDescriptors.of(o.getClass());
+        ProviderDescriptor d = ProviderDescriptors.of(registeredClass);
         if (d != null) return d.priority() == null ? jakarta.ws.rs.Priorities.USER : d.priority();
-        jakarta.annotation.Priority p = o.getClass().getAnnotation(jakarta.annotation.Priority.class);
+        jakarta.annotation.Priority p = registeredClass.getAnnotation(jakarta.annotation.Priority.class);
         return p == null ? jakarta.ws.rs.Priorities.USER : p.value();
     }
 

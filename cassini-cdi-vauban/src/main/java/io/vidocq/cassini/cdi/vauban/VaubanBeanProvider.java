@@ -27,6 +27,7 @@ import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.context.NormalScope;
 import jakarta.enterprise.context.spi.Context;
 import jakarta.enterprise.context.spi.CreationalContext;
+import jakarta.enterprise.inject.UnproxyableResolutionException;
 import jakarta.enterprise.inject.spi.Bean;
 import jakarta.enterprise.inject.spi.BeanManager;
 import jakarta.ws.rs.Path;
@@ -110,7 +111,9 @@ public final class VaubanBeanProvider implements BeanProvider {
         Resolution resolution = resolution(type);
         // A pseudo-scope other than @Dependent, @Singleton, has no client proxy either: the container keeps it
         if (resolution.bean() == null || resolution.bean().getScope() != Dependent.class) {
-            return new RequestInstance<>(getBean(type), null);
+            T bean = getBean(type);
+            // A client proxy that does not extend the resource class: the request runs on the contextual instance.
+            return new RequestInstance<>(type.isInstance(bean) ? bean : (T) contextualInstance(type, bean), null);
         }
         try {
             BeanManager bm = container.getBeanManager();
@@ -142,14 +145,11 @@ public final class VaubanBeanProvider implements BeanProvider {
         // Only normal-scoped beans are proxied (cf. VAU-INJ-001). For @Dependent and other
         // pseudo-scopes, getBean() already returns the real instance.
         if (resolution.clientProxy() == null) return bean;
-        try {
-            var bm = container.getBeanManager();
-            Object contextual = fromContext(bm.getContext(resolution.bean().getScope()), resolution.bean(), bm);
-            return contextual != null ? contextual : bean;
-        } catch (RuntimeException _) {
-            // inactive scope → keep the original object (the proxy).
-            return bean;
-        }
+        var bm = container.getBeanManager();
+        // An inactive scope throws ContextNotActiveException, as the client proxy would on its first call: the
+        // proxy is no instance to inject into (CASSINI-066).
+        Object contextual = fromContext(bm.getContext(resolution.bean().getScope()), resolution.bean(), bm);
+        return contextual != null ? contextual : bean;
     }
 
     private Resolution resolution(Class<?> type) {
@@ -171,10 +171,24 @@ public final class VaubanBeanProvider implements BeanProvider {
             if (candidates.isEmpty()) return byBeanClass(type, bm);
             Bean<?> bean = bm.resolve(candidates);
             if (bean == null) return UNRESOLVED;
-            return new Resolution(bean, isNormalScoped(bean) ? container.select(type) : null, null);
+            return new Resolution(bean, isNormalScoped(bean) ? clientProxy(bean, type, bm) : null, null);
         } catch (RuntimeException _) {
             // Unresolvable: getBean() asks the container on each call and reports its error.
             return UNRESOLVED;
+        }
+    }
+
+    /**
+     * The client proxy of a normal-scoped bean, typed as {@code type}; typed as {@code Object} when no client proxy
+     * stands for {@code type}, a class with a final method (CDI 4.1 §3.10), which the container refuses to look up.
+     * That proxy implements the interfaces of the class, and Cassini reads the annotations on the class it asked for
+     * (CASSINI-066).
+     */
+    private Object clientProxy(Bean<?> bean, Class<?> type, BeanManager bm) {
+        try {
+            return container.select(type);
+        } catch (UnproxyableResolutionException _) {
+            return bm.getReference(bean, Object.class, bm.createCreationalContext(bean));
         }
     }
 
